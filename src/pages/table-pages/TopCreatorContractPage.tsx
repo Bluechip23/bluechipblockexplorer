@@ -21,7 +21,7 @@ const TopCreatorContractPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <CreatorContractTable/>
+                    <CreatorContractTable Creator={''} Address={''} MonthlyTransactions={0} TotalTransactions={0} CreationDate={''}/>
                 </Grid>
             </Grid>
         </Layout>

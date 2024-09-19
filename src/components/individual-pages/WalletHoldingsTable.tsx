@@ -23,7 +23,7 @@ const columns: readonly Column[] = [
 
 ];
 
-interface Data {
+interface WalletHoldingsProps {
     token: string;
     amount: string;
     value: string;
@@ -34,7 +34,7 @@ function createData(
     amount: string,
     value: string,
 
-): Data {
+): WalletHoldingsProps {
     return { token, amount, value };
 }
 
@@ -44,7 +44,7 @@ const rows = [
     createData('United States', 'US', '',)
 ];
 
-const WalletsHoldingsTable: React.FC = () => {
+const WalletsHoldingsTable: React.FC<WalletHoldingsProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

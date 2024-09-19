@@ -7,6 +7,7 @@ import BlockTransactionsTable from '../../components/individual-pages/BlockTrans
 import { useParams } from 'react-router-dom';
 import GeneralStats from '../../navigation/GeneralStats';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const BlockPage: React.FC = () => {
 
@@ -15,7 +16,7 @@ const BlockPage: React.FC = () => {
     useEffect(() => {
         const fetchBlock = async () => {
             try {
-                const response = await fetch(`/api/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/blocks/${id}`);
                 const data = await response.json();
                 setBlock(data);
             } catch (error) {
@@ -53,7 +54,7 @@ const BlockPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <BlockTransactionsTable />
+                    <BlockTransactionsTable hash={''} method={''} sender={''} recipient={''} value={0} fee={0} />
                 </Grid>
             </Grid>
         </Layout>

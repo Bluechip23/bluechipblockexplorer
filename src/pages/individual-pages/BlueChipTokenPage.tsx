@@ -7,6 +7,7 @@ import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorTokenPage: React.FC = () => {
 
@@ -15,7 +16,7 @@ const CreatorTokenPage: React.FC = () => {
     useEffect(() => {
         const fetchBluechip = async () => {
             try {
-                const response = await fetch(`/api/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/bluechip/${id}`);
                 const data = await response.json();
                 setBluechip(data);
             } catch (error) {

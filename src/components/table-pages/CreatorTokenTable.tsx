@@ -39,7 +39,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface CreatorTokenTableProps {
     creator: string;
     price: number;
     change: number;
@@ -56,7 +56,7 @@ function createData(
     holders: number,
     twentyfourH: number,
     tokenAddress: string
-): Data {
+): CreatorTokenTableProps {
     return { creator, price, change, holders, twentyfourH, tokenAddress };
 }
 
@@ -78,7 +78,7 @@ const rows = [
     createData('Brazil', 0, 1403500365, 0, 0,''),
 ];
 
-const CreatorTokenTable: React.FC = () => {
+const CreatorTokenTable: React.FC<CreatorTokenTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

@@ -13,7 +13,6 @@ const FrontPage: React.FC = () => {
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} >
             <Stack direction='row' alignItems='center' justifyContent='space-around'>
-            <Typography variant='h3' sx={{ marginBottom: '10px', }}>BlueChip Block Explorer</Typography>
             <BlockExplorerNavBar/>
             </Stack>
             <Grid container  alignItems='center' justifyContent='center'>
@@ -22,10 +21,10 @@ const FrontPage: React.FC = () => {
                 </Grid>
                 <Stack direction='row' spacing={2}>
                     <Grid item xs={6}>
-                        <RecentBlocksTable />
+                        <RecentBlocksTable block={''} age={''} txn={0} feeRecipient={''} gasUsed={0} reward={0} />
                     </Grid>
                     <Grid item xs={6}>
-                        <RecentTransactionsTable />
+                        <RecentTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
                     </Grid>
                 </Stack>
             </Grid>

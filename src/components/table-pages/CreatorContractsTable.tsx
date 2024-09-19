@@ -35,7 +35,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface CreatorContractTableProps {
     Creator: string;
     Address: string;
     MonthlyTransactions: number;
@@ -49,7 +49,7 @@ function createData(
     MonthlyTransactions: number,
     TotalTransactions: number,
     CreationDate: string,
-): Data {
+): CreatorContractTableProps {
     return { Creator, Address, MonthlyTransactions, TotalTransactions, CreationDate };
 }
 
@@ -66,7 +66,7 @@ const rows = [
     createData('Brazil', 'BR', 210147125, 8515767, ''),
 ];
 
-const CreatorContractTable: React.FC = () => {
+const CreatorContractTable: React.FC<CreatorContractTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

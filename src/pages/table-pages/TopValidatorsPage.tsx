@@ -20,7 +20,7 @@ const TopValidatorsPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <ValidatorTable/>
+                    <ValidatorTable validator={''} commision={0} maxCommision={0} totalStaked={0} delegated={0} valId={''}/>
                 </Grid>
             </Grid>
         </Layout>

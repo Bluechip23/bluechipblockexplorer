@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import CreatorContractTable from '../../components/table-pages/CreatorContractsTable';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorContract: React.FC = () => {
 
@@ -15,7 +16,7 @@ const CreatorContract: React.FC = () => {
     useEffect(() => {
         const fetchContract = async () => {
             try {
-                const response = await fetch(`/api/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/contracts/${id}`);
                 const data = await response.json();
                 setContract(data);
             } catch (error) {
@@ -48,7 +49,7 @@ const CreatorContract: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <CreatorContractTable />
+                    <CreatorContractTable Creator={''} Address={''} MonthlyTransactions={0} TotalTransactions={0} CreationDate={''} />
                 </Grid>
             </Grid>
         </Layout>

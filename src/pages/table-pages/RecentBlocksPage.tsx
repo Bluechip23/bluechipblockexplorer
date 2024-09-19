@@ -21,7 +21,7 @@ const RecentBlocksPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <RecentBlocksTable />
+                    <RecentBlocksTable block={''} age={''} txn={0} feeRecipient={''} gasUsed={0} reward={0} />
                 </Grid>
             </Grid>
         </Layout>

@@ -21,7 +21,7 @@ const TopCreatorPoolPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <CreatorPoolTable/>
+                    <CreatorPoolTable Creator={''} Address={''} Liquidity={0} FeesCollected={0} TopProvider={''}/>
                 </Grid>
             </Grid>
         </Layout>

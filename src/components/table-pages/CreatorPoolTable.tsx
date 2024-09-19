@@ -35,7 +35,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface CreatorPoolTableProps {
     Creator: string;
     Address: string;
     Liquidity: number;
@@ -49,7 +49,7 @@ function createData(
     Liquidity: number,
     FeesCollected: number,
     TopProvider: string,
-): Data {
+): CreatorPoolTableProps {
     return { Creator, Address, Liquidity, FeesCollected, TopProvider };
 }
 
@@ -66,7 +66,7 @@ const rows = [
     createData('Brazil', 'BR', 210147125, 8515767, ''),
 ];
 
-const CreatorPoolTable: React.FC = () => {
+const CreatorPoolTable: React.FC<CreatorPoolTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

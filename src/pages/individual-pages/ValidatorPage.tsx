@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import ValidatorTable from '../../components/table-pages/ValidatorTable';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 interface ValidatorData {
     id: string;
@@ -23,7 +24,7 @@ const Validator: React.FC = () => {
     useEffect(() => {
         const fetchValidator = async () => {
             try {
-                const response = await fetch(`/api/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/validators/${id}`);
                 const data = await response.json();
                 setValidator(data);
             } catch (error) {
@@ -72,7 +73,7 @@ const Validator: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <ValidatorTable/>
+                    <ValidatorTable validator={''} commision={0} maxCommision={0} totalStaked={0} delegated={0} valId={''}/>
                 </Grid>
             </Grid>
         </Layout>

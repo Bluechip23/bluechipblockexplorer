@@ -35,7 +35,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface ValidatorTableProp {
     validator: string;
     commision: number;
     maxCommision: number;
@@ -51,7 +51,7 @@ function createData(
     totalStaked: number,
     delegated: number,
     valId: string
-): Data {
+): ValidatorTableProp {
     return { validator, commision, maxCommision, totalStaked, delegated, valId };
 }
 
@@ -73,7 +73,7 @@ const rows = [
     createData('Brazil', 0, 1403500365, 0, 0, ''),
 ];
 
-const ValidatorTable: React.FC = () => {
+const ValidatorTable: React.FC<ValidatorTableProp> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

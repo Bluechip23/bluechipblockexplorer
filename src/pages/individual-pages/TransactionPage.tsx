@@ -7,6 +7,7 @@ import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import RecentTransactionsTable from '../../components/table-pages/RecentTransactionsTable';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const TransactionPage: React.FC = () => {
 
@@ -15,7 +16,7 @@ const TransactionPage: React.FC = () => {
     useEffect(() => {
         const fetchTransaction = async () => {
             try {
-                const response = await fetch(`/api/wallets/${id}`);
+                const response = await fetch(`${rpcEndpoint}/txs/${id}`);
                 const data = await response.json();
                 setTransaction(data);
             } catch (error) {
@@ -41,7 +42,7 @@ const TransactionPage: React.FC = () => {
                 <Grid item xs={8}>
                     <Card>
                         <CardContent>
-                            <Typography variant='h5'>Transaction Hash:</Typography>
+                            <Typography variant='h5'>Transaction Hash: </Typography>
                             <Divider />
                             <Typography>Status: </Typography>
                             <Typography>Block: </Typography>
@@ -54,7 +55,7 @@ const TransactionPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <RecentTransactionsTable/>
+                    <RecentTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0}/>
                 </Grid>
             </Grid>
         </Layout>

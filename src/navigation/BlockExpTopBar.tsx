@@ -20,7 +20,7 @@ const BlockExpTopBar: React.FC = () => {
                         fontSize: 'x-large',
                     }}
                 >
-                    blue chip Explorer
+                    Bluechip Explorer
                 </Link>
                 <Typography>
                     blue chip price:

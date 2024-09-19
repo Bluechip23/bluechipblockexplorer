@@ -21,7 +21,7 @@ const TopCreatorTokensPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <CreatorTokenTable/>
+                    <CreatorTokenTable creator={''} price={0} change={0} holders={0} twentyfourH={0} tokenAddress={''}/>
                 </Grid>
             </Grid>
         </Layout>

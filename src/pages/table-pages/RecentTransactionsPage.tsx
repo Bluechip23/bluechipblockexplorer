@@ -21,7 +21,7 @@ const RecentTransactionsPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <RecentTransactionsTable />
+                    <RecentTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
                 </Grid>
             </Grid>
         </Layout>

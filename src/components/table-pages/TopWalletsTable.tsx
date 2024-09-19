@@ -31,7 +31,7 @@ const columns: readonly Column[] = [
 
 ];
 
-interface Data {
+interface TopWalletsTableProps {
     walletAddress: string;
     balance: number;
     percentage: number;
@@ -44,7 +44,7 @@ function createData(
     balance: number,
     percentage: number,
     totalTransactions: number,
-): Data {
+): TopWalletsTableProps {
     return { walletAddress, balance, percentage, totalTransactions, };
 }
 
@@ -66,7 +66,7 @@ const rows = [
     createData('Brazil', 0, 1403500365, 0,),
 ];
 
-const TopWalletsTable: React.FC = () => {
+const TopWalletsTable: React.FC<TopWalletsTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

@@ -1,11 +1,14 @@
 import { Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import React, { useState } from 'react';
 import { fetchTransaction, fetchWallet, fetchBlock } from './SearchBarLogic';
+import { useNavigate } from 'react-router-dom';
 
 const GeneralStats: React.FC = () => {
     const [searchValue, setSearchValue] = useState('');
     const [searchResult, setSearchResult] = useState<any>(null); // Store results
     const [error, setError] = useState('');
+    const navigateTo = useNavigate();
+
 
     const handleSearch = async () => {
         setError('');
@@ -16,13 +19,17 @@ const GeneralStats: React.FC = () => {
                 if (searchValue.length === 64) {
                     const transaction = await fetchTransaction(searchValue);
                     setSearchResult(transaction);
+                    navigateTo(`/transaction/${searchResult?.hash}`)
                 } else {
                     const walletInfo = await fetchWallet(searchValue);
                     setSearchResult(walletInfo);
+                    navigateTo(`/wallet/${searchResult?.address}`)
                 }
             } else {
                 const block = await fetchBlock(Number(searchValue));
                 setSearchResult(block);
+                navigateTo(`/block/${searchResult?.id}`)
+
             }
         } catch (err) {
             setError('Error fetching data. Please ensure the input is valid.');
@@ -44,14 +51,6 @@ const GeneralStats: React.FC = () => {
                         Search
                     </Button>
                 </Stack>
-                {error && <Typography color='error'>{error}</Typography>}
-                {searchResult && (
-                    <Paper elevation={3} sx={{ padding: '10px', marginTop: '10px' }}>
-                        <Typography variant="h6">Search Result:</Typography>
-                        <pre>{JSON.stringify(searchResult, null, 2)}</pre>
-                    </Paper>
-                )}
-                {/* Add the rest of the stats display below */}
                 <Stack spacing={4}>
                     <Stack direction='row' spacing={16}>
                         <Typography>blue chip Price: 1b</Typography>

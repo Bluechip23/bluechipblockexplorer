@@ -21,7 +21,7 @@ const TopWalletsPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <TopWalletsTable/>
+                    <TopWalletsTable walletAddress={''} balance={0} percentage={0} totalTransactions={0}/>
                 </Grid>
             </Grid>
         </Layout>

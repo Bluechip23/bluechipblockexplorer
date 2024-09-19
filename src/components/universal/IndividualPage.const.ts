@@ -1,0 +1,1 @@
+export const rpcEndpoint = 'https://bluechip.rpc.bluechip.link'

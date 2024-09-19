@@ -45,7 +45,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface TokenTransactionsTableProps {
     creator: string;
     hash: string;
     method: string;
@@ -65,7 +65,7 @@ function createData(
     recipient: string,
     value: number,
     fee: number,
-): Data {
+): TokenTransactionsTableProps {
     return { creator, hash, method, block, sender, recipient, value, fee };
 }
 
@@ -85,7 +85,7 @@ const rows = [
     createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
 ];
 
-const TokenTransactionsTable: React.FC = () => {
+const TokenTransactionsTable: React.FC<TokenTransactionsTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

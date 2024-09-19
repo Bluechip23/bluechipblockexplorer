@@ -7,6 +7,7 @@ import { Layout } from '../../ui';
 import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorTokenPage: React.FC = () => {
 
@@ -15,7 +16,7 @@ const CreatorTokenPage: React.FC = () => {
     useEffect(() => {
         const fetchToken = async () => {
             try {
-                const response = await fetch(`/api/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/tokens/${id}`);
                 const data = await response.json();
                 setToken(data);
             } catch (error) {
@@ -52,7 +53,7 @@ const CreatorTokenPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <TokenTransactionsTable />
+                    <TokenTransactionsTable creator={''} hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
                 </Grid>
             </Grid>
         </Layout>

@@ -42,7 +42,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface RecentBlocksTableProps {
     block: string;
     age: string;
     txn: number;
@@ -58,7 +58,7 @@ function createData(
     feeRecipient: string,
     gasUsed: number,
     reward: number,
-): Data {
+): RecentBlocksTableProps {
     return { block, age, txn, feeRecipient, gasUsed, reward };
 }
 
@@ -80,7 +80,7 @@ const rows = [
     createData('Brazil', 'BR', 210147125, '8515767', 0, 0),
 ];
 
-const RecentBlocksTable: React.FC = () => {
+const RecentBlocksTable: React.FC<RecentBlocksTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react'
 import { Layout } from '../../ui';
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
-import WalletsHoldingsTable from '../../components/individual-pages/WalletHoldingsTable';
-import WalletTransactionsTable from '../../components/individual-pages/WalletTransactionsTable';
+
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
+import WalletsHoldingsTable from '../../components/individual-pages/WalletHoldingsTable';
+import WalletTransactionsTable from '../../components/individual-pages/WalletTransactionsTable';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 
 const Wallet: React.FC = () => {
@@ -17,7 +19,7 @@ const Wallet: React.FC = () => {
     useEffect(() => {
         const fetchWallet = async () => {
             try {
-                const response = await fetch(`/api/wallets/${id}`);
+                const response = await fetch(`${rpcEndpoint}/wallets/${id}`);
                 const data = await response.json();
                 setWallet(data);
             } catch (error) {
@@ -51,10 +53,10 @@ const Wallet: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletsHoldingsTable />
+                    <WalletsHoldingsTable token={''} amount={''} value={''} />
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletTransactionsTable />
+                    <WalletTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
                 </Grid>
             </Grid>
         </Layout>

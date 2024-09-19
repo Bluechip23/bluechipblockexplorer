@@ -40,7 +40,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface BlockTransactionsTableProps {
     hash: string;
     method: string;
     sender: string;
@@ -56,7 +56,7 @@ function createData(
     recipient: string,
     value: number,
     fee: number,
-): Data {
+): BlockTransactionsTableProps {
     return { hash, method, sender, recipient, value, fee };
 }
 
@@ -73,7 +73,7 @@ const rows = [
 
 ];
 
-const BlockTransactionsTable: React.FC = () => {
+const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 

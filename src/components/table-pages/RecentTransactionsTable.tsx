@@ -44,7 +44,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface Data {
+interface RecentTransactionTableProps {
     hash: string;
     method: string;
     block: string;
@@ -62,7 +62,7 @@ function createData(
     recipient: string,
     value: number,
     fee: number,
-): Data {
+): RecentTransactionTableProps {
     return { hash, method, block, sender, recipient, value, fee };
 }
 
@@ -84,7 +84,7 @@ const rows = [
     createData('Brazil', 'BR', '', '', '', 210147125, 8515767),
 ];
 
-const RecentTransactionsTable: React.FC = () => {
+const RecentTransactionsTable: React.FC<RecentTransactionTableProps> = (props) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
