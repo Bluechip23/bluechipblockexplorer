@@ -1,4 +1,4 @@
-import { Grid, Paper, Stack, Typography } from '@mui/material';
+import { Grid, Stack, Typography } from '@mui/material';
 import React from 'react';
 import { Layout } from '../../ui';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
@@ -21,7 +21,7 @@ const RecentBlocksPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <RecentBlocksTable block={''} age={''} txn={0} feeRecipient={''} gasUsed={0} reward={0} />
+                    <RecentBlocksTable />
                 </Grid>
             </Grid>
         </Layout>

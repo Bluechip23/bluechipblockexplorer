@@ -16,7 +16,7 @@ const CreatorTokenPage: React.FC = () => {
     useEffect(() => {
         const fetchToken = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/tokens/${id}`);
+                const response = await fetch(`${rpcEndpoint}/tx_search?query="transfer.denom='${id}'"`);
                 const data = await response.json();
                 setToken(data);
             } catch (error) {
@@ -53,7 +53,7 @@ const CreatorTokenPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <TokenTransactionsTable creator={''} hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
+                    <TokenTransactionsTable />
                 </Grid>
             </Grid>
         </Layout>

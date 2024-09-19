@@ -53,10 +53,10 @@ const Wallet: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletsHoldingsTable token={''} amount={''} value={''} />
+                    <WalletsHoldingsTable />
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
+                    <WalletTransactionsTable />
                 </Grid>
             </Grid>
         </Layout>

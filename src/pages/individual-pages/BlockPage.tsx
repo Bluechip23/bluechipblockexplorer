@@ -16,7 +16,7 @@ const BlockPage: React.FC = () => {
     useEffect(() => {
         const fetchBlock = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/blocks/${id}`);
+                const response = await fetch(`${rpcEndpoint}/block?height=${id}`);
                 const data = await response.json();
                 setBlock(data);
             } catch (error) {
@@ -54,7 +54,7 @@ const BlockPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <BlockTransactionsTable hash={''} method={''} sender={''} recipient={''} value={0} fee={0} />
+                    <BlockTransactionsTable />
                 </Grid>
             </Grid>
         </Layout>

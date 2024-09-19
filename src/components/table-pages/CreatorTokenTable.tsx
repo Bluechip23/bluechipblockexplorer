@@ -8,6 +8,8 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'creator' | 'price' | 'change' | 'holders' | 'twentyfourH';
@@ -49,38 +51,36 @@ interface CreatorTokenTableProps {
 
 }
 
-function createData(
-    creator: string,
-    price: number,
-    change: number,
-    holders: number,
-    twentyfourH: number,
-    tokenAddress: string
-): CreatorTokenTableProps {
-    return { creator, price, change, holders, twentyfourH, tokenAddress };
-}
 
-const rows = [
-    createData('India', 0, 1324171354, 0, 0,'1'),
-    createData('China', 0, 1403500365, 0, 0,''),
-    createData('Italy', 0, 1403500365, 0, 0,''),
-    createData('United States', 0, 1403500365, 0, 0,''),
-    createData('Canada', 0, 1403500365, 0, 0,''),
-    createData('Australia', 0, 1403500365, 0, 0,''),
-    createData('Germany', 0, 1403500365, 0, 0,''),
-    createData('Ireland', 0, 1403500365, 0, 0,''),
-    createData('Mexico', 0, 1403500365, 0, 0,''),
-    createData('Japan', 0, 1403500365, 0, 0,''),
-    createData('France', 0, 1403500365, 0, 0,''),
-    createData('United Kingdom', 0, 1403500365, 0, 0,''),
-    createData('Russia', 0, 1403500365, 0, 0,''),
-    createData('Nigeria', 0, 1403500365, 0, 0,''),
-    createData('Brazil', 0, 1403500365, 0, 0,''),
-];
-
-const CreatorTokenTable: React.FC<CreatorTokenTableProps> = (props) => {
+const CreatorTokenTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = React.useState<CreatorTokenTableProps[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    React.useEffect(() => {
+        async function loadtx() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/token`); 
+                const token = response.data.result.token; 
+
+                const blockRows = token.map((token: any) => ({
+                    creator: token.creator,
+                    price: token.price,
+                    change: token.change,
+                    holders: token.holders,
+                    twentyfourH: token.twentyfourH,
+                    tokenAddress: token.address, 
+                }));
+                setRows(blockRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadtx();
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);

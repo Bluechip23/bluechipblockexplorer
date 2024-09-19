@@ -8,6 +8,9 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'Creator' | 'Address' | 'MonthlyTransactions' | 'TotalTransactions' | 'CreationDate';
@@ -36,39 +39,42 @@ const columns: readonly Column[] = [
 ];
 
 interface CreatorContractTableProps {
-    Creator: string;
-    Address: string;
-    MonthlyTransactions: number;
-    TotalTransactions: number;
-    CreationDate: string;
+    creator: string;
+    address: string;
+    monthlyTransactions: number;
+    totalTransactions: number;
+    creationDate: string;
 }
 
-function createData(
-    Creator: string,
-    Address: string,
-    MonthlyTransactions: number,
-    TotalTransactions: number,
-    CreationDate: string,
-): CreatorContractTableProps {
-    return { Creator, Address, MonthlyTransactions, TotalTransactions, CreationDate };
-}
 
-const rows = [
-    createData('India', '1', 1324171354, 3287263, ''),
-    createData('China', 'CN', 1403500365, 9596961, ''),
-    createData('Italy', 'IT', 60483973, 301340, ''),
-    createData('United States', 'US', 327167434, 9833520, ''),
-    createData('Canada', 'CA', 37602103, 9984670, ''),
-    createData('Australia', 'AU', 25475400, 7692024, ''),
-    createData('Germany', 'DE', 83019200, 357578, ''),
-    createData('Ireland', 'IE', 4857000, 70273, ''),
-    createData('Mexico', 'MX', 126577691, 1972550, ''),
-    createData('Brazil', 'BR', 210147125, 8515767, ''),
-];
+const CreatorContractTable: React.FC= () => {
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<CreatorContractTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
 
-const CreatorContractTable: React.FC<CreatorContractTableProps> = (props) => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    useEffect(() => {
+        async function loadCreatorContract() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/creatorContract`); 
+                const contract = response.data.result.tx; 
+
+                const creatorContractRows = contract.map((contract: any) => ({
+                    creator: contract.hash,
+                    address: contract.method,
+                    monthlyTransactions: contract.height,
+                    totalTransactions: contract.sender,
+                    creationDate: contract.recipient,
+                }));
+                setRows(creatorContractRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        loadCreatorContract();
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -101,19 +107,19 @@ const CreatorContractTable: React.FC<CreatorContractTableProps> = (props) => {
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                         <Link to={`/creatorcontract/${row.Address}`}>{row.Creator}</Link>
+                                         <Link to={`/creatorcontract/${row.address}`}>{row.creator}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                           <Link to={`/creatorcontract/${row.Address}`}>{row.Address}</Link> 
+                                           <Link to={`/creatorcontract/${row.address}`}>{row.address}</Link> 
                                         </TableCell>
                                         <TableCell  >
-                                            {row.MonthlyTransactions}
+                                            {row.monthlyTransactions}
                                         </TableCell>
                                         <TableCell  >
-                                            {row.TotalTransactions}
+                                            {row.totalTransactions}
                                         </TableCell>
                                         <TableCell >
-                                          <Link to=''>{row.CreationDate}</Link>  
+                                          <Link to=''>{row.creationDate}</Link>  
                                         </TableCell>
                                     </TableRow>
                                 );

@@ -8,7 +8,10 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'creator' | 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -56,38 +59,40 @@ interface TokenTransactionsTableProps {
     fee: number;
 }
 
-function createData(
-    creator: string,
-    hash: string,
-    method: string,
-    block: string,
-    sender: string,
-    recipient: string,
-    value: number,
-    fee: number,
-): TokenTransactionsTableProps {
-    return { creator, hash, method, block, sender, recipient, value, fee };
-}
-
-const rows = [
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-];
-
-const TokenTransactionsTable: React.FC<TokenTransactionsTableProps> = (props) => {
+const TokenTransactionsTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = useState<TokenTransactionsTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
+    const id = useParams<{ id: string }>();
+
+    useEffect(() => {
+        async function loadTokenTx() {
+            try {
+                const query = encodeURIComponent(`transfer.denom='${id}'`);
+                const response = await axios.get(`${rpcEndpoint}/tx_search?query=${query}`);
+                const tokenTx = response.data.result.txs;
+                const tokenTxRows = tokenTx.map((tx: any) => ({
+                    creator: tx.creator,
+                    hash: tx.hash,
+                    method: tx.method,
+                    block: tx.block,
+                    sender: tx.sender,
+                    recipient: tx.recipient,
+                    value: tx.value,
+                    fee: tx.fee
+                }));
+
+                setRows(tokenTxRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadTokenTx();
+    }, [id]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -100,7 +105,7 @@ const TokenTransactionsTable: React.FC<TokenTransactionsTableProps> = (props) =>
 
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
+            <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
                 <Typography variant='h5'>Token Transactions</Typography>
                 <Table stickyHeader aria-label="sticky table">
                     <TableHead>

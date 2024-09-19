@@ -10,7 +10,7 @@ import CreatorPoolTable from '../../components/table-pages/CreatorPoolTable';
 
 const TopCreatorPoolPage: React.FC = () => {
     return (
-        <Layout NavBar={<BlockExpTopBar/>} SideBar={<BlockExpSideBar/>} >
+        <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} >
 
             <Stack direction='row' alignItems='center' justifyContent='space-around'>
                 <Typography variant='h3' sx={{ marginBottom: '10px', }}>BlueChip Creator Pools</Typography>
@@ -21,7 +21,7 @@ const TopCreatorPoolPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <CreatorPoolTable Creator={''} Address={''} Liquidity={0} FeesCollected={0} TopProvider={''}/>
+                    <CreatorPoolTable />
                 </Grid>
             </Grid>
         </Layout>

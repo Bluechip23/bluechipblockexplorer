@@ -16,7 +16,7 @@ const TransactionPage: React.FC = () => {
     useEffect(() => {
         const fetchTransaction = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/txs/${id}`);
+                const response = await fetch(`${rpcEndpoint}/tx?hash=${id}`);
                 const data = await response.json();
                 setTransaction(data);
             } catch (error) {
@@ -55,7 +55,7 @@ const TransactionPage: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <RecentTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0}/>
+                    <RecentTransactionsTable />
                 </Grid>
             </Grid>
         </Layout>

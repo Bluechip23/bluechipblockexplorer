@@ -10,7 +10,7 @@ import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 
 const TopCreatorContractPage: React.FC = () => {
     return (
-        <Layout NavBar={<BlockExpTopBar/>} SideBar={<BlockExpSideBar/>} >
+        <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} >
 
             <Stack direction='row' alignItems='center' justifyContent='space-around'>
                 <Typography variant='h3' sx={{ marginBottom: '10px', }}>BlueChip Creator Contracts</Typography>
@@ -21,7 +21,7 @@ const TopCreatorContractPage: React.FC = () => {
                     <GeneralStats />
                 </Grid>
                 <Grid item xs={10}>
-                    <CreatorContractTable Creator={''} Address={''} MonthlyTransactions={0} TotalTransactions={0} CreationDate={''}/>
+                    <CreatorContractTable />
                 </Grid>
             </Grid>
         </Layout>

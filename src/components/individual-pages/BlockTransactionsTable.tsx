@@ -9,6 +9,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'hash' | 'method' |'sender' | 'recipient' | 'value' | 'fee';
@@ -49,33 +52,37 @@ interface BlockTransactionsTableProps {
     fee: number;
 }
 
-function createData(
-    hash: string,
-    method: string,
-    sender: string,
-    recipient: string,
-    value: number,
-    fee: number,
-): BlockTransactionsTableProps {
-    return { hash, method, sender, recipient, value, fee };
-}
-
-const rows = [
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-    createData('Brazil', 'BR', '', '', 0, 210147125, ),
-
-];
-
-const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = (props) => {
+const BlockTransactionsTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = useState<BlockTransactionsTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadBlocks() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/block`); 
+                const blocks = response.data.result.blocks; 
+
+                const blockRows = blocks.map((block: any) => ({
+                    hash: block.hash,
+                    method: block.method, 
+                    sender: block.sender, 
+                    recipient: block.recipient, 
+                    value: block.value, 
+                    fee: block.fee 
+                }));
+
+                setRows(blockRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadBlocks();
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);

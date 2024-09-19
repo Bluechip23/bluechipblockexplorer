@@ -49,7 +49,7 @@ const CreatorContract: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <CreatorContractTable Creator={''} Address={''} MonthlyTransactions={0} TotalTransactions={0} CreationDate={''} />
+                    <CreatorContractTable />
                 </Grid>
             </Grid>
         </Layout>

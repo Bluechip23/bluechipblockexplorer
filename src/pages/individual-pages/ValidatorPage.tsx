@@ -24,9 +24,10 @@ const Validator: React.FC = () => {
     useEffect(() => {
         const fetchValidator = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/validators/${id}`);
+                const response = await fetch(`${rpcEndpoint}/validators?height_`);
                 const data = await response.json();
-                setValidator(data);
+                const queriedValidator = data.result.validators.find((v:ValidatorData) => v.id === id);
+                setValidator(queriedValidator)
             } catch (error) {
                 console.error("Failed to fetch validator:", error);
             }
@@ -73,7 +74,7 @@ const Validator: React.FC = () => {
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <ValidatorTable validator={''} commision={0} maxCommision={0} totalStaked={0} delegated={0} valId={''}/>
+                    <ValidatorTable />
                 </Grid>
             </Grid>
         </Layout>

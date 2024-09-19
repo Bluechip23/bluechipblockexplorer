@@ -8,6 +8,9 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'validator' | 'commision' | 'maxCommision' | 'totalStaked' | 'delegated';
@@ -35,7 +38,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface ValidatorTableProp {
+interface ValidatorRow {
     validator: string;
     commision: number;
     maxCommision: number;
@@ -44,38 +47,36 @@ interface ValidatorTableProp {
     valId: string;
 }
 
-function createData(
-    validator: string,
-    commision: number,
-    maxCommision: number,
-    totalStaked: number,
-    delegated: number,
-    valId: string
-): ValidatorTableProp {
-    return { validator, commision, maxCommision, totalStaked, delegated, valId };
-}
+const ValidatorTable: React.FC = () => {
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<ValidatorRow[]>([]);
+    const [loading, setLoading] = useState(true);
 
-const rows = [
-    createData('India', 0, 1324171354, 0, 0, '1'),
-    createData('China', 0, 1403500365, 0, 0, ''),
-    createData('Italy', 0, 1403500365, 0, 0, ''),
-    createData('United States', 0, 1403500365, 0, 0, ''),
-    createData('Canada', 0, 1403500365, 0, 0, ''),
-    createData('Australia', 0, 1403500365, 0, 0, ''),
-    createData('Germany', 0, 1403500365, 0, 0, ''),
-    createData('Ireland', 0, 1403500365, 0, 0, ''),
-    createData('Mexico', 0, 1403500365, 0, 0, ''),
-    createData('Japan', 0, 1403500365, 0, 0, ''),
-    createData('France', 0, 1403500365, 0, 0, ''),
-    createData('United Kingdom', 0, 1403500365, 0, 0, ''),
-    createData('Russia', 0, 1403500365, 0, 0, ''),
-    createData('Nigeria', 0, 1403500365, 0, 0, ''),
-    createData('Brazil', 0, 1403500365, 0, 0, ''),
-];
+    useEffect(() => {
+        const topValidator = async () => {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/validators`);
+                const validatorData = response.data.result;
 
-const ValidatorTable: React.FC<ValidatorTableProp> = (props) => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+                const validatorRows = validatorData.map((validator: any) => ({
+                    validator: validator.address,
+                    commision: validator.balance,
+                    maxCommision: validator.percentage,
+                    totalStaked: validator.totalTransactions,
+                    delegated: validator.delegated,
+                    valId: validator.valId
+                }));
+                setRows(validatorRows);
+                setLoading(false);
+            } catch (error) {
+                console.error('Error fetching wallet data:', error);
+                setLoading(false);
+            }
+        };
+
+        topValidator();
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -86,9 +87,13 @@ const ValidatorTable: React.FC<ValidatorTableProp> = (props) => {
         setPage(0);
     };
 
+    if (loading) {
+        return <div>Loading...</div>;
+    }
+
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
+            <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
                 <Table stickyHeader aria-label="sticky table">
                     <TableHead>
                         <TableRow>
@@ -104,27 +109,25 @@ const ValidatorTable: React.FC<ValidatorTableProp> = (props) => {
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                            <Link to={`/validator/${row.valId}`}>{row.validator}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.commision}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.maxCommision}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.totalStaked}
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.delegated}
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.valId}>
+                                    <TableCell>
+                                        <Link to={`/validator/${row.valId}`}>{row.validator}</Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.commision}
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.maxCommision}
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.totalStaked}
+                                    </TableCell>
+                                    <TableCell>
+                                        {row.delegated}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>

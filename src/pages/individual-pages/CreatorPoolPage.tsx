@@ -7,6 +7,7 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import CreatorPoolTable from '../../components/table-pages/CreatorPoolTable';
 
 
 const CreatorPoolPage: React.FC = () => {
@@ -52,6 +53,9 @@ const CreatorPoolPage: React.FC = () => {
                             <Typography># of Transactions: </Typography>
                         </CardContent>
                     </Card>
+                </Grid>
+                <Grid item xs={8}>
+                    <CreatorPoolTable />
                 </Grid>
             </Grid>
         </Layout>

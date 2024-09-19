@@ -8,6 +8,8 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
+import axios from 'axios';
 
 interface Column {
     id: 'Creator' | 'Address' | 'Liquidity' | 'FeesCollected' | 'TopProvider';
@@ -36,40 +38,44 @@ const columns: readonly Column[] = [
 ];
 
 interface CreatorPoolTableProps {
-    Creator: string;
-    Address: string;
-    Liquidity: number;
-    FeesCollected: number;
-    TopProvider: string;
+    creator: string;
+    address: string;
+    liquidity: number;
+    feesCollected: number;
+    topProvider: string;
 }
 
-function createData(
-    Creator: string,
-    Address: string,
-    Liquidity: number,
-    FeesCollected: number,
-    TopProvider: string,
-): CreatorPoolTableProps {
-    return { Creator, Address, Liquidity, FeesCollected, TopProvider };
-}
 
-const rows = [
-    createData('India', '1', 1324171354, 3287263, ''),
-    createData('China', 'CN', 1403500365, 9596961, ''),
-    createData('Italy', 'IT', 60483973, 301340, ''),
-    createData('United States', 'US', 327167434, 9833520, ''),
-    createData('Canada', 'CA', 37602103, 9984670, ''),
-    createData('Australia', 'AU', 25475400, 7692024, ''),
-    createData('Germany', 'DE', 83019200, 357578, ''),
-    createData('Ireland', 'IE', 4857000, 70273, ''),
-    createData('Mexico', 'MX', 126577691, 1972550, ''),
-    createData('Brazil', 'BR', 210147125, 8515767, ''),
-];
-
-const CreatorPoolTable: React.FC<CreatorPoolTableProps> = (props) => {
+const CreatorPoolTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = React.useState<CreatorPoolTableProps[]>([]);
+    const [loading, setLoading] = React.useState(true);
 
+    React.useEffect(() => {
+        async function loadBlocks() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/creatorPools`); 
+                const pool = response.data.result.pool; 
+
+                const blockRows = pool.map((pool: any) => ({
+                    creator: pool.creator,
+                    address: pool.address, 
+                    liquidity: pool.liquidity, 
+                    feesCollected: pool.feeCollected, 
+                    topProvider: pool.topProvider, 
+                }));
+
+                setRows(blockRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadBlocks();
+    }, []);
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
     };
@@ -101,19 +107,19 @@ const CreatorPoolTable: React.FC<CreatorPoolTableProps> = (props) => {
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                         <Link to={`/creatorpool/${row.Address}`}>{row.Creator}</Link>
+                                         <Link to={`/creatorpool/${row.address}`}>{row.creator}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                           <Link to={`/creatorpool/${row.Address}`}>{row.Address}</Link> 
+                                           <Link to={`/creatorpool/${row.address}`}>{row.address}</Link> 
                                         </TableCell>
                                         <TableCell  >
-                                            {row.Liquidity}
+                                            {row.liquidity}
                                         </TableCell>
                                         <TableCell  >
-                                            {row.FeesCollected}
+                                            {row.feesCollected}
                                         </TableCell>
                                         <TableCell >
-                                          <Link to=''>{row.TopProvider}</Link>  
+                                          <Link to=''>{row.topProvider}</Link>  
                                         </TableCell>
                                     </TableRow>
                                 );

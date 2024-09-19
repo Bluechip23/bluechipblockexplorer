@@ -9,6 +9,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'token' | 'amount' | 'value';
@@ -29,24 +32,34 @@ interface WalletHoldingsProps {
     value: string;
 }
 
-function createData(
-    token: string,
-    amount: string,
-    value: string,
 
-): WalletHoldingsProps {
-    return { token, amount, value };
-}
-
-const rows = [
-    createData('China', 'CN', '', ),
-    createData('Italy', 'IT', '', ),
-    createData('United States', 'US', '',)
-];
-
-const WalletsHoldingsTable: React.FC<WalletHoldingsProps> = (props) => {
+const WalletsHoldingsTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = useState<WalletHoldingsProps[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadWallet() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/wallet`); 
+                const wallet = response.data.result.wallet; 
+
+                const walletRows = wallet.map((wallet: any) => ({
+                    token: wallet.token,
+                    amount: wallet.amount, 
+                    value: wallet.value, 
+                }));
+
+                setRows(walletRows);
+            } catch (error) {
+                console.error('Error loading blocks:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+        loadWallet();
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);

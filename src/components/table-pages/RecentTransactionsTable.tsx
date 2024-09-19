@@ -9,6 +9,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
+import axios from 'axios';
+import { useEffect, useState } from 'react';
 
 interface Column {
     id: 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -17,31 +20,13 @@ interface Column {
 }
 
 const columns: readonly Column[] = [
-    { id: 'hash', label: 'Hash', },
-    { id: 'method', label: 'Method', },
-    {
-        id: 'block',
-        label: 'Block',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'sender',
-        label: 'Sender',
-    },
-    {
-        id: 'recipient',
-        label: 'Recipient',
-    },
-    {
-        id: 'value',
-        label: 'Value',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'fee',
-        label: 'Fees',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
+    { id: 'hash', label: 'Hash' },
+    { id: 'method', label: 'Method' },
+    { id: 'block', label: 'Block' },
+    { id: 'sender', label: 'Sender' },
+    { id: 'recipient', label: 'Recipient' },
+    { id: 'value', label: 'Value' },
+    { id: 'fee', label: 'Fees' },
 ];
 
 interface RecentTransactionTableProps {
@@ -54,39 +39,44 @@ interface RecentTransactionTableProps {
     fee: number;
 }
 
-function createData(
-    hash: string,
-    method: string,
-    block: string,
-    sender: string,
-    recipient: string,
-    value: number,
-    fee: number,
-): RecentTransactionTableProps {
-    return { hash, method, block, sender, recipient, value, fee };
-}
+const RecentTransactionsTable: React.FC = () => {
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<RecentTransactionTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
 
-const rows = [
-    createData('India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('China', 'CN', '', '', '', 1403500365, 9596961),
-    createData('Italy', 'IT', '', '', '', 60483973, 301340),
-    createData('United States', 'US', '', '', '', 327167434, 9833520),
-    createData('Canada', 'CA', '', '', '', 37602103, 9984670),
-    createData('Australia', 'AU', '', '', '', 25475400, 7692024),
-    createData('Germany', 'DE', '', '', '', 83019200, 357578),
-    createData('Ireland', 'IE', '', '', '', 4857000, 70273),
-    createData('Mexico', 'MX', '', '', '', 126577691, 1972550),
-    createData('Japan', 'JP', '', '', '', 126317000, 377973),
-    createData('France', 'FR', '', '', '', 67022000, 640679),
-    createData('United Kingdom', 'GB', '', '', '', 67545757, 242495),
-    createData('Russia', 'RU', '', '', '', 146793744, 17098246),
-    createData('Nigeria', 'NG', '', '', '', 200962417, 923768),
-    createData('Brazil', 'BR', '', '', '', 210147125, 8515767),
-];
+    useEffect(() => {
+        async function loadTx() {
+            try {
+                const response = await axios.get(`${rpcEndpoint}/tx_search`, {
+                    params: {
+                        query: 'tx.height>0', //all transactions since origin
+                        page: page + 1, 
+                        per_page: rowsPerPage,
+                        order_by: 'desc', 
+                    },
+                });
+                const transactions = response.data.result.txs; 
 
-const RecentTransactionsTable: React.FC<RecentTransactionTableProps> = (props) => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+                const blockRows = transactions.map((tx: any) => ({
+                    hash: tx.txhash,
+                    method: tx.tx.body.messages[0].type, //not sure if our transactions have multiple versions? but [0] should grab the right thing anyways
+                    block: tx.height,
+                    sender: tx.tx.body.messages[0].sender,
+                    recipient: tx.tx.body.messages[0].recipient,
+                    value: tx.tx.body.messages[0].amount[0].amount, 
+                    fee: tx.tx.auth_info.fee.amount[0].amount, 
+                }));
+                setRows(blockRows);
+            } catch (error) {
+                console.error('Error loading transactions:', error);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadTx();
+    }, [page, rowsPerPage]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -97,17 +87,19 @@ const RecentTransactionsTable: React.FC<RecentTransactionTableProps> = (props) =
         setPage(0);
     };
 
+    if (loading) {
+        return <Typography variant="h6">Loading...</Typography>;
+    }
+
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
+            <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
                 <Typography variant='h5'>Recent Transactions</Typography>
                 <Table stickyHeader aria-label="sticky table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                >
+                                <TableCell key={column.id}>
                                     {column.label}
                                 </TableCell>
                             ))}
@@ -116,33 +108,25 @@ const RecentTransactionsTable: React.FC<RecentTransactionTableProps> = (props) =
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                            <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.method}
-                                        </TableCell>
-                                        <TableCell  >
-                                            <Link to=''>{row.block}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            <Link to=''>{row.sender}</Link>
-                                        </TableCell>
-                                        <TableCell >
-                                            <Link to=''>{row.recipient}</Link>
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.value}
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.fee}
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.hash}>
+                                    <TableCell>
+                                        <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
+                                    </TableCell>
+                                    <TableCell>{row.method}</TableCell>
+                                    <TableCell>
+                                        <Link to={`/block/${row.block}`}>{row.block}</Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Link to={`/wallet/${row.sender}`}>{row.sender}</Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Link to={`/wallet/${row.recipient}`}>{row.recipient}</Link>
+                                    </TableCell>
+                                    <TableCell>{row.value}</TableCell>
+                                    <TableCell>{row.fee}</TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>

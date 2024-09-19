@@ -1,4 +1,4 @@
-import { Grid, Paper, Stack, Typography } from '@mui/material';
+import { Grid, Stack } from '@mui/material';
 import React from 'react';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
@@ -13,18 +13,18 @@ const FrontPage: React.FC = () => {
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} >
             <Stack direction='row' alignItems='center' justifyContent='space-around'>
-            <BlockExplorerNavBar/>
+                <BlockExplorerNavBar />
             </Stack>
-            <Grid container  alignItems='center' justifyContent='center'>
+            <Grid container alignItems='center' justifyContent='center'>
                 <Grid item xs={10}>
-                    <GeneralStats/>
+                    <GeneralStats />
                 </Grid>
                 <Stack direction='row' spacing={2}>
                     <Grid item xs={6}>
-                        <RecentBlocksTable block={''} age={''} txn={0} feeRecipient={''} gasUsed={0} reward={0} />
+                        <RecentBlocksTable />
                     </Grid>
                     <Grid item xs={6}>
-                        <RecentTransactionsTable hash={''} method={''} block={''} sender={''} recipient={''} value={0} fee={0} />
+                        <RecentTransactionsTable />
                     </Grid>
                 </Stack>
             </Grid>

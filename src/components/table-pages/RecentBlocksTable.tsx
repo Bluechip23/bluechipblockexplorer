@@ -9,6 +9,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { useEffect, useState } from 'react';
 
 interface Column {
     id: 'block' | 'age' | 'txn' | 'feeRecipient' | 'gasUsed' | 'reward';
@@ -51,38 +54,56 @@ interface RecentBlocksTableProps {
     reward: number;
 }
 
-function createData(
-    block: string,
-    age: string,
-    txn: number,
-    feeRecipient: string,
-    gasUsed: number,
-    reward: number,
-): RecentBlocksTableProps {
-    return { block, age, txn, feeRecipient, gasUsed, reward };
-}
+const RecentBlocksTable: React.FC = () => {
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<RecentBlocksTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [latestBlock, setLatestBlock] = useState(0);
 
-const rows = [
-    createData('India', 'IN', 1324171354, '', 0, 0),
-    createData('China', 'CN', 1403500365, '', 0, 0),
-    createData('Italy', 'IT', 60483973, '', 0, 0),
-    createData('United States', 'US', 327167434, '', 0, 0),
-    createData('Canada', 'CA', 37602103, '', 0, 0),
-    createData('Australia', 'AU', 25475400, '', 0, 0),
-    createData('Germany', 'DE', 83019200, '', 0, 0),
-    createData('Ireland', 'IE', 4857000, '', 0, 0),
-    createData('Mexico', 'MX', 126577691, '1972550', 0, 0),
-    createData('Japan', 'JP', 126317000, '377973', 0, 0),
-    createData('France', 'FR', 67022000, '640679', 0, 0),
-    createData('United Kingdom', 'GB', 67545757, '242495', 0, 0),
-    createData('Russia', 'RU', 146793744, '17098246', 0, 0),
-    createData('Nigeria', 'NG', 200962417, '923768', 0, 0),
-    createData('Brazil', 'BR', 210147125, '8515767', 0, 0),
-];
+    const fetchLatestBlock = async () => {
+        try {
+            const response = await axios.get(`${rpcEndpoint}/status`);
+            const latestHeight = response.data.result.sync_info.latest_block_height;
+            setLatestBlock(latestHeight);
+        } catch (error) {
+            console.error('Error fetching latest block:', error);
+        }
+    };
 
-const RecentBlocksTable: React.FC<RecentBlocksTableProps> = (props) => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const loadBlocks = async () => {
+        if (latestBlock === 0) return; // Only load when latestBlock is fetched
+
+        try {
+            const response = await axios.get(`${rpcEndpoint}/blockchain?minHeight=1&maxHeight=${latestBlock}`);
+            const blocks = response.data.result.block_metas;
+
+            const blockRows = blocks.map((block: any) => ({
+                block: block.header.height,
+                age: block.header.time,
+                txn: block.header.num_txs,
+                feeRecipient: block.block_id.hash, 
+                gasUsed: block.header.gas_used || 0,
+                reward: block.header.total_reward || 0,
+            }));
+
+            setRows(blockRows);
+        } catch (error) {
+            console.error('Error loading blocks:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchLatestBlock();
+    }, []); 
+
+    useEffect(() => {
+        if (latestBlock > 0) {
+            loadBlocks();
+        }
+    }, [latestBlock]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -93,17 +114,19 @@ const RecentBlocksTable: React.FC<RecentBlocksTableProps> = (props) => {
         setPage(0);
     };
 
+    if (loading) {
+        return <Typography variant="h6">Loading...</Typography>;
+    }
+
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
+            <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
                 <Typography variant='h5'>Recent Blocks</Typography>
                 <Table stickyHeader aria-label="sticky table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                >
+                                <TableCell key={column.id}>
                                     {column.label}
                                 </TableCell>
                             ))}
@@ -112,30 +135,18 @@ const RecentBlocksTable: React.FC<RecentBlocksTableProps> = (props) => {
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                            <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.age}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.txn}
-                                        </TableCell>
-                                        <TableCell  >
-                                            <Link to=''>{row.feeRecipient}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.gasUsed}
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.reward}
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.block}>
+                                    <TableCell>
+                                        <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
+                                    </TableCell>
+                                    <TableCell>{row.age}</TableCell>
+                                    <TableCell>{row.txn}</TableCell>
+                                    <TableCell><Link to=''>{row.feeRecipient}</Link></TableCell>
+                                    <TableCell>{row.gasUsed}</TableCell>
+                                    <TableCell>{row.reward}</TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -150,6 +161,6 @@ const RecentBlocksTable: React.FC<RecentBlocksTableProps> = (props) => {
             />
         </Paper>
     );
-}
+};
 
 export default RecentBlocksTable;

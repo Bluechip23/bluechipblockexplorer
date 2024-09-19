@@ -4,7 +4,6 @@ import React from 'react';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import GeneralStats from '../../navigation/GeneralStats';
-import RecentTransactionsTable from '../../components/table-pages/RecentTransactionsTable';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import BlueChipTokenTransactionsTable from '../../components/table-pages/BluechipTokenTransactionsTable';
 
