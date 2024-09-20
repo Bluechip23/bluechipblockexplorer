@@ -10,6 +10,8 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { useEffect, useState } from 'react';
+import { Typography } from '@mui/material';
 
 interface Column {
     id: 'walletAddress' | 'balance' | 'percentage' | 'totalTransactions';
@@ -34,40 +36,50 @@ const columns: readonly Column[] = [
 
 interface TopWalletsTableProps {
     walletAddress: string;
-    balance: number;
+    balance: string; 
     percentage: number;
     totalTransactions: number;
 }
 
 const TopWalletsTable: React.FC = () => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = React.useState<TopWalletsTableProps[]>([]);
-    const [loading, setLoading] = React.useState(true);
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<TopWalletsTableProps[]>([]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const fetchTopWallets = async () => {
             try {
-                const response = await axios.get(`${rpcEndpoint}/topWallets}`);
-                const walletsData = response.data.result;
+                const response = await axios.get(`${rpcEndpoint}/bluehcip/auth/v1beta1/accounts`);
+                const accounts = response.data.accounts;
+                const balancePromises = accounts.map((account: any) =>
+                    axios.get(`${rpcEndpoint}/bluechip/bank/v1beta1/balances/${account.address}`)
+                );
+                const balanceResponses = await Promise.all(balancePromises);
 
-                const walletRows = walletsData.map((wallet: any) => ({
+                let walletsData = accounts.map((account: any, index: number) => ({
+                    address: account.address,
+                    balance: balanceResponses[index].data.balances[0]?.amount || '0',
+                    totalTransactions: 0, 
+                }));
+
+                walletsData.sort((a: any, b: any) => Number(b.balance) - Number(a.balance));
+                const totalBalance = walletsData.reduce((sum: number, wallet: any) => sum + Number(wallet.balance), 0);
+                const walletRows = walletsData.slice(0, 100).map((wallet: any) => ({
                     walletAddress: wallet.address,
                     balance: wallet.balance,
-                    percentage: wallet.percentage,
+                    percentage: (Number(wallet.balance) / totalBalance) * 100,
                     totalTransactions: wallet.totalTransactions,
                 }));
+
                 setRows(walletRows);
-                setLoading(false);
             } catch (error) {
+                <Typography>There has been an error fetching wallet data</Typography>
                 console.error('Error fetching wallet data:', error);
-                setLoading(false);
             }
         };
 
         fetchTopWallets();
     }, []);
-
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
     };

@@ -9,9 +9,8 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { useState } from 'react';
+
 
 interface Column {
     id: 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -47,7 +46,7 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface WalletTransactionsTableProps {
+interface WalletTransactionsTable {
     hash: string;
     method: string;
     block: string;
@@ -57,42 +56,17 @@ interface WalletTransactionsTableProps {
     fee: number;
 }
 
-const WalletTransactionsTable: React.FC = () => {
+interface WalletTransactionsTableProps {
+    walletTx: WalletTransactionsTable[];
+}
+
+const WalletTransactionsTable: React.FC<WalletTransactionsTableProps> = ({ walletTx }) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = useState<WalletTransactionsTableProps[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        async function loadWallet() {
-            try {
-                const response = await axios.get(`${rpcEndpoint}/wallet`);
-                const wallet = response.data.result.wallet;
-
-                const walletRows = wallet.map((wallet: any) => ({
-                    hash: wallet.hash,
-                    method: wallet.method,
-                    block: wallet.block,
-                    sender: wallet.sender,
-                    recipient: wallet.recipient,
-                    value: wallet.number,
-                    fee: wallet.fee
-                }));
-
-                setRows(walletRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadWallet();
-    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
     };
-
     const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
         setRowsPerPage(+event.target.value);
         setPage(0);
@@ -115,7 +89,7 @@ const WalletTransactionsTable: React.FC = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {rows
+                        {walletTx
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                             .map((row) => {
                                 return (
@@ -150,7 +124,7 @@ const WalletTransactionsTable: React.FC = () => {
             <TablePagination
                 rowsPerPageOptions={[10, 25, 100]}
                 component="div"
-                count={rows.length}
+                count={walletTx.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}

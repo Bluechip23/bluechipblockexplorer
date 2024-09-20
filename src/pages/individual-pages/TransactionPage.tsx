@@ -12,22 +12,49 @@ import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 const TransactionPage: React.FC = () => {
 
     const id = useParams<{ id: string }>();
-    const [transaction, setTransaction] = useState<any>(null);
+    const [txInfo, setTxInfo] = useState({
+        hash: '',
+        timestamp: '',
+        status: '',
+        block: '',
+        sender: '',
+        recipient: '',
+        gasPrice: 0,
+        value: 0
+    });
+    const [error, setError] = useState<string | null>(null);
+
     useEffect(() => {
         const fetchTransaction = async () => {
             try {
                 const response = await fetch(`${rpcEndpoint}/tx?hash=${id}`);
                 const data = await response.json();
-                setTransaction(data);
+                const tx = data.result.tx;
+                const txResult = data.result.tx_result;
+
+                setTxInfo({
+                    hash: data.result.hash,
+                    timestamp: new Date(data.result.time).toLocaleString(), 
+                    status: txResult.code === 0 ? 'Success' : 'Failed',
+                    block: data.result.height,
+                    sender: tx.body.messages[0].from_address, 
+                    recipient: tx.body.messages[0].to_address,
+                    gasPrice: tx.auth_info.fee.amount[0].amount,
+                    value: tx.body.messages[0].amount[0].amount 
+                });
             } catch (error) {
-                console.error("Failed to fetch wallet:", error);
+                console.error("Failed to fetch transaction:", error);
+                setError("Failed to load transaction data");
             }
         };
-        fetchTransaction();
+
+        if (id) {
+            fetchTransaction();
+        }
     }, [id]);
 
     if (!id) {
-        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Transaction Not Found</Typography></Layout>;
+        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}><Typography>Transaction ID Not Provided</Typography></Layout>;
     }
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
@@ -42,15 +69,15 @@ const TransactionPage: React.FC = () => {
                 <Grid item xs={8}>
                     <Card>
                         <CardContent>
-                            <Typography variant='h5'>Transaction Hash: </Typography>
+                            <Typography variant='h5'>Transaction Hash: {txInfo.hash} </Typography>
                             <Divider />
-                            <Typography>Status: </Typography>
-                            <Typography>Block: </Typography>
-                            <Typography>Timestamp: </Typography>
-                            <Link to=''><Typography>From: </Typography></Link>
-                            <Link to=''><Typography>To: </Typography></Link>
-                            <Typography>Value: </Typography>
-                            <Typography>Gas Price: </Typography>
+                            <Typography>Status: {txInfo.hash}</Typography>
+                            <Typography>Block: {txInfo.block}</Typography>
+                            <Typography>Timestamp: {txInfo.timestamp}</Typography>
+                            <Link to=''><Typography>From: {txInfo.sender}</Typography></Link>
+                            <Link to=''><Typography>To: {txInfo.recipient}</Typography></Link>
+                            <Typography>Value: {txInfo.value} </Typography>
+                            <Typography>Gas Price: {txInfo.gasPrice}</Typography>
                         </CardContent>
                     </Card>
                 </Grid>

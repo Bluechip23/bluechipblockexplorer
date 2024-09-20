@@ -9,12 +9,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
-    id: 'hash' | 'method' |'sender' | 'recipient' | 'value' | 'fee';
+    id: 'hash' | 'method' | 'sender' | 'recipient' | 'value' | 'fee';
     label: string;
     format?: (value: number) => string;
 }
@@ -43,7 +40,8 @@ const columns: readonly Column[] = [
     },
 ];
 
-interface BlockTransactionsTableProps {
+interface TransactionRow {
+    blockId: string;
     hash: string;
     method: string;
     sender: string;
@@ -51,39 +49,13 @@ interface BlockTransactionsTableProps {
     value: number;
     fee: number;
 }
+interface BlockTransactionsTableProps {
+    rows: TransactionRow[];
+}
 
-const BlockTransactionsTable: React.FC = () => {
+const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = ({ rows }) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = useState<BlockTransactionsTableProps[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        async function loadBlocks() {
-            try {
-                const response = await axios.get(`${rpcEndpoint}/block`); 
-                const blocks = response.data.result.blocks; 
-
-                const blockRows = blocks.map((block: any) => ({
-                    hash: block.hash,
-                    method: block.method, 
-                    sender: block.sender, 
-                    recipient: block.recipient, 
-                    value: block.value, 
-                    fee: block.fee 
-                }));
-
-                setRows(blockRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        loadBlocks();
-    }, []);
-
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
     };

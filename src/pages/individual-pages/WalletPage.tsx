@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Layout } from '../../ui';
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
-
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import { useParams } from 'react-router-dom';
@@ -10,23 +9,48 @@ import GeneralStats from '../../navigation/GeneralStats';
 import WalletsHoldingsTable from '../../components/individual-pages/WalletHoldingsTable';
 import WalletTransactionsTable from '../../components/individual-pages/WalletTransactionsTable';
 import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import axios from 'axios';
 
 
 const Wallet: React.FC = () => {
 
-    const id = useParams<{ id: string }>();
-    const [wallet, setWallet] = useState<any>(null);
+    const {id} = useParams<{ id: string }>();
+    const [wallet, setWallet] = useState({
+        address: '',
+        balance: '',
+    });
+    const [balances, setBalances] = useState([]);
+    const [transactions, setTransactions] = useState([]);
     useEffect(() => {
-        const fetchWallet = async () => {
+        const fetchSpecificWallet = async () => {
+            if (!id) return;
             try {
-                const response = await fetch(`${rpcEndpoint}/wallets/${id}`);
-                const data = await response.json();
-                setWallet(data);
+    
+                const accountResponse = await axios.get(`${rpcEndpoint}/bluechip/auth/v1beta1/accounts/${id}`);
+                const accountInfo = accountResponse.data.account;
+    
+                const balanceResponse = await axios.get(`${rpcEndpoint}/bluechip/bank/v1beta1/balances/${id}`);
+                const balancesData = balanceResponse.data.balances;
+          
+             
+                const primaryBalance = balancesData[0]?.amount || '0';
+                setWallet({
+                    address: id,
+                    balance: primaryBalance
+                });
+
+                // Set balances as wallet holdings
+                setBalances(balancesData || []);
+
+                // Fetch wallet transactions (replace with actual endpoint)
+                const transactionsResponse = await axios.get(`${rpcEndpoint}/bluechip/transactions/${id}`);
+                setTransactions(transactionsResponse.data.transactions || []);
+
             } catch (error) {
-                console.error("Failed to fetch wallet:", error);
+                console.error('Error fetching wallet data:', error);
             }
         };
-        fetchWallet();
+        fetchSpecificWallet();
     }, [id]);
 
     if (!id) {
@@ -44,19 +68,17 @@ const Wallet: React.FC = () => {
                 <Grid item xs={4}>
                     <Card>
                         <CardContent>
-                            <Typography variant='h4'>Wallet:</Typography>
+                            <Typography variant='h4'>Wallet: {wallet.address.toString()}</Typography>
                             <Divider />
-                            <Typography>Balance: </Typography>
-                            <Typography>Liquid: </Typography>
-                            <Typography>Staked: </Typography>
+                            <Typography>Balance: {wallet.balance}</Typography>
                         </CardContent>
                     </Card>
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletsHoldingsTable />
+                    <WalletsHoldingsTable walletHoldings={balances} />
                 </Grid>
                 <Grid item xs={8}>
-                    <WalletTransactionsTable />
+                    <WalletTransactionsTable walletTx={transactions} />
                 </Grid>
             </Grid>
         </Layout>

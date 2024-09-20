@@ -41,7 +41,7 @@ const GeneralStats: React.FC = () => {
             <Stack spacing={2}>
                 <Stack direction='row' spacing={2}>
                     <TextField
-                        label='Search Wallet, Transaction, or Block #'
+                        label='Search Wallet, Transaction Hash, or Block Height'
                         size='small'
                         value={searchValue}
                         onChange={(e) => setSearchValue(e.target.value)}

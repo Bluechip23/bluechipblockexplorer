@@ -38,9 +38,9 @@ const Validator: React.FC = () => {
     if (!id) {
         return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Validator Not Found</Typography></Layout>;
     }
-    /*if (!validator) {
+    if (!validator) {
         return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Validator Not Found</Typography></Layout>;
-    }*/
+    }
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} >
 
@@ -56,20 +56,20 @@ const Validator: React.FC = () => {
                         <CardHeader
                             avatar={
                                 <Avatar aria-label="recipe" sx={{ height: '75px', width: '75px' }}>
-                                    R
+                                    {validator.id.charAt(0).toUpperCase()}
                                 </Avatar>
                             }
-                            title="Shrimp and Chorizo Paella"
+                            title={`Validator ${validator.id}`}
 
                         />
                         <Stack direction='row' spacing={8}>
-                            <Typography variant='h5'>Validator Address: {validator?.id} </Typography>
-                            <Typography>Wallet Address: {validator?.address}</Typography>
+                            <Typography variant='h5'>Validator Address: {validator.id} </Typography>
+                            <Typography>Wallet Address: {validator.address}</Typography>
                         </Stack>
                         <CardContent>
-                            <Typography>Rank: {validator?.rank}</Typography>
-                            <Typography>Commission: {validator?.commission} </Typography>
-                            <Typography>Max Commission: {validator?.maxCommission}</Typography>
+                            <Typography>Rank: {validator.rank}</Typography>
+                            <Typography>Commission: {validator.commission} </Typography>
+                            <Typography>Max Commission: {validator.maxCommission}</Typography>
                         </CardContent>
                     </Card>
                 </Grid>

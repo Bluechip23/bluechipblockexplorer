@@ -9,9 +9,8 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { useState } from 'react';
+
 
 interface Column {
     id: 'token' | 'amount' | 'value';
@@ -26,40 +25,18 @@ const columns: readonly Column[] = [
 
 ];
 
-interface WalletHoldingsProps {
+interface WalletHoldings {
     token: string;
     amount: string;
     value: string;
 }
+interface WalletHoldingProps {
+    walletHoldings: WalletHoldings[];
+}
 
-
-const WalletsHoldingsTable: React.FC = () => {
+const WalletsHoldingsTable: React.FC<WalletHoldingProps> = ({walletHoldings}) => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = useState<WalletHoldingsProps[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        async function loadWallet() {
-            try {
-                const response = await axios.get(`${rpcEndpoint}/wallet`); 
-                const wallet = response.data.result.wallet; 
-
-                const walletRows = wallet.map((wallet: any) => ({
-                    token: wallet.token,
-                    amount: wallet.amount, 
-                    value: wallet.value, 
-                }));
-
-                setRows(walletRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
-            } finally {
-                setLoading(false);
-            }
-        }
-        loadWallet();
-    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -87,7 +64,7 @@ const WalletsHoldingsTable: React.FC = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {rows
+                        {walletHoldings
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                             .map((row) => {
                                 return (
@@ -110,7 +87,7 @@ const WalletsHoldingsTable: React.FC = () => {
             <TablePagination
                 rowsPerPageOptions={[10, 25, 100]}
                 component="div"
-                count={rows.length}
+                count={walletHoldings.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}

@@ -72,16 +72,15 @@ const RecentBlocksTable: React.FC = () => {
     };
 
     const loadBlocks = async () => {
-        if (latestBlock === 0) return; // Only load when latestBlock is fetched
+        if (latestBlock === 0) return; 
 
         try {
             const response = await axios.get(`${rpcEndpoint}/blockchain?minHeight=1&maxHeight=${latestBlock}`);
             const blocks = response.data.result.block_metas;
-
             const blockRows = blocks.map((block: any) => ({
                 block: block.header.height,
                 age: block.header.time,
-                txn: block.header.num_txs,
+                txn: block.header.num_txs || 0,
                 feeRecipient: block.block_id.hash, 
                 gasUsed: block.header.gas_used || 0,
                 reward: block.header.total_reward || 0,
@@ -103,7 +102,7 @@ const RecentBlocksTable: React.FC = () => {
         if (latestBlock > 0) {
             loadBlocks();
         }
-    }, [latestBlock]);
+    }, []);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
