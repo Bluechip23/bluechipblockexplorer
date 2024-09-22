@@ -88,16 +88,16 @@ const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = ({ rows })
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                            <Link to=''>{row.hash}</Link>
+                                            <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
                                         </TableCell>
                                         <TableCell  >
                                             {row.method}
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.sender}</Link>
+                                            <Link to={`/transactionpage/${row.sender}`}>{row.sender}</Link>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to=''>{row.recipient}</Link>
+                                            <Link to={`/transactionpage/${row.recipient}`}>{row.recipient}</Link>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}

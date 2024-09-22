@@ -119,7 +119,7 @@ const CreatorContractTable: React.FC= () => {
                                             {row.totalTransactions}
                                         </TableCell>
                                         <TableCell >
-                                          <Link to=''>{row.creationDate}</Link>  
+                                         {row.creationDate}  
                                         </TableCell>
                                     </TableRow>
                                 );

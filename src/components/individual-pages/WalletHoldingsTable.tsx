@@ -22,7 +22,6 @@ const columns: readonly Column[] = [
     { id: 'token', label: 'Token', },
     { id: 'amount', label: 'Amount', },
     { id: 'value', label: 'Value', },
-
 ];
 
 interface WalletHoldings {
@@ -70,13 +69,13 @@ const WalletsHoldingsTable: React.FC<WalletHoldingProps> = ({walletHoldings}) =>
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                            <Link to=''>{row.token}</Link>
+                                            <Link to={`/tokenpage/${row.token}`}>{row.token}</Link>
                                         </TableCell>
                                         <TableCell  >
                                             {row.amount}
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.value}</Link>
+                                            {row.value}
                                         </TableCell>
                                     </TableRow>
                                 );

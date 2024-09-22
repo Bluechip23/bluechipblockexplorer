@@ -135,13 +135,13 @@ const TokenTransactionsTable: React.FC = () => {
                                             {row.method}
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.block}</Link>
+                                            <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.sender}</Link>
+                                            <Link to={`/walletpage/${row.sender}`}>{row.sender}</Link>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to=''>{row.recipient}</Link>
+                                            <Link to={`/walletpage/${row.recipient}`}>{row.recipient}</Link>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}

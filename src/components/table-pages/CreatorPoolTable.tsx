@@ -119,7 +119,7 @@ const CreatorPoolTable: React.FC = () => {
                                             {row.feesCollected}
                                         </TableCell>
                                         <TableCell >
-                                          <Link to=''>{row.topProvider}</Link>  
+                                          <Link to={`/walletpage/${row.topProvider}`}>{row.topProvider}</Link>  
                                         </TableCell>
                                     </TableRow>
                                 );

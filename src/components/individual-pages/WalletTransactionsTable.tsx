@@ -95,19 +95,19 @@ const WalletTransactionsTable: React.FC<WalletTransactionsTableProps> = ({ walle
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                            <Link to=''>{row.hash}</Link>
+                                            <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
                                         </TableCell>
                                         <TableCell  >
                                             {row.method}
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.block}</Link>
+                                            <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to=''>{row.sender}</Link>
+                                            <Link to={`/walletpage/${row.sender}`}>{row.sender}</Link>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to=''>{row.recipient}</Link>
+                                            <Link to={`/walletpage/${row.recipient}`}>{row.recipient}</Link>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}
