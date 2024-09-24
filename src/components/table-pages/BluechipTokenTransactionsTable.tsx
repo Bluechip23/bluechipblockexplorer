@@ -1,4 +1,4 @@
-import * as React from 'react';
+import React, { useEffect, useState } from 'react';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -9,6 +9,8 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import { rpcEndpoint, denom } from '../universal/IndividualPage.const';
+import axios from 'axios';
 
 interface Column {
     id: 'bluechip' | 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -17,9 +19,9 @@ interface Column {
 }
 
 const columns: readonly Column[] = [
-    { id: 'bluechip', label: 'blue chip', },
-    { id: 'hash', label: 'Hash', },
-    { id: 'method', label: 'Method', },
+    { id: 'bluechip', label: 'blue chip' },
+    { id: 'hash', label: 'Hash' },
+    { id: 'method', label: 'Method' },
     {
         id: 'block',
         label: 'Block',
@@ -49,45 +51,17 @@ interface Data {
     bluechip: string;
     hash: string;
     method: string;
-    block: string;
+    block: number;
     sender: string;
     recipient: string;
     value: number;
     fee: number;
 }
 
-function createData(
-    bluechip: string,
-    hash: string,
-    method: string,
-    block: string,
-    sender: string,
-    recipient: string,
-    value: number,
-    fee: number,
-): Data {
-    return { bluechip, hash, method, block, sender, recipient, value, fee };
-}
-
-const rows = [
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-    createData('India', 'India', 'IN', '', '', '', 1324171354, 3287263),
-];
-
 const BlueChipTokenTransactionsTable: React.FC = () => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = useState<Data[]>([]); // State for storing rows
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -98,17 +72,72 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
         setPage(0);
     };
 
+    useEffect(() => {
+        const fetchTokenTransactions = async (
+            maxRetries: number = 3,
+            retryDelay: number = 2000,
+            timeout: number = 60000
+        ) => {
+            let allTransactions: Data[] = [];
+            let nextKey: string | null = null;
+            let retries = maxRetries;
+            const startTime = Date.now();
+            do {
+                try {
+                    if (Date.now() - startTime > timeout) {
+                        console.error('Operation timed out');
+                        break;
+                    }
+                    const url: string = `${rpcEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
+                    const txQuery = await axios.get(url);
+                    const transactions = txQuery.data.txs || [];
+                    if (transactions.length === 0 && !nextKey) {
+                        console.log('No transactions found for the given denom.');
+                        break;
+                    }
+
+                    const formattedRows: Data[] = transactions.map((tx: any) => ({
+                        bluechip: 'YourToken',
+                        hash: tx.txhash,
+                        method: 'Transfer',
+                        block: tx.height.toString(),
+                        sender: tx.body.messages[0].from_address,
+                        recipient: tx.body.messages[0].to_address,
+                        value: Number(tx.body.messages[0].amount[0].amount),
+                        fee: Number(tx.auth_info.fee.amount[0]?.amount || 0),
+                    }));
+
+                    allTransactions = allTransactions.concat(formattedRows);
+                    nextKey = txQuery.data.pagination?.next_key;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } catch (error) {
+                    console.error('Error fetching token transactions:', error);
+                    if (retries > 0) {
+                        retries--;
+                        console.log(`Retrying... ${retries} retries left.`);
+                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    } else {
+                        console.error('Failed to fetch token transactions after retries.');
+                        break;
+                    }
+                }
+            } while (nextKey);
+
+            setRows(allTransactions);
+        };
+
+        fetchTokenTransactions();
+    }, []);
+
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
+            <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
                 <Typography variant='h5'>Token Transactions</Typography>
                 <Table stickyHeader aria-label="sticky table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                >
+                                <TableCell key={column.id}>
                                     {column.label}
                                 </TableCell>
                             ))}
@@ -117,33 +146,27 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
+                            .map((row, index) => {
                                 return (
-                                    <TableRow>
-                                        <TableCell >
-                                            <Link to=''>{row.bluechip}</Link>
+                                    <TableRow key={row.hash || index}>
+                                        <TableCell>
+                                            {row.bluechip}
                                         </TableCell>
-                                        <TableCell >
-                                            <Link to=''>{row.hash}</Link>
+                                        <TableCell>
+                                            <Link to={`/transaction/${row.hash}`}>{row.hash}</Link>
                                         </TableCell>
-                                        <TableCell  >
-                                            {row.method}
+                                        <TableCell>{row.method}</TableCell>
+                                        <TableCell>
+                                            {row.block}
                                         </TableCell>
-                                        <TableCell  >
-                                            <Link to=''>{row.block}</Link>
+                                        <TableCell>
+                                            {row.sender}
                                         </TableCell>
-                                        <TableCell  >
-                                            <Link to=''>{row.sender}</Link>
+                                        <TableCell>
+                                            {row.recipient}
                                         </TableCell>
-                                        <TableCell >
-                                            <Link to=''>{row.recipient}</Link>
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.value}
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.fee}
-                                        </TableCell>
+                                        <TableCell>{row.value}</TableCell>
+                                        <TableCell>{row.fee}</TableCell>
                                     </TableRow>
                                 );
                             })}
@@ -161,6 +184,6 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
             />
         </Paper>
     );
-}
+};
 
 export default BlueChipTokenTransactionsTable;

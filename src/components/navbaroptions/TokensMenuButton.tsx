@@ -16,10 +16,10 @@ const dropdownItem: Dropdown[] = [
         name: 'Top Tokens',
         link: '/toptokens',
     },
-    {
+    /*{
         name: 'NFT',
         link: '/home',
-    },
+    },*/
     {
         name: 'The blue chip',
         link: '/bluechiptransactions',

@@ -13,7 +13,7 @@ const BlockExpTopBar: React.FC = () => {
                 spacing={8}
             >
                 <Link
-                    to="/home"
+                    to="/frontpage"
                     style={{
                         color: 'inherit',
                         textDecoration: 'none',

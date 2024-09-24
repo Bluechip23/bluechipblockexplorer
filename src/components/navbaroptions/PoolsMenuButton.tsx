@@ -14,11 +14,11 @@ type Dropdown = {
 const dropdownItem: Dropdown[] = [
     {
         name: 'Top Creator Pools',
-        link: '/topcreatorpools',
+        link: '/comingsoonpage'//'/topcreatorpools',
     },
     {
         name: 'Creator Contracts',
-        link: '/topcreatorcontracts',
+        link: '/comingsoonpage'//'/topcreatorcontracts',
     },
 
 ]

@@ -20,6 +20,7 @@ import TopCreatorPoolPage from './pages/table-pages/TopCreatorPoolPage';
 import RecentBlueChipTransactionPage from './pages/table-pages/RecentBlueChipTransactionsPage';
 import TransactionPage from './pages/individual-pages/TransactionPage';
 import CreatorPoolPage from './pages/individual-pages/CreatorPoolPage';
+import ComingSoonPage from './components/universal/ComingSoonPage';
 
 function App() {
     return (
@@ -33,13 +34,14 @@ function App() {
                 <Route path="/recenttransactions" element={<RecentTransactionsPage />} />
                 <Route path="/recentblocks" element={<RecentBlocksPage />} />
                 <Route path="/topwallets" element={<TopWalletsPage />} />
-                <Route path="/toptokens" element={<TopCreatorTokensPage />} />
-                <Route path="/topcreatorcontracts" element={<TopCreatorContractPage />} />
+                <Route path="/toptokens" element={<ComingSoonPage/>/*<TopCreatorTokensPage />*/} />
+                <Route path="/topcreatorcontracts" element={<ComingSoonPage/>/*<TopCreatorContractPage />*/} />
                 <Route path="/topvalidators" element={<TopValidatorsPage />} />
                 <Route path="/bluechiptransactions" element={<RecentBlueChipTransactionPage/>} />
-                <Route path="/topcreatorpools" element={<TopCreatorPoolPage />} />
+                <Route path="/topcreatorpools" element={<ComingSoonPage/>/*<TopCreatorPoolPage />*/} />
                 <Route path="/transactionpage/:id" element={<TransactionPage />} />
                 <Route path="/creatorpool/:id" element={<CreatorPoolPage />} />
+                <Route path="/comingsoonpage" element={<ComingSoonPage />} />
                 <Route path="/validator/:id" element={<Validator />} />
                 <Route path="/blockpage/:id" element={<BlockPage />} />
                 <Route path="/wallet/:id" element={<Wallet />} />

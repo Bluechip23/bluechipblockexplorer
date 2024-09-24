@@ -1,38 +1,82 @@
 import { Button, Paper, Stack, TextField, Typography } from '@mui/material';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { fetchTransaction, fetchWallet, fetchBlock } from './SearchBarLogic';
 import { useNavigate } from 'react-router-dom';
+import { denom, rpcEndpoint } from '../components/universal/IndividualPage.const';
+import axios from 'axios';
 
 const GeneralStats: React.FC = () => {
     const [searchValue, setSearchValue] = useState('');
     const [searchResult, setSearchResult] = useState<any>(null); // Store results
+    const [recentBlock, setRecentBlock] = useState(0);
+    const [totalSupply, setTotalSupply] = useState(0);
+    const [totalStaked, setTotalStaked] = useState(0);
+    const [transactionsInblock, setTransactionsInblock] = useState(0);
     const [error, setError] = useState('');
     const navigateTo = useNavigate();
 
+    const latestBlockData = async () => {
+        try {
+            const response = await axios.get(`${rpcEndpoint}/status`);
+            const latestHeight = response.data.result.sync_info.latest_block_height;
+            const numTxs = response.data.result.block.data.txs.length;
+            setTransactionsInblock(numTxs);
+            setRecentBlock(latestHeight);
+        } catch (error) {
+            console.error('Error fetching latest block:', error);
+        }
+    };
+    const fetchStakedTokens = async () => {
+        try {
+            const response = await axios.get(`${rpcEndpoint}/cosmos/staking/v1beta1/pool`);
+            const bondedTokens = response.data.pool.bonded_tokens;
+            setTotalStaked(bondedTokens);
+        } catch (error) {
+            console.error('Error fetching staked tokens:', error);
+        }
+    };
+    const fetchTotalSupply = async () => {
+        try {
+            const response = await axios.get(`${rpcEndpoint}/cosmos/bank/v1beta1/supply/${denom}`);
+            const supply = response.data.amount;
+            setTotalSupply(supply);
+        } catch (error) {
+            console.error('Error fetching total supply:', error);
+        }
+    };
+
+    useEffect(() => {
+        const fetchData = async () => {
+          await latestBlockData();
+          await fetchStakedTokens();
+          await fetchTotalSupply();
+        };
+        fetchData();
+      }, []);
 
     const handleSearch = async () => {
         setError('');
         setSearchResult(null);
-
         try {
+            let result;
             if (isNaN(Number(searchValue))) {
                 if (searchValue.length === 64) {
-                    const transaction = await fetchTransaction(searchValue);
-                    setSearchResult(transaction);
+                    result = await fetchTransaction(searchValue);
+                    setSearchResult(result);
                     navigateTo(`/transaction/${searchResult?.hash}`)
                 } else {
-                    const walletInfo = await fetchWallet(searchValue);
-                    setSearchResult(walletInfo);
+                    result = await fetchWallet(searchValue);
+                    setSearchResult(result);
                     navigateTo(`/wallet/${searchResult?.address}`)
                 }
             } else {
-                const block = await fetchBlock(Number(searchValue));
-                setSearchResult(block);
+                result = await fetchBlock(Number(searchValue));
+                setSearchResult(result);
                 navigateTo(`/block/${searchResult?.id}`)
-
             }
         } catch (err) {
             setError('Error fetching data. Please ensure the input is valid.');
+            console.log(error)
         }
     };
 
@@ -53,15 +97,15 @@ const GeneralStats: React.FC = () => {
                 </Stack>
                 <Stack spacing={4}>
                     <Stack direction='row' spacing={16}>
-                        <Typography>blue chip Price: 1b</Typography>
-                        <Typography>Total Market Cap:</Typography>
-                        <Typography>Transactions to Date:</Typography>
-                        <Typography>Total Creator Pools:</Typography>
+                        <Typography>blue chip Price: $0 </Typography>
+                        <Typography>Total Supply: {totalSupply}</Typography>
+                        <Typography>Total Staked: {totalStaked}</Typography>
+                        <Typography>Current Annual Inflation Rate: 17.52% </Typography>
                     </Stack>
                     <Stack direction='row' spacing={10}>
-                        <Typography>Current Block Height:</Typography>
-                        <Typography>Medium Gas Fee:</Typography>
-                        <Typography>Current Inflation Rate:</Typography>
+                        <Typography>Current Block Height: {recentBlock}</Typography>
+                        <Typography>Transactions in last block: {transactionsInblock}</Typography>
+                        <Typography>Total Creator Pools: Coming Soon!</Typography>
                     </Stack>
                 </Stack>
             </Stack>

@@ -33,3 +33,4 @@ export const fetchWallet = async (walletAddress: string) => {
         throw new Error('Failed to fetch wallet information. Please check the RPC connection.');
     }
 };
+

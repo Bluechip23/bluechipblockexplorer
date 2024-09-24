@@ -12,6 +12,7 @@ import GavelIcon from '@mui/icons-material/Gavel';
 import HotTubIcon from '@mui/icons-material/HotTub';
 import TokenIcon from '@mui/icons-material/Token';
 import ReceiptIcon from '@mui/icons-material/Receipt';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import { Link } from 'react-router-dom';
 type Item = {
     title: string;
@@ -26,7 +27,7 @@ const sidebarItems: Item[] = [
     },
     {
         title: 'Transactions',
-        icon: <ReceiptLongIcon />,
+        icon: <ReceiptIcon />,
         link: '/recenttransactions',
     },
     {
@@ -36,18 +37,23 @@ const sidebarItems: Item[] = [
     },
     {
         title: 'Creator Contracts',
-        icon: <ReceiptIcon />,
-        link: '/topcreatorcontracts',
+        icon: <ReceiptLongIcon />,
+        link: '/comingsoonpage'//'/topcreatorcontracts',
     },
     {
         title: 'Creator Pools',
         icon: <HotTubIcon />,
-        link: '/topcreatorpools',
+        link: '/comingsoonpage'//'/topcreatorpools',
     },
     {
         title: 'Validators',
         icon: <GavelIcon />,
         link: '/topvalidators',
+    },
+    {
+        title: 'Creator Tokens',
+        icon: <MonetizationOnIcon/>,
+        link: '/toptokens',
     },
 ];
 
