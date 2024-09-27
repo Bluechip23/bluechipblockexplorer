@@ -87,10 +87,6 @@ const ValidatorTable: React.FC = () => {
         setPage(0);
     };
 
-    if (loading) {
-        return <div>Loading...</div>;
-    }
-
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
             <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>

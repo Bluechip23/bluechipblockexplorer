@@ -10,6 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { useState, useEffect } from 'react';
 
 interface Column {
     id: 'creator' | 'price' | 'change' | 'holders' | 'twentyfourH';
@@ -48,16 +49,15 @@ interface CreatorTokenTableProps {
     holders: number;
     twentyfourH: number;
     tokenAddress: string;
-
 }
 
 
 const CreatorTokenTable: React.FC = () => {
-    const [page, setPage] = React.useState(0);
-    const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = React.useState<CreatorTokenTableProps[]>([]);
-    const [loading, setLoading] = React.useState(true);
-    React.useEffect(() => {
+    const [page, setPage] = useState(0);
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [rows, setRows] = useState<CreatorTokenTableProps[]>([]);
+    const [loading, setLoading] = useState(true);
+    useEffect(() => {
         async function loadtx() {
             try {
                 const response = await axios.get(`${rpcEndpoint}/token`); 
