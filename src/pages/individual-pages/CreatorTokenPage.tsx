@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
 import TokenTransactionsTable from '../../components/table-pages/TokenTransactionsTable';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
@@ -7,24 +7,10 @@ import { Layout } from '../../ui';
 import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorTokenPage: React.FC = () => {
 
     const id = useParams<{ id: string }>();
-    const [token, setToken] = useState<any>(null);
-    useEffect(() => {
-        const fetchToken = async () => {
-            try {
-                const response = await fetch(`${rpcEndpoint}/tx_search?query="transfer.denom='${id}'"`);
-                const data = await response.json();
-                setToken(data);
-            } catch (error) {
-                console.error("Failed to fetch token:", error);
-            }
-        };
-        fetchToken();
-    }, [id]);
 
     if (!id) {
         return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Token Not Found</Typography></Layout>;

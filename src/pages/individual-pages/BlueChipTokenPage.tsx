@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { Layout } from '../../ui';
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
 import BlueChipTokenTransactionsTable from '../../components/table-pages/BluechipTokenTransactionsTable';
@@ -7,25 +7,10 @@ import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorTokenPage: React.FC = () => {
 
     const id = useParams<{ id: string }>();
-    const [bluechip, setBluechip] = useState<any>(null);
-    useEffect(() => {
-        const fetchBluechip = async () => {
-            try {
-                const response = await fetch(`${rpcEndpoint}/bluechip/${id}`);
-                const data = await response.json();
-                setBluechip(data);
-            } catch (error) {
-                console.error("Failed to fetch data:", error);
-            }
-        };
-        fetchBluechip();
-    }, [id]);
-
     if (!id) {
         return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Information Not Found</Typography></Layout>;
     }

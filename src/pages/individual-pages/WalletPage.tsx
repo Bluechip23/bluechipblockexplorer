@@ -39,10 +39,8 @@ const Wallet: React.FC = () => {
                     balance: primaryBalance
                 });
 
-                // Set balances as wallet holdings
                 setBalances(balancesData || []);
 
-                // Fetch wallet transactions (replace with actual endpoint)
                 const transactionsResponse = await axios.get(`${rpcEndpoint}/bluechip/transactions/${id}`);
                 setTransactions(transactionsResponse.data.transactions || []);
 

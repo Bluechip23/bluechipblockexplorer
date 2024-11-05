@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { Layout } from '../../ui';
 import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
@@ -7,24 +7,10 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import CreatorContractTable from '../../components/table-pages/CreatorContractsTable';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const CreatorContract: React.FC = () => {
 
     const id = useParams<{ id: string }>();
-    const [contract, setContract] = useState<any>(null);
-    useEffect(() => {
-        const fetchContract = async () => {
-            try {
-                const response = await fetch(`${rpcEndpoint}/contracts/${id}`);
-                const data = await response.json();
-                setContract(data);
-            } catch (error) {
-                console.error("Failed to fetch contract:", error);
-            }
-        };
-        fetchContract();
-    }, [id]);
 
     if (!id) {
         return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Contract Not Found</Typography></Layout>;

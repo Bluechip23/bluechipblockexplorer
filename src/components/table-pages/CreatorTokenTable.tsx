@@ -51,7 +51,6 @@ interface CreatorTokenTableProps {
     tokenAddress: string;
 }
 
-
 const CreatorTokenTable: React.FC = () => {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
