@@ -9,7 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { rpcEndpoint, denom } from '../universal/IndividualPage.const';
+import { rpcEndpoint, denom, apiEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 
 interface Column {
@@ -88,7 +88,7 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
                         console.error('Operation timed out');
                         break;
                     }
-                    const url: string = `${rpcEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
+                    const url: string = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
                     const txQuery = await axios.get(url);
                     const transactions = txQuery.data.txs || [];
                     if (transactions.length === 0 && !nextKey) {

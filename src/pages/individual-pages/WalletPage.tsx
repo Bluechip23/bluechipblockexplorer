@@ -8,7 +8,7 @@ import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import WalletsHoldingsTable from '../../components/individual-pages/WalletHoldingsTable';
 import WalletTransactionsTable from '../../components/individual-pages/WalletTransactionsTable';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import axios from 'axios';
 
 
@@ -26,10 +26,10 @@ const Wallet: React.FC = () => {
             if (!id) return;
             try {
     
-                const accountResponse = await axios.get(`${rpcEndpoint}/bluechip/auth/v1beta1/accounts/${id}`);
+                const accountResponse = await axios.get(`${apiEndpoint}/bluechip/auth/v1beta1/accounts/${id}`);
                 const accountInfo = accountResponse.data.account;
     
-                const balanceResponse = await axios.get(`${rpcEndpoint}/bluechip/bank/v1beta1/balances/${id}`);
+                const balanceResponse = await axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${id}`);
                 const balancesData = balanceResponse.data.balances;
           
              
@@ -41,7 +41,7 @@ const Wallet: React.FC = () => {
 
                 setBalances(balancesData || []);
 
-                const transactionsResponse = await axios.get(`${rpcEndpoint}/bluechip/transactions/${id}`);
+                const transactionsResponse = await axios.get(`${apiEndpoint}/bluechip/transactions/${id}`);
                 setTransactions(transactionsResponse.data.transactions || []);
 
             } catch (error) {

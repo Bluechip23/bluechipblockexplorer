@@ -2,7 +2,7 @@ import { Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { fetchTransaction, fetchWallet, fetchBlock } from './SearchBarLogic';
 import { useNavigate } from 'react-router-dom';
-import { denom, rpcEndpoint } from '../components/universal/IndividualPage.const';
+import { denom, rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
 import axios from 'axios';
 
 const GeneralStats: React.FC = () => {
@@ -19,27 +19,32 @@ const GeneralStats: React.FC = () => {
         try {
             const response = await axios.get(`${rpcEndpoint}/status`);
             const latestHeight = response.data.result.sync_info.latest_block_height;
-            const numTxs = response.data.result.block.data.txs.length;
+            const blockResponse = await axios.get(`${rpcEndpoint}/block?height=${latestHeight}`);
+            const numTxs = blockResponse.data.result.block.data.txs.length;
             setTransactionsInblock(numTxs);
             setRecentBlock(latestHeight);
+            console.log(response.data)
         } catch (error) {
             console.error('Error fetching latest block:', error);
+
         }
     };
     const fetchStakedTokens = async () => {
         try {
-            const response = await axios.get(`${rpcEndpoint}/cosmos/staking/v1beta1/pool`);
+            const response = await axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`);
             const bondedTokens = response.data.pool.bonded_tokens;
             setTotalStaked(bondedTokens);
+            console.log(response.data)
         } catch (error) {
             console.error('Error fetching staked tokens:', error);
         }
     };
     const fetchTotalSupply = async () => {
         try {
-            const response = await axios.get(`${rpcEndpoint}/cosmos/bank/v1beta1/supply/${denom}`);
+            const response = await axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`);
             const supply = response.data.amount;
             setTotalSupply(supply);
+            console.log(response.data)
         } catch (error) {
             console.error('Error fetching total supply:', error);
         }
@@ -47,12 +52,12 @@ const GeneralStats: React.FC = () => {
 
     useEffect(() => {
         const fetchData = async () => {
-          await latestBlockData();
-          await fetchStakedTokens();
-          await fetchTotalSupply();
+            await latestBlockData();
+            await fetchStakedTokens();
+            await fetchTotalSupply();
         };
         fetchData();
-      }, []);
+    }, []);
 
     const handleSearch = async () => {
         setError('');
@@ -79,7 +84,6 @@ const GeneralStats: React.FC = () => {
             console.log(error)
         }
     };
-
     return (
         <Paper elevation={6} sx={{ marginBottom: '10px', padding: '5px' }}>
             <Stack spacing={2}>

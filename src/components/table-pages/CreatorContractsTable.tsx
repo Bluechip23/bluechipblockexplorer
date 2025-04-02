@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'Creator' | 'Address' | 'MonthlyTransactions' | 'TotalTransactions' | 'CreationDate';
@@ -56,7 +56,7 @@ const CreatorContractTable: React.FC= () => {
     useEffect(() => {
         async function loadCreatorContract() {
             try {
-                const response = await axios.get(`${rpcEndpoint}/creatorContract`); 
+                const response = await axios.get(`${apiEndpoint}/creatorContract`); 
                 const contract = response.data.result.tx; 
 
                 const creatorContractRows = contract.map((contract: any) => ({

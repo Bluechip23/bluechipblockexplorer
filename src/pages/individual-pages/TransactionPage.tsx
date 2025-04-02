@@ -7,7 +7,7 @@ import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import RecentTransactionsTable from '../../components/table-pages/RecentTransactionsTable';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 const TransactionPage: React.FC = () => {
 
@@ -27,7 +27,7 @@ const TransactionPage: React.FC = () => {
     useEffect(() => {
         const fetchTransaction = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/tx?hash=${id}`);
+                const response = await fetch(`${apiEndpoint}/tx?hash=${id}`);
                 const data = await response.json();
                 const tx = data.result.tx;
                 const txResult = data.result.tx_result;

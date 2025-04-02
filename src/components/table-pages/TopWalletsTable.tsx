@@ -9,7 +9,7 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import { useEffect, useState } from 'react';
 import { Typography } from '@mui/material';
 
@@ -49,10 +49,10 @@ const TopWalletsTable: React.FC = () => {
     useEffect(() => {
         const fetchTopWallets = async () => {
             try {
-                const response = await axios.get(`${rpcEndpoint}/bluehcip/auth/v1beta1/accounts`);
+                const response = await axios.get(`${apiEndpoint}/bluehcip/auth/v1beta1/accounts`);
                 const accounts = response.data.accounts;
                 const balancePromises = accounts.map((account: any) =>
-                    axios.get(`${rpcEndpoint}/bluechip/bank/v1beta1/balances/${account.address}`)
+                    axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${account.address}`)
                 );
                 const balanceResponses = await Promise.all(balancePromises);
 

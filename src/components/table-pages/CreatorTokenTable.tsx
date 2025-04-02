@@ -9,7 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import { useState, useEffect } from 'react';
 
 interface Column {
@@ -59,7 +59,7 @@ const CreatorTokenTable: React.FC = () => {
     useEffect(() => {
         async function loadtx() {
             try {
-                const response = await axios.get(`${rpcEndpoint}/token`); 
+                const response = await axios.get(`${apiEndpoint}/token`); 
                 const token = response.data.result.token; 
 
                 const blockRows = token.map((token: any) => ({

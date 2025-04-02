@@ -8,7 +8,7 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 
 interface Column {
@@ -55,7 +55,7 @@ const CreatorPoolTable: React.FC = () => {
     React.useEffect(() => {
         async function loadBlocks() {
             try {
-                const response = await axios.get(`${rpcEndpoint}/creatorPools`); 
+                const response = await axios.get(`${apiEndpoint}/creatorPools`); 
                 const pool = response.data.result.pool; 
 
                 const blockRows = pool.map((pool: any) => ({

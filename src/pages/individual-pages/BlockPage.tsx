@@ -7,7 +7,7 @@ import BlockTransactionsTable from '../../components/individual-pages/BlockTrans
 import { useParams } from 'react-router-dom';
 import GeneralStats from '../../navigation/GeneralStats';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import axios from 'axios';
 
 const BlockPage: React.FC = () => {

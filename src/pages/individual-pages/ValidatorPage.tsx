@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import ValidatorTable from '../../components/table-pages/ValidatorTable';
-import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 
 interface ValidatorData {
     id: string;
@@ -24,7 +24,7 @@ const Validator: React.FC = () => {
     useEffect(() => {
         const fetchValidator = async () => {
             try {
-                const response = await fetch(`${rpcEndpoint}/validators?height_`);
+                const response = await fetch(`${apiEndpoint}/validators?height_`);
                 const data = await response.json();
                 const queriedValidator = data.result.validators.find((v:ValidatorData) => v.id === id);
                 setValidator(queriedValidator)

@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'validator' | 'commision' | 'maxCommision' | 'totalStaked' | 'delegated';
@@ -56,7 +56,7 @@ const ValidatorTable: React.FC = () => {
     useEffect(() => {
         const topValidator = async () => {
             try {
-                const response = await axios.get(`${rpcEndpoint}/validators`);
+                const response = await axios.get(`${apiEndpoint}/validators`);
                 const validatorData = response.data.result;
 
                 const validatorRows = validatorData.map((validator: any) => ({

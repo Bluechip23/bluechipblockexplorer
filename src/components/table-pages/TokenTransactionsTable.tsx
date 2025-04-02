@@ -11,7 +11,7 @@ import { Typography } from '@mui/material';
 import { Link, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'creator' | 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -70,7 +70,7 @@ const TokenTransactionsTable: React.FC = () => {
         async function loadTokenTx() {
             try {
                 const query = encodeURIComponent(`transfer.denom='${id}'`);
-                const response = await axios.get(`${rpcEndpoint}/tx_search?query=${query}`);
+                const response = await axios.get(`${apiEndpoint}/tx_search?query=${query}`);
                 const tokenTx = response.data.result.txs;
                 const tokenTxRows = tokenTx.map((tx: any) => ({
                     creator: tx.creator,

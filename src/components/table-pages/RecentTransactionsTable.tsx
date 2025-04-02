@@ -9,7 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
 
@@ -48,7 +48,7 @@ const RecentTransactionsTable: React.FC = () => {
     useEffect(() => {
         async function loadTx() {
             try {
-                const response = await axios.get(`${rpcEndpoint}/tx_search`, {
+                const response = await axios.get(`${apiEndpoint}/tx_search`, {
                     params: {
                         query: 'tx.height>0', //all transactions since origin
                         page: page + 1, 

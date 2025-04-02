@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import { useEffect, useState } from 'react';
 
 interface Column {
@@ -63,8 +63,8 @@ const RecentBlocksTable: React.FC = () => {
 
     const fetchLatestBlock = async () => {
         try {
-            const response = await axios.get(`${rpcEndpoint}/status`);
-            const latestHeight = response.data.result.sync_info.latest_block_height;
+            const rpc = await axios.get(`${rpcEndpoint}/status`);
+            const latestHeight = rpc.data.result.sync_info.latest_block_height;
             setLatestBlock(latestHeight);
         } catch (error) {
             console.error('Error fetching latest block:', error);
