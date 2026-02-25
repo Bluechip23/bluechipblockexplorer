@@ -4,7 +4,7 @@ import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/materi
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockTransactionsTable from '../../components/individual-pages/BlockTransactionsTable';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import GeneralStats from '../../navigation/GeneralStats';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
@@ -84,9 +84,9 @@ const BlockPage: React.FC = () => {
                             <Typography variant='h5'>Block Height: {blockInfo.height}</Typography>
                             <Divider />
                             <Typography>TImestamp: {blockInfo.timestamp}</Typography>
-                            <Typography>Block Hash: {blockInfo.hash}</Typography>
+                            <Typography>Block Hash: <a href={`/blockpage/${blockInfo.height}`} style={{ color: '#1976d2' }}>{blockInfo.hash}</a></Typography>
                             <Typography>Block Reward: {blockInfo.reward}</Typography>
-                            <Typography>Block Proposer: {blockInfo.proposer}</Typography>
+                            <Typography>Block Proposer: <Link to={`/validator/${blockInfo.proposer}`} style={{ color: '#1976d2' }}>{blockInfo.proposer}</Link></Typography>
                             <Typography>Transaction Fee: {blockInfo.fee}</Typography>
                             <Typography>Block Height: {blockInfo.height}</Typography>
                             <Typography># of Transactions: {blockInfo.transactionCount}</Typography>
