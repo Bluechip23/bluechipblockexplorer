@@ -1,67 +1,46 @@
 import React from 'react';
-import { Divider, Button, MenuItem, Menu, MenuProps, Link } from '@mui/material';
+import { Button, MenuItem, Menu, MenuProps, Link } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+
 const StyledMenu = (props: MenuProps) => (
-    <Menu
-        {...props}
-    />
+    <Menu {...props} />
 );
 
 type Dropdown = {
+    name: string;
+    link: string;
+};
 
-    name: string,
-    link: string,
-}
 const dropdownItem: Dropdown[] = [
-    {
-        name: 'Transactions',
-        link: '/recentTransactions',
-    },
-    {
-        name: 'Blocks',
-        link: '/recentblocks',
-    },
-    {
-        name: 'Top Accounts',
-        link: '/topwallets',
-    },
-    /*
-        name: 'Recent Gas Fees',
-        link: '/home',
-    */
-    /*
-        name: 'Growth/Inflation',
-        link: '/home',
-*/
-
-]
+    { name: 'Transactions', link: '/recenttransactions' },
+    { name: 'Blocks', link: '/recentblocks' },
+    { name: 'Top Accounts', link: '/topwallets' },
+    { name: 'Network Parameters', link: '/networkparams' },
+    { name: 'Charts & Stats', link: '/charts' },
+    { name: 'IBC Transfers', link: '/ibc' },
+];
 
 const BlockChainMenuButton: React.FC = () => {
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
     const open = Boolean(anchorEl);
-    const handleClick = (event: React.MouseEvent<HTMLElement>) => {
-        setAnchorEl(event.currentTarget);
-    };
-    const handleClose = () => {
-        setAnchorEl(null);
-    };
+
     return (
         <>
             <Button
-                onClick={handleClick}
+                onClick={(e) => setAnchorEl(e.currentTarget)}
                 endIcon={<KeyboardArrowDownIcon />}
             >
                 Blockchain
             </Button>
-            <StyledMenu open={open} onClose={handleClose} anchorEl={anchorEl}>
-                {dropdownItem.map((item: Dropdown) => (
-                    <MenuItem onClick={handleClose} disableRipple>
+            <StyledMenu open={open} onClose={() => setAnchorEl(null)} anchorEl={anchorEl}>
+                {dropdownItem.map((item) => (
+                    <MenuItem key={item.name} onClick={() => setAnchorEl(null)} disableRipple>
                         <Link href={item.link} underline='hover' color='inherit'>{item.name}</Link>
                     </MenuItem>
                 ))}
             </StyledMenu>
-
         </>
     );
 };
+
 export default BlockChainMenuButton;

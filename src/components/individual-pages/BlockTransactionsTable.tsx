@@ -93,11 +93,11 @@ const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = ({ rows })
                                         <TableCell  >
                                             {row.method}
                                         </TableCell>
-                                        <TableCell  >
-                                            <Link to={`/transactionpage/${row.sender}`}>{row.sender}</Link>
+                                        <TableCell>
+                                            <Link to={`/wallet/${row.sender}`}>{row.sender}</Link>
                                         </TableCell>
-                                        <TableCell >
-                                            <Link to={`/transactionpage/${row.recipient}`}>{row.recipient}</Link>
+                                        <TableCell>
+                                            <Link to={`/wallet/${row.recipient}`}>{row.recipient}</Link>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}

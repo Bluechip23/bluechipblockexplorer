@@ -104,10 +104,10 @@ const WalletTransactionsTable: React.FC<WalletTransactionsTableProps> = ({ walle
                                             <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to={`/walletpage/${row.sender}`}>{row.sender}</Link>
+                                            <Link to={`/wallet/${row.sender}`}>{row.sender}</Link>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to={`/walletpage/${row.recipient}`}>{row.recipient}</Link>
+                                            <Link to={`/wallet/${row.recipient}`}>{row.recipient}</Link>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}

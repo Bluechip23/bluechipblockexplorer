@@ -2,12 +2,12 @@ import { Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { fetchTransaction, fetchWallet, fetchBlock } from './SearchBarLogic';
 import { useNavigate } from 'react-router-dom';
-import { denom, rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
+import { rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
+import { formatTokenAmount } from '../utils/formatters';
 import axios from 'axios';
 
 const GeneralStats: React.FC = () => {
     const [searchValue, setSearchValue] = useState('');
-    const [searchResult, setSearchResult] = useState<any>(null); // Store results
     const [recentBlock, setRecentBlock] = useState(0);
     const [totalSupply, setTotalSupply] = useState(0);
     const [totalStaked, setTotalStaked] = useState(0);
@@ -23,69 +23,64 @@ const GeneralStats: React.FC = () => {
             const numTxs = blockResponse.data.result.block.data.txs.length;
             setTransactionsInblock(numTxs);
             setRecentBlock(latestHeight);
-            console.log(response.data)
         } catch (error) {
             console.error('Error fetching latest block:', error);
-
         }
     };
+
     const fetchStakedTokens = async () => {
         try {
             const response = await axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`);
             const bondedTokens = response.data.pool.bonded_tokens;
             setTotalStaked(bondedTokens);
-            console.log(response.data)
         } catch (error) {
             console.error('Error fetching staked tokens:', error);
         }
     };
+
     const fetchTotalSupply = async () => {
         try {
             const response = await axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`);
             const supply = response.data.amount;
             setTotalSupply(supply);
-            console.log(response.data)
         } catch (error) {
             console.error('Error fetching total supply:', error);
         }
     };
 
     useEffect(() => {
-        const fetchData = async () => {
-            await latestBlockData();
-            await fetchStakedTokens();
-            await fetchTotalSupply();
-        };
-        fetchData();
+        Promise.all([latestBlockData(), fetchStakedTokens(), fetchTotalSupply()]);
     }, []);
 
     const handleSearch = async () => {
         setError('');
-        setSearchResult(null);
+        const trimmed = searchValue.trim();
+        if (!trimmed) return;
+
         try {
-            let result;
-            if (isNaN(Number(searchValue))) {
-                if (searchValue.length === 64) {
-                    result = await fetchTransaction(searchValue);
-                    setSearchResult(result);
-                    navigateTo(`/transaction/${searchResult?.hash}`)
+            if (isNaN(Number(trimmed))) {
+                if (trimmed.length === 64) {
+                    await fetchTransaction(trimmed);
+                    navigateTo(`/transactionpage/${trimmed}`);
                 } else {
-                    result = await fetchWallet(searchValue);
-                    setSearchResult(result);
-                    navigateTo(`/wallet/${searchResult?.address}`)
+                    await fetchWallet(trimmed);
+                    navigateTo(`/wallet/${trimmed}`);
                 }
             } else {
-                result = await fetchBlock(Number(searchValue));
-                setSearchResult(result);
-                navigateTo(`/block/${searchResult?.id}`)
+                await fetchBlock(Number(trimmed));
+                navigateTo(`/blockpage/${trimmed}`);
             }
         } catch (err) {
             setError('Error fetching data. Please ensure the input is valid.');
-            console.log(error)
         }
     };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') handleSearch();
+    };
+
     return (
-        <Paper elevation={6} sx={{ marginBottom: '10px', padding: '5px' }}>
+        <Paper elevation={6} sx={{ marginBottom: '10px', padding: '15px' }}>
             <Stack spacing={2}>
                 <Stack direction='row' spacing={2}>
                     <TextField
@@ -93,23 +88,25 @@ const GeneralStats: React.FC = () => {
                         size='small'
                         value={searchValue}
                         onChange={(e) => setSearchValue(e.target.value)}
+                        onKeyDown={handleKeyDown}
                         sx={{ width: '50%' }}
+                        error={!!error}
+                        helperText={error}
                     />
                     <Button variant='contained' onClick={handleSearch}>
                         Search
                     </Button>
                 </Stack>
-                <Stack spacing={4}>
-                    <Stack direction='row' spacing={16}>
-                        <Typography>blue chip Price: $0 </Typography>
-                        <Typography>Total Supply: {totalSupply}</Typography>
-                        <Typography>Total Staked: {totalStaked}</Typography>
-                        <Typography>Current Annual Inflation Rate: 17.52% </Typography>
+                <Stack spacing={1}>
+                    <Stack direction='row' spacing={4} flexWrap='wrap'>
+                        <Typography variant='body2'>BCP Price: $0.00</Typography>
+                        <Typography variant='body2'>Total Supply: {formatTokenAmount(totalSupply)}</Typography>
+                        <Typography variant='body2'>Total Staked: {formatTokenAmount(totalStaked)}</Typography>
+                        <Typography variant='body2'>Inflation Rate: 17.52%</Typography>
                     </Stack>
-                    <Stack direction='row' spacing={10}>
-                        <Typography>Current Block Height: {recentBlock}</Typography>
-                        <Typography>Transactions in last block: {transactionsInblock}</Typography>
-                        <Typography>Total Creator Pools: Coming Soon!</Typography>
+                    <Stack direction='row' spacing={4} flexWrap='wrap'>
+                        <Typography variant='body2'>Block Height: {Number(recentBlock).toLocaleString()}</Typography>
+                        <Typography variant='body2'>Txns in Last Block: {transactionsInblock}</Typography>
                     </Stack>
                 </Stack>
             </Stack>

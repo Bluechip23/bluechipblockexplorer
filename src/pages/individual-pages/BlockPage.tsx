@@ -7,7 +7,9 @@ import BlockTransactionsTable from '../../components/individual-pages/BlockTrans
 import { Link, useParams } from 'react-router-dom';
 import GeneralStats from '../../navigation/GeneralStats';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
-import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { timeAgo, truncateAddress } from '../../utils/formatters';
+import CopyToClipboard from '../../components/universal/CopyToClipboard';
 import axios from 'axios';
 
 const BlockPage: React.FC = () => {
@@ -22,82 +24,109 @@ const BlockPage: React.FC = () => {
         fee: '',
         transactionCount: 0
     });
+
     useEffect(() => {
         async function loadBlocks() {
             try {
                 const response = await axios.get(`${rpcEndpoint}/block?height=${id}`);
-                const block = response.data?.result?.block; 
+                const block = response.data?.result?.block;
                 if (!block) {
                     console.error('No block found.');
                     return;
                 }
                 const transactions = block?.data?.txs || [];
-                if (transactions.length === 0) {
-                    console.warn('No transactions in this block.');
-                    return;
-                }
                 setBlockInfo({
                     height: block.header.height,
                     timestamp: block.header.time,
                     hash: response.data?.result?.block_id?.hash,
-                    reward: 'N/A', 
+                    reward: 'N/A',
                     proposer: block.header.proposer_address,
                     fee: 'N/A',
-                    transactionCount: block.data.txs.length
+                    transactionCount: transactions.length
                 });
-                const transactionsRows = transactions.map((tx: any) => {       
-                    const decodedTx = window.atob(tx);
-                    const parsedTx = JSON.parse(decodedTx); 
-                    return {
-                        hash: parsedTx.txhash, 
-                        method: parsedTx.tx?.body?.messages[0]?.type || 'Unknown',
-                        sender: parsedTx.tx?.body?.messages[0]?.sender || 'Unknown',
-                        recipient: parsedTx.tx?.body?.messages[0]?.recipient || 'Unknown',
-                        value: parsedTx.tx?.body?.messages[0]?.amount[0]?.amount || '0',
-                        fee: parsedTx.tx?.auth_info?.fee?.amount[0]?.amount || '0'
-                    };
+
+                if (transactions.length === 0) return;
+
+                const transactionsRows = transactions.map((tx: any) => {
+                    try {
+                        const decodedTx = window.atob(tx);
+                        const parsedTx = JSON.parse(decodedTx);
+                        return {
+                            hash: parsedTx.txhash,
+                            method: parsedTx.tx?.body?.messages?.[0]?.type || 'Unknown',
+                            sender: parsedTx.tx?.body?.messages?.[0]?.sender || 'Unknown',
+                            recipient: parsedTx.tx?.body?.messages?.[0]?.recipient || 'Unknown',
+                            value: parsedTx.tx?.body?.messages?.[0]?.amount?.[0]?.amount || '0',
+                            fee: parsedTx.tx?.auth_info?.fee?.amount?.[0]?.amount || '0'
+                        };
+                    } catch {
+                        return { hash: '', method: 'Unknown', sender: '', recipient: '', value: '0', fee: '0' };
+                    }
                 });
-                setRows(transactionsRows); 
+                setRows(transactionsRows);
             } catch (error) {
                 console.error('Error loading transactions:', error);
-            } finally {
             }
         }
         loadBlocks();
     }, [id]);
 
     if (!id) {
-        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Block Not Found</Typography></Layout>;
+        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}><Typography>Block Not Found</Typography></Layout>;
     }
+
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
-            <Grid container spacing={5} justifyContent='center' alignItems='center'>
-                <Grid item xs={8} sx={{ mt: '10px' }}>
+            <Grid container spacing={3} justifyContent='center' alignItems='center'>
+                <Grid item xs={10} sx={{ mt: '10px' }}>
                     <Stack spacing={2}>
                         <BlockExplorerNavBar />
                         <GeneralStats />
                     </Stack>
                 </Grid>
-                <Grid item xs={8} >
+                <Grid item xs={10}>
                     <Card>
                         <CardContent>
-                            <Typography variant='h5'>Block Height: {blockInfo.height}</Typography>
-                            <Divider />
-                            <Typography>TImestamp: {blockInfo.timestamp}</Typography>
-                            <Typography>Block Hash: <a href={`/blockpage/${blockInfo.height}`} style={{ color: '#1976d2' }}>{blockInfo.hash}</a></Typography>
-                            <Typography>Block Reward: {blockInfo.reward}</Typography>
-                            <Typography>Block Proposer: <Link to={`/validator/${blockInfo.proposer}`} style={{ color: '#1976d2' }}>{blockInfo.proposer}</Link></Typography>
-                            <Typography>Transaction Fee: {blockInfo.fee}</Typography>
-                            <Typography>Block Height: {blockInfo.height}</Typography>
-                            <Typography># of Transactions: {blockInfo.transactionCount}</Typography>
+                            <Typography variant='h5' gutterBottom>Block #{blockInfo.height}</Typography>
+                            <Divider sx={{ mb: 2 }} />
+                            <Stack spacing={1.5}>
+                                <DetailRow label="Block Height" value={blockInfo.height} />
+                                <DetailRow label="Timestamp" value={
+                                    <span>{new Date(blockInfo.timestamp).toLocaleString()} ({timeAgo(blockInfo.timestamp)})</span>
+                                } />
+                                <DetailRow label="Block Hash" value={
+                                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                                        <Typography sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{blockInfo.hash}</Typography>
+                                        <CopyToClipboard text={blockInfo.hash} />
+                                    </Stack>
+                                } />
+                                <DetailRow label="Proposer" value={
+                                    <Stack direction="row" alignItems="center" spacing={0.5}>
+                                        <Link to={`/validator/${blockInfo.proposer}`} style={{ color: '#1976d2', fontFamily: 'monospace' }}>
+                                            {truncateAddress(blockInfo.proposer, 12, 8)}
+                                        </Link>
+                                        <CopyToClipboard text={blockInfo.proposer} />
+                                    </Stack>
+                                } />
+                                <DetailRow label="# of Transactions" value={blockInfo.transactionCount} />
+                                <DetailRow label="Block Reward" value={blockInfo.reward} />
+                            </Stack>
                         </CardContent>
                     </Card>
                 </Grid>
-                <Grid item xs={8}>
+                <Grid item xs={10}>
                     <BlockTransactionsTable rows={rows} />
                 </Grid>
             </Grid>
         </Layout>
     )
 }
+
+const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+    <Stack direction="row" spacing={2} alignItems="flex-start">
+        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 160 }}>{label}:</Typography>
+        <Typography variant="body2" component="div">{value}</Typography>
+    </Stack>
+);
+
 export default BlockPage;

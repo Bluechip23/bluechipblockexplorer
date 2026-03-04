@@ -7,45 +7,30 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
-import { Typography } from '@mui/material';
+import { Button, Stack, Tooltip, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
+import { timeAgo, truncateAddress, exportToCsv } from '../../utils/formatters';
+import CopyToClipboard from '../universal/CopyToClipboard';
 import { useEffect, useState } from 'react';
+import DownloadIcon from '@mui/icons-material/Download';
 
 interface Column {
     id: 'block' | 'age' | 'txn' | 'feeRecipient' | 'gasUsed' | 'reward';
     label: string;
-    minWidth?: number;
-    align?: 'right';
-    format?: (value: number) => string;
 }
 
 const columns: readonly Column[] = [
-    { id: 'block', label: 'Block', },
-    { id: 'age', label: 'Age', },
-    {
-        id: 'txn',
-        label: 'Transactions',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'feeRecipient',
-        label: 'Fee Recipient',
-    },
-    {
-        id: 'gasUsed',
-        label: 'Gas',
-        format: (value: number) => value.toFixed(2),
-    },
-    {
-        id: 'reward',
-        label: 'Reward',
-        format: (value: number) => value.toFixed(2),
-    },
+    { id: 'block', label: 'Block' },
+    { id: 'age', label: 'Age' },
+    { id: 'txn', label: 'Txns' },
+    { id: 'feeRecipient', label: 'Proposer' },
+    { id: 'gasUsed', label: 'Gas' },
+    { id: 'reward', label: 'Reward' },
 ];
 
-interface RecentBlocksTableProps {
+interface RecentBlocksRow {
     block: string;
     age: string;
     txn: number;
@@ -57,7 +42,7 @@ interface RecentBlocksTableProps {
 const RecentBlocksTable: React.FC = () => {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [rows, setRows] = useState<RecentBlocksTableProps[]>([]);
+    const [rows, setRows] = useState<RecentBlocksRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [latestBlock, setLatestBlock] = useState(0);
 
@@ -72,8 +57,7 @@ const RecentBlocksTable: React.FC = () => {
     };
 
     const loadBlocks = async () => {
-        if (latestBlock === 0) return; 
-
+        if (latestBlock === 0) return;
         try {
             const response = await axios.get(`${rpcEndpoint}/blockchain?minHeight=1&maxHeight=${latestBlock}`);
             const blocks = response.data.result.block_metas;
@@ -81,11 +65,10 @@ const RecentBlocksTable: React.FC = () => {
                 block: block.header.height,
                 age: block.header.time,
                 txn: block.header.num_txs || 0,
-                feeRecipient: block.block_id.hash, 
+                feeRecipient: block.header.proposer_address || block.block_id?.hash || '',
                 gasUsed: block.header.gas_used || 0,
                 reward: block.header.total_reward || 0,
             }));
-
             setRows(blockRows);
         } catch (error) {
             console.error('Error loading blocks:', error);
@@ -94,34 +77,29 @@ const RecentBlocksTable: React.FC = () => {
         }
     };
 
-    useEffect(() => {
-        fetchLatestBlock();
-    }, []); 
+    useEffect(() => { fetchLatestBlock(); }, []);
+    useEffect(() => { if (latestBlock > 0) loadBlocks(); }, [latestBlock]);
 
-    useEffect(() => {
-        if (latestBlock > 0) {
-            loadBlocks();
-        }
-    }, []);
-
-    const handleChangePage = (event: unknown, newPage: number) => {
-        setPage(newPage);
-    };
-
-    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setRowsPerPage(+event.target.value);
-        setPage(0);
+    const handleExportCsv = () => {
+        const headers = ['Block', 'Time', 'Txns', 'Proposer', 'Gas', 'Reward'];
+        const csvRows = rows.map(r => [r.block, r.age, String(r.txn), r.feeRecipient, String(r.gasUsed), String(r.reward)]);
+        exportToCsv('recent_blocks.csv', headers, csvRows);
     };
 
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
             <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
-                <Typography variant='h5'>Recent Blocks</Typography>
-                <Table stickyHeader aria-label="sticky table">
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant='h5'>Recent Blocks</Typography>
+                    <Tooltip title="Export to CSV">
+                        <Button size="small" startIcon={<DownloadIcon />} onClick={handleExportCsv}>CSV</Button>
+                    </Tooltip>
+                </Stack>
+                <Table stickyHeader aria-label="recent blocks table" size="small">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell key={column.id}>
+                                <TableCell key={column.id} sx={{ fontWeight: 600 }}>
                                     {column.label}
                                 </TableCell>
                             ))}
@@ -131,13 +109,21 @@ const RecentBlocksTable: React.FC = () => {
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                             .map((row) => (
-                                <TableRow key={row.block}>
+                                <TableRow key={row.block} hover>
                                     <TableCell>
                                         <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
                                     </TableCell>
-                                    <TableCell>{row.age}</TableCell>
+                                    <TableCell>
+                                        <Tooltip title={new Date(row.age).toLocaleString()}>
+                                            <span>{timeAgo(row.age)}</span>
+                                        </Tooltip>
+                                    </TableCell>
                                     <TableCell>{row.txn}</TableCell>
-                                    <TableCell><Link to=''>{row.feeRecipient}</Link></TableCell>
+                                    <TableCell>
+                                        <Tooltip title={row.feeRecipient}>
+                                            <span>{truncateAddress(row.feeRecipient, 8, 6)}</span>
+                                        </Tooltip>
+                                    </TableCell>
                                     <TableCell>{row.gasUsed}</TableCell>
                                     <TableCell>{row.reward}</TableCell>
                                 </TableRow>
@@ -151,8 +137,8 @@ const RecentBlocksTable: React.FC = () => {
                 count={rows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
+                onPageChange={(_, p) => setPage(p)}
+                onRowsPerPageChange={(e) => { setRowsPerPage(+e.target.value); setPage(0); }}
             />
         </Paper>
     );
