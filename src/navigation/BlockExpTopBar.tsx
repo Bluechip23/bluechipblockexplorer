@@ -1,8 +1,13 @@
 import React from 'react';
-import { Stack, Typography } from '@mui/material';
+import { IconButton, Stack, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
+import { useThemeMode } from '../context/ThemeContext';
 
 const BlockExpTopBar: React.FC = () => {
+    const { mode, toggleTheme } = useThemeMode();
+
     return (
         <Stack direction="row" justifyContent="space-evenly" width={'100%'}>
             <Stack
@@ -32,6 +37,9 @@ const BlockExpTopBar: React.FC = () => {
                 direction="row"
                 alignItems="center"
             >
+                <IconButton color="inherit" onClick={toggleTheme} title={`Switch to ${mode === 'light' ? 'dark' : 'light'} mode`}>
+                    {mode === 'light' ? <Brightness4Icon /> : <Brightness7Icon />}
+                </IconButton>
             </Stack>
         </Stack>
     );

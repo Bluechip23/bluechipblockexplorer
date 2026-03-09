@@ -25,15 +25,10 @@ const dropdownItem: Dropdown[] = [
         name: 'Top Accounts',
         link: '/topwallets',
     },
-    /*
-        name: 'Recent Gas Fees',
-        link: '/home',
-    */
-    /*
-        name: 'Growth/Inflation',
-        link: '/home',
-*/
-
+    {
+        name: 'IBC Transfers',
+        link: '/ibc',
+    },
 ]
 
 const BlockChainMenuButton: React.FC = () => {

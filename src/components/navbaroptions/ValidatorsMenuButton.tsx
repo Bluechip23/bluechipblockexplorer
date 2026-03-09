@@ -16,8 +16,14 @@ const dropdownItem: Dropdown[] = [
         name: 'Top Validators',
         link: '/topvalidators',
     },
-
-
+    {
+        name: 'Staking',
+        link: '/staking',
+    },
+    {
+        name: 'Governance',
+        link: '/governance',
+    },
 ]
 const ValidatorsMenuButton: React.FC = () => {
     const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);

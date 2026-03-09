@@ -14,11 +14,11 @@ type Dropdown = {
 const dropdownItem: Dropdown[] = [
     {
         name: 'APIs',
-        link: '/home',
+        link: '/comingsoonpage',
     },
     {
-        name: 'Smart Contract Search',
-        link: '/home',
+        name: 'Smart Contract Explorer',
+        link: '/contract-explorer',
     },
 
 ]

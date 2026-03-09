@@ -87,6 +87,17 @@ const RecentTransactionsTable: React.FC = () => {
         setPage(0);
     };
 
+    if (loading) {
+        return (
+            <Paper sx={{ width: '100%', overflow: 'hidden', padding: '15px' }}>
+                <Typography variant='h5'>Recent Transactions</Typography>
+                {Array.from({ length: 5 }).map((_, i) => (
+                    <Typography key={i} sx={{ height: 32, bgcolor: 'grey.200', borderRadius: 1, mb: 1, animation: 'pulse 1.5s infinite' }} />
+                ))}
+            </Paper>
+        );
+    }
+
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
             <TableContainer sx={{ maxHeight: 440, padding: '15px' }}>
