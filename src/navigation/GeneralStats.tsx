@@ -85,31 +85,30 @@ const GeneralStats: React.FC = () => {
         }
     };
     return (
-        <Paper elevation={6} sx={{ marginBottom: '10px', padding: '5px' }}>
+        <Paper elevation={6} sx={{ marginBottom: '10px', padding: { xs: '8px', md: '12px' } }}>
             <Stack spacing={2}>
-                <Stack direction='row' spacing={2}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                     <TextField
                         label='Search Wallet, Transaction Hash, or Block Height'
                         size='small'
                         value={searchValue}
                         onChange={(e) => setSearchValue(e.target.value)}
-                        sx={{ width: '50%' }}
+                        sx={{ width: { xs: '100%', sm: '50%' } }}
                     />
                     <Button variant='contained' onClick={handleSearch}>
                         Search
                     </Button>
                 </Stack>
-                <Stack spacing={4}>
-                    <Stack direction='row' spacing={16}>
-                        <Typography>blue chip Price: $0 </Typography>
-                        <Typography>Total Supply: {totalSupply}</Typography>
-                        <Typography>Total Staked: {totalStaked}</Typography>
-                        <Typography>Current Annual Inflation Rate: 17.52% </Typography>
+                <Stack spacing={1}>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} flexWrap="wrap">
+                        <Typography variant="body2">Blue Chip Price: $0 </Typography>
+                        <Typography variant="body2">Total Supply: {totalSupply}</Typography>
+                        <Typography variant="body2">Total Staked: {totalStaked}</Typography>
+                        <Typography variant="body2">Annual Inflation: 17.52% </Typography>
                     </Stack>
-                    <Stack direction='row' spacing={10}>
-                        <Typography>Current Block Height: {recentBlock}</Typography>
-                        <Typography>Transactions in last block: {transactionsInblock}</Typography>
-                        <Typography>Total Creator Pools: Coming Soon!</Typography>
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} flexWrap="wrap">
+                        <Typography variant="body2">Block Height: {recentBlock}</Typography>
+                        <Typography variant="body2">Txs in last block: {transactionsInblock}</Typography>
                     </Stack>
                 </Stack>
             </Stack>

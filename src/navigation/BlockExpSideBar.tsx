@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+    Divider,
     ListItemIcon,
     ListItemText,
     List,
@@ -13,12 +14,18 @@ import HotTubIcon from '@mui/icons-material/HotTub';
 import TokenIcon from '@mui/icons-material/Token';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import HowToVoteIcon from '@mui/icons-material/HowToVote';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import CodeIcon from '@mui/icons-material/Code';
 import { Link } from 'react-router-dom';
+
 type Item = {
     title: string;
     icon: React.ReactNode;
     link: string;
 };
+
 const sidebarItems: Item[] = [
     {
         title: 'Home',
@@ -38,12 +45,12 @@ const sidebarItems: Item[] = [
     {
         title: 'Creator Contracts',
         icon: <ReceiptLongIcon />,
-        link: '/comingsoonpage'//'/topcreatorcontracts',
+        link: '/comingsoonpage',
     },
     {
         title: 'Creator Pools',
         icon: <HotTubIcon />,
-        link: '/comingsoonpage'//'/topcreatorpools',
+        link: '/comingsoonpage',
     },
     {
         title: 'Validators',
@@ -52,8 +59,31 @@ const sidebarItems: Item[] = [
     },
     {
         title: 'Creator Tokens',
-        icon: <MonetizationOnIcon/>,
+        icon: <MonetizationOnIcon />,
         link: '/toptokens',
+    },
+];
+
+const newSidebarItems: Item[] = [
+    {
+        title: 'Governance',
+        icon: <HowToVoteIcon />,
+        link: '/governance',
+    },
+    {
+        title: 'Staking',
+        icon: <AccountBalanceIcon />,
+        link: '/staking',
+    },
+    {
+        title: 'IBC Transfers',
+        icon: <SwapHorizIcon />,
+        link: '/ibc',
+    },
+    {
+        title: 'Contract Explorer',
+        icon: <CodeIcon />,
+        link: '/contract-explorer',
     },
 ];
 
@@ -64,14 +94,29 @@ const BlockExpSideBar: React.FC = () => {
                 <Link
                     to={item.link}
                     key={index.toString()}
-                    style={{ color: 'black', textDecoration: 'none' }}
+                    style={{ color: 'inherit', textDecoration: 'none' }}
                 >
-                        <ListItem key={item.title}>
-                            <Tooltip title={item.title}>
+                    <ListItem>
+                        <Tooltip title={item.title}>
                             <ListItemIcon>{item.icon}</ListItemIcon>
-                            </Tooltip>
-                            <ListItemText primary={item.title} />
-                        </ListItem>
+                        </Tooltip>
+                        <ListItemText primary={item.title} />
+                    </ListItem>
+                </Link>
+            ))}
+            <Divider sx={{ my: 1 }} />
+            {newSidebarItems.map((item: Item, index: number) => (
+                <Link
+                    to={item.link}
+                    key={`new-${index}`}
+                    style={{ color: 'inherit', textDecoration: 'none' }}
+                >
+                    <ListItem>
+                        <Tooltip title={item.title}>
+                            <ListItemIcon>{item.icon}</ListItemIcon>
+                        </Tooltip>
+                        <ListItemText primary={item.title} />
+                    </ListItem>
                 </Link>
             ))}
         </List>

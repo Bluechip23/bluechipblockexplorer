@@ -21,34 +21,47 @@ import RecentBlueChipTransactionPage from './pages/table-pages/RecentBlueChipTra
 import TransactionPage from './pages/individual-pages/TransactionPage';
 import CreatorPoolPage from './pages/individual-pages/CreatorPoolPage';
 import ComingSoonPage from './components/universal/ComingSoonPage';
+import NotFoundPage from './pages/NotFoundPage';
+import GovernancePage from './pages/GovernancePage';
+import StakingPage from './pages/StakingPage';
+import IBCTransfersPage from './pages/IBCTransfersPage';
+import ContractVerificationPage from './pages/ContractVerificationPage';
+import { ThemeContextProvider } from './context/ThemeContext';
 
 function App() {
     return (
-        <Router>
-            <Routes>
-                <Route
-                    path="/"
-                    element={<Navigate replace to="/frontpage" />}
-                />
-                <Route path="/frontpage" element={<FrontPage />} />
-                <Route path="/recenttransactions" element={<RecentTransactionsPage />} />
-                <Route path="/recentblocks" element={<RecentBlocksPage />} />
-                <Route path="/topwallets" element={<TopWalletsPage />} />
-                <Route path="/toptokens" element={<ComingSoonPage/>/*<TopCreatorTokensPage />*/} />
-                <Route path="/topcreatorcontracts" element={<ComingSoonPage/>/*<TopCreatorContractPage />*/} />
-                <Route path="/topvalidators" element={<TopValidatorsPage />} />
-                <Route path="/bluechiptransactions" element={<RecentBlueChipTransactionPage/>} />
-                <Route path="/topcreatorpools" element={<ComingSoonPage/>/*<TopCreatorPoolPage />*/} />
-                <Route path="/transactionpage/:id" element={<TransactionPage />} />
-                <Route path="/creatorpool/:id" element={<CreatorPoolPage />} />
-                <Route path="/comingsoonpage" element={<ComingSoonPage />} />
-                <Route path="/validator/:id" element={<Validator />} />
-                <Route path="/blockpage/:id" element={<BlockPage />} />
-                <Route path="/wallet/:id" element={<Wallet />} />
-                <Route path="/creatortoken/:id" element={<CreatorTokenPage />} />
-                <Route path="/creatorcontract/:id" element={<CreatorContract />} />
-            </Routes>
-        </Router>
+        <ThemeContextProvider>
+            <Router>
+                <Routes>
+                    <Route
+                        path="/"
+                        element={<Navigate replace to="/frontpage" />}
+                    />
+                    <Route path="/frontpage" element={<FrontPage />} />
+                    <Route path="/recenttransactions" element={<RecentTransactionsPage />} />
+                    <Route path="/recentblocks" element={<RecentBlocksPage />} />
+                    <Route path="/topwallets" element={<TopWalletsPage />} />
+                    <Route path="/toptokens" element={<ComingSoonPage/>/*<TopCreatorTokensPage />*/} />
+                    <Route path="/topcreatorcontracts" element={<ComingSoonPage/>/*<TopCreatorContractPage />*/} />
+                    <Route path="/topvalidators" element={<TopValidatorsPage />} />
+                    <Route path="/bluechiptransactions" element={<RecentBlueChipTransactionPage/>} />
+                    <Route path="/topcreatorpools" element={<ComingSoonPage/>/*<TopCreatorPoolPage />*/} />
+                    <Route path="/transactionpage/:id" element={<TransactionPage />} />
+                    <Route path="/creatorpool/:id" element={<CreatorPoolPage />} />
+                    <Route path="/comingsoonpage" element={<ComingSoonPage />} />
+                    <Route path="/validator/:id" element={<Validator />} />
+                    <Route path="/blockpage/:id" element={<BlockPage />} />
+                    <Route path="/wallet/:id" element={<Wallet />} />
+                    <Route path="/creatortoken/:id" element={<CreatorTokenPage />} />
+                    <Route path="/creatorcontract/:id" element={<CreatorContract />} />
+                    <Route path="/governance" element={<GovernancePage />} />
+                    <Route path="/staking" element={<StakingPage />} />
+                    <Route path="/ibc" element={<IBCTransfersPage />} />
+                    <Route path="/contract-explorer" element={<ContractVerificationPage />} />
+                    <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+            </Router>
+        </ThemeContextProvider>
     );
 }
 
