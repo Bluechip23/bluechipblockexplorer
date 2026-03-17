@@ -12,7 +12,7 @@ import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 
 interface Column {
-    id: 'Creator' | 'Address' | 'Liquidity' | 'FeesCollected' | 'TopProvider';
+    id: 'Creator' | 'Address' | 'Liquidity' | 'FeesCollected' | 'FeesCreated' | 'LiquidityPositions' | 'AvgCommitSize' | 'AvgTransactionSize' | 'TopProvider';
     label: string;
     format?: (value: number) => string;
 }
@@ -31,6 +31,26 @@ const columns: readonly Column[] = [
         format: (value: number) => value.toLocaleString('en-US'),
     },
     {
+        id: 'FeesCreated',
+        label: 'Fees Created',
+        format: (value: number) => value.toLocaleString('en-US'),
+    },
+    {
+        id: 'LiquidityPositions',
+        label: 'Liquidity Positions',
+        format: (value: number) => value.toLocaleString('en-US'),
+    },
+    {
+        id: 'AvgCommitSize',
+        label: 'Avg Commit Size',
+        format: (value: number) => value.toLocaleString('en-US'),
+    },
+    {
+        id: 'AvgTransactionSize',
+        label: 'Avg Tx Size',
+        format: (value: number) => value.toLocaleString('en-US'),
+    },
+    {
         id: 'TopProvider',
         label: 'Top Provider',
         format: (value: number) => value.toFixed(2),
@@ -42,6 +62,10 @@ interface CreatorPoolTableProps {
     address: string;
     liquidity: number;
     feesCollected: number;
+    feesCreated: number;
+    liquidityPositions: number;
+    avgCommitSize: number;
+    avgTransactionSize: number;
     topProvider: string;
 }
 
@@ -55,15 +79,19 @@ const CreatorPoolTable: React.FC = () => {
     React.useEffect(() => {
         async function loadBlocks() {
             try {
-                const response = await axios.get(`${apiEndpoint}/creatorPools`); 
-                const pool = response.data.result.pool; 
+                const response = await axios.get(`${apiEndpoint}/creatorPools`);
+                const pool = response.data.result.pool;
 
                 const blockRows = pool.map((pool: any) => ({
                     creator: pool.creator,
-                    address: pool.address, 
-                    liquidity: pool.liquidity, 
-                    feesCollected: pool.feeCollected, 
-                    topProvider: pool.topProvider, 
+                    address: pool.address,
+                    liquidity: Number(pool.liquidity) || 0,
+                    feesCollected: Number(pool.feeCollected) || 0,
+                    feesCreated: Number(pool.feesCreated) || 0,
+                    liquidityPositions: Number(pool.liquidityPositions) || 0,
+                    avgCommitSize: Number(pool.avgCommitSize) || 0,
+                    avgTransactionSize: Number(pool.avgTransactionSize) || 0,
+                    topProvider: pool.topProvider,
                 }));
 
                 setRows(blockRows);
@@ -110,16 +138,28 @@ const CreatorPoolTable: React.FC = () => {
                                          <Link to={`/creatorpool/${row.address}`}>{row.creator}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                           <Link to={`/creatorpool/${row.address}`}>{row.address}</Link> 
+                                           <Link to={`/creatorpool/${row.address}`}>{row.address}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                            {row.liquidity}
+                                            {row.liquidity.toLocaleString()}
                                         </TableCell>
                                         <TableCell  >
-                                            {row.feesCollected}
+                                            {row.feesCollected.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell  >
+                                            {row.feesCreated.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell  >
+                                            {row.liquidityPositions.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell  >
+                                            {row.avgCommitSize.toLocaleString()}
+                                        </TableCell>
+                                        <TableCell  >
+                                            {row.avgTransactionSize.toLocaleString()}
                                         </TableCell>
                                         <TableCell >
-                                          <Link to={`/walletpage/${row.topProvider}`}>{row.topProvider}</Link>  
+                                          <Link to={`/wallet/${row.topProvider}`}>{row.topProvider}</Link>
                                         </TableCell>
                                     </TableRow>
                                 );
