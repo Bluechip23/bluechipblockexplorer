@@ -12,7 +12,8 @@
   },
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Bluechip Block Explorer",
+  "homepage": "https://bluechipsblockexplorer.com",
   "dependencies": {
     "@cosmjs/cosmwasm-stargate": "^0.32.3",
     "@cosmjs/proto-signing": "^0.32.3",
