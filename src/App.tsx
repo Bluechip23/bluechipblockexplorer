@@ -26,6 +26,7 @@ import GovernancePage from './pages/GovernancePage';
 import StakingPage from './pages/StakingPage';
 import IBCTransfersPage from './pages/IBCTransfersPage';
 import ContractVerificationPage from './pages/ContractVerificationPage';
+import IntegrationGuidePage from './pages/IntegrationGuidePage';
 import { ThemeContextProvider } from './context/ThemeContext';
 
 function App() {
@@ -58,6 +59,7 @@ function App() {
                     <Route path="/staking" element={<StakingPage />} />
                     <Route path="/ibc" element={<IBCTransfersPage />} />
                     <Route path="/contract-explorer" element={<ContractVerificationPage />} />
+                    <Route path="/integration-guide" element={<IntegrationGuidePage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
             </Router>
