@@ -18,6 +18,7 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import HowToVoteIcon from '@mui/icons-material/HowToVote';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CodeIcon from '@mui/icons-material/Code';
+import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import { Link } from 'react-router-dom';
 
 type Item = {
@@ -84,6 +85,11 @@ const newSidebarItems: Item[] = [
         title: 'Contract Explorer',
         icon: <CodeIcon />,
         link: '/contract-explorer',
+    },
+    {
+        title: 'Integration Guide',
+        icon: <TipsAndUpdatesIcon />,
+        link: '/integration-guide',
     },
 ];
 
