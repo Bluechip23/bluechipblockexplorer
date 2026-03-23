@@ -19,6 +19,7 @@ import HowToVoteIcon from '@mui/icons-material/HowToVote';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CodeIcon from '@mui/icons-material/Code';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import { Link } from 'react-router-dom';
 
 type Item = {
@@ -46,12 +47,12 @@ const sidebarItems: Item[] = [
     {
         title: 'Creator Contracts',
         icon: <ReceiptLongIcon />,
-        link: '/comingsoonpage',
+        link: '/topcreatorcontracts',
     },
     {
         title: 'Creator Pools',
         icon: <HotTubIcon />,
-        link: '/comingsoonpage',
+        link: '/topcreatorpools',
     },
     {
         title: 'Validators',
@@ -66,6 +67,11 @@ const sidebarItems: Item[] = [
 ];
 
 const newSidebarItems: Item[] = [
+    {
+        title: 'Creator Economy',
+        icon: <RocketLaunchIcon />,
+        link: '/defi',
+    },
     {
         title: 'Governance',
         icon: <HowToVoteIcon />,

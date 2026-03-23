@@ -1,27 +1,25 @@
-import React, { useEffect, useState } from 'react'
-import { Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material';
-import TokenTransactionsTable from '../../components/table-pages/TokenTransactionsTable';
+import React, { useEffect, useState } from 'react';
+import { Card, CardContent, Chip, CircularProgress, Divider, Grid, Stack, Typography, Box } from '@mui/material';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import { Layout } from '../../ui';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
-import { apiEndpoint } from '../../components/universal/IndividualPage.const';
-import axios from 'axios';
-import { CardSkeleton } from '../../components/universal/LoadingSkeleton';
+import {
+    queryTokenInfo,
+    fetchAllPoolSummaries,
+    formatMicroAmount,
+    abbreviateAddress,
+    CW20TokenInfo,
+    PoolSummary,
+} from '../../utils/contractQueries';
+import { factoryAddress } from '../../components/universal/IndividualPage.const';
 
 const CreatorTokenPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const [tokenInfo, setTokenInfo] = useState({
-        name: '',
-        price: '',
-        holders: 0,
-        transfers7d: 0,
-        marketCap: '',
-        totalTransactions: 0,
-        volume7d: '',
-    });
+    const [tokenInfo, setTokenInfo] = useState<CW20TokenInfo | null>(null);
+    const [pool, setPool] = useState<PoolSummary | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -29,17 +27,14 @@ const CreatorTokenPage: React.FC = () => {
             if (!id) return;
             setLoading(true);
             try {
-                const response = await axios.get(`${apiEndpoint}/token/${id}`);
-                const token = response.data;
-                setTokenInfo({
-                    name: token.name || token.creator || id,
-                    price: token.price || 'N/A',
-                    holders: token.holders || 0,
-                    transfers7d: token.transfers_7d || 0,
-                    marketCap: token.market_cap || 'N/A',
-                    totalTransactions: token.total_transactions || 0,
-                    volume7d: token.volume_7d || 'N/A',
-                });
+                const ti = await queryTokenInfo(id);
+                setTokenInfo(ti);
+
+                if (factoryAddress) {
+                    const summaries = await fetchAllPoolSummaries(factoryAddress);
+                    const match = summaries.find(s => s.creatorTokenAddress === id);
+                    if (match) setPool(match);
+                }
             } catch (error) {
                 console.error('Error fetching token:', error);
             } finally {
@@ -50,8 +45,9 @@ const CreatorTokenPage: React.FC = () => {
     }, [id]);
 
     if (!id) {
-        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />} ><Typography>Token Not Found</Typography></Layout>;
+        return <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}><Typography>Token Not Found</Typography></Layout>;
     }
+
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
             <Grid container spacing={2} justifyContent='center' alignItems='center'>
@@ -63,28 +59,48 @@ const CreatorTokenPage: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={8}>
                     {loading ? (
-                        <CardSkeleton />
+                        <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <CircularProgress />
+                            <Typography variant="body2" sx={{ mt: 1 }}>Loading token data from chain...</Typography>
+                        </Box>
+                    ) : !tokenInfo ? (
+                        <Typography color="error">Could not load token data for this address.</Typography>
                     ) : (
                         <Card>
                             <CardContent>
-                                <Typography variant='h5'>{tokenInfo.name}</Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                                    <Typography variant='h5'>{tokenInfo.name} ({tokenInfo.symbol})</Typography>
+                                    {pool && (
+                                        <Chip
+                                            label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            color={pool.thresholdReached ? 'success' : 'warning'}
+                                            size="small"
+                                        />
+                                    )}
+                                </Box>
                                 <Divider />
-                                <Typography>Price: {tokenInfo.price}</Typography>
-                                <Typography>Holders: {tokenInfo.holders}</Typography>
-                                <Typography>7 Day Transfers: {tokenInfo.transfers7d}</Typography>
-                                <Typography>Market Cap: {tokenInfo.marketCap}</Typography>
-                                <Typography>Total Transactions: {tokenInfo.totalTransactions}</Typography>
-                                <Typography>7 Day Trade Volume: {tokenInfo.volume7d}</Typography>
+                                <Typography sx={{ mt: 1 }}>Contract Address: {abbreviateAddress(id)}</Typography>
+                                <Typography>Decimals: {tokenInfo.decimals}</Typography>
+                                <Typography>Total Supply: {formatMicroAmount(tokenInfo.total_supply, tokenInfo.decimals)}</Typography>
+                                {pool && (
+                                    <>
+                                        <Divider sx={{ my: 1 }} />
+                                        <Typography variant="subtitle2" color="text.secondary">Pool Info</Typography>
+                                        <Typography>
+                                            Pool: <Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link>
+                                        </Typography>
+                                        <Typography>Total Liquidity: {formatMicroAmount(pool.totalLiquidity)}</Typography>
+                                        <Typography>LP Positions: {pool.totalPositions}</Typography>
+                                        <Typography>Committers: {pool.totalCommitters}</Typography>
+                                    </>
+                                )}
                             </CardContent>
                         </Card>
                     )}
                 </Grid>
-                <Grid item xs={12} md={8}>
-                    <Typography variant="h6" sx={{ mb: 1 }}>Token Transfer History</Typography>
-                    <TokenTransactionsTable />
-                </Grid>
             </Grid>
         </Layout>
-    )
-}
+    );
+};
+
 export default CreatorTokenPage;

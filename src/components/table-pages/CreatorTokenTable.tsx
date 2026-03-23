@@ -7,129 +7,122 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { Chip, CircularProgress, Typography, Box } from '@mui/material';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
-import { useState, useEffect } from 'react';
+import { factoryAddress } from '../universal/IndividualPage.const';
+import {
+    fetchAllPoolSummaries,
+    formatMicroAmount,
+    PoolSummary,
+} from '../../utils/contractQueries';
 
 interface Column {
-    id: 'creator' | 'price' | 'change' | 'holders' | 'twentyfourH';
+    id: string;
     label: string;
-    minWidth?: number;
-    format?: (value: number) => string;
 }
 
 const columns: readonly Column[] = [
-    { id: 'creator', label: 'Creator', minWidth: 170 },
-    { id: 'price', label: 'Price', minWidth: 100 },
-    {
-        id: 'change',
-        label: '% Change',
-        minWidth: 170,
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'holders',
-        label: 'Holders',
-        minWidth: 170,
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'twentyfourH',
-        label: '24h',
-        minWidth: 170,
-        format: (value: number) => value.toFixed(2),
-    },
+    { id: 'token', label: 'Token' },
+    { id: 'symbol', label: 'Symbol' },
+    { id: 'totalSupply', label: 'Total Supply' },
+    { id: 'poolLiquidity', label: 'Pool Liquidity' },
+    { id: 'status', label: 'Status' },
+    { id: 'committers', label: 'Committers' },
 ];
 
-interface CreatorTokenTableProps {
-    creator: string;
-    price: number;
-    change: number;
-    holders: number;
-    twentyfourH: number;
-    tokenAddress: string;
-}
-
 const CreatorTokenTable: React.FC = () => {
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [rows, setRows] = useState<CreatorTokenTableProps[]>([]);
-    const [loading, setLoading] = useState(true);
-    useEffect(() => {
-        async function loadtx() {
-            try {
-                const response = await axios.get(`${apiEndpoint}/token`); 
-                const token = response.data.result.token; 
+    const [page, setPage] = React.useState(0);
+    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = React.useState<PoolSummary[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
-                const blockRows = token.map((token: any) => ({
-                    creator: token.creator,
-                    price: token.price,
-                    change: token.change,
-                    holders: token.holders,
-                    twentyfourH: token.twentyfourH,
-                    tokenAddress: token.address, 
-                }));
-                setRows(blockRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
+    React.useEffect(() => {
+        async function loadTokens() {
+            try {
+                if (!factoryAddress) {
+                    setError('Factory address not configured. Set REACT_APP_FACTORY_ADDRESS env var.');
+                    setLoading(false);
+                    return;
+                }
+                const summaries = await fetchAllPoolSummaries(factoryAddress);
+                setRows(summaries);
+            } catch (err) {
+                console.error('Error loading tokens:', err);
+                setError('Failed to load token data from chain.');
             } finally {
                 setLoading(false);
             }
         }
-
-        loadtx();
+        loadTokens();
     }, []);
 
-    const handleChangePage = (event: unknown, newPage: number) => {
-        setPage(newPage);
-    };
+    if (loading) {
+        return (
+            <Paper sx={{ width: '100%', p: 4, textAlign: 'center' }}>
+                <CircularProgress size={28} />
+                <Typography variant="body2" sx={{ mt: 1 }}>Loading tokens from chain...</Typography>
+            </Paper>
+        );
+    }
 
-    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setRowsPerPage(+event.target.value);
-        setPage(0);
-    };
+    if (error) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="error">{error}</Typography>
+            </Paper>
+        );
+    }
+
+    if (rows.length === 0) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="text.secondary">No creator tokens found on chain.</Typography>
+            </Paper>
+        );
+    }
 
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
-                <Table stickyHeader aria-label="sticky table">
+            <TableContainer sx={{ maxHeight: 540, padding: '15px' }}>
+                <Table stickyHeader aria-label="creator tokens table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                    style={{ minWidth: column.minWidth }}
-                                >
-                                    {column.label}
-                                </TableCell>
+                                <TableCell key={column.id}>{column.label}</TableCell>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                         <Link to={`/creatortoken/${row.tokenAddress}`}>{row.creator}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.price}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.change}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.holders}
-                                        </TableCell>
-                                        <TableCell >
-                                            {row.twentyfourH}
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.creatorTokenAddress || row.poolAddress} hover>
+                                    <TableCell>
+                                        <Link to={`/creatortoken/${row.creatorTokenAddress}`}>
+                                            {row.tokenName}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Typography fontWeight="bold">{row.tokenSymbol}</Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        {formatMicroAmount(row.totalSupply, row.tokenDecimals)}
+                                    </TableCell>
+                                    <TableCell>
+                                        {formatMicroAmount(row.totalLiquidity)}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={row.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            color={row.thresholdReached ? 'success' : 'warning'}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell>{row.totalCommitters}</TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -139,11 +132,14 @@ const CreatorTokenTable: React.FC = () => {
                 count={rows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                    setRowsPerPage(+e.target.value);
+                    setPage(0);
+                }}
             />
         </Paper>
     );
-}
+};
 
 export default CreatorTokenTable;
