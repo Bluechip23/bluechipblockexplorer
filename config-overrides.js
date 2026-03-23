@@ -6,6 +6,15 @@ module.exports = function override(config) {
     crypto: require.resolve('crypto-browserify'),
     stream: require.resolve('stream-browserify'),
   };
+
+  // Fix for "process/browser" fully specified resolution in ESM modules
+  config.module.rules.push({
+    test: /\.m?js$/,
+    resolve: {
+      fullySpecified: false,
+    },
+  });
+
   config.plugins = [
     ...config.plugins,
     new webpack.ProvidePlugin({

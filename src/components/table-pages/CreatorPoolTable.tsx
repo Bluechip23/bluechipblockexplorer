@@ -7,163 +7,126 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { Chip, CircularProgress, Typography, Box } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
-import axios from 'axios';
+import { factoryAddress } from '../universal/IndividualPage.const';
+import {
+    fetchAllPoolSummaries,
+    formatMicroAmount,
+    abbreviateAddress,
+    PoolSummary,
+} from '../../utils/contractQueries';
 
 interface Column {
-    id: 'Creator' | 'Address' | 'Liquidity' | 'FeesCollected' | 'FeesCreated' | 'LiquidityPositions' | 'AvgCommitSize' | 'AvgTransactionSize' | 'TopProvider';
+    id: string;
     label: string;
-    format?: (value: number) => string;
 }
 
 const columns: readonly Column[] = [
-    { id: 'Creator', label: 'Creator'},
-    { id: 'Address', label: 'Address'},
-    {
-        id: 'Liquidity',
-        label: 'Liquidity',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'FeesCollected',
-        label: 'Fees Collected',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'FeesCreated',
-        label: 'Fees Created',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'LiquidityPositions',
-        label: 'Liquidity Positions',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'AvgCommitSize',
-        label: 'Avg Commit Size',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'AvgTransactionSize',
-        label: 'Avg Tx Size',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'TopProvider',
-        label: 'Top Provider',
-        format: (value: number) => value.toFixed(2),
-    },
+    { id: 'token', label: 'Token' },
+    { id: 'address', label: 'Pool Address' },
+    { id: 'status', label: 'Status' },
+    { id: 'liquidity', label: 'Total Liquidity' },
+    { id: 'feesCollected', label: 'Fees Collected' },
+    { id: 'positions', label: 'LP Positions' },
+    { id: 'committers', label: 'Committers' },
 ];
-
-interface CreatorPoolTableProps {
-    creator: string;
-    address: string;
-    liquidity: number;
-    feesCollected: number;
-    feesCreated: number;
-    liquidityPositions: number;
-    avgCommitSize: number;
-    avgTransactionSize: number;
-    topProvider: string;
-}
-
 
 const CreatorPoolTable: React.FC = () => {
     const [page, setPage] = React.useState(0);
     const [rowsPerPage, setRowsPerPage] = React.useState(10);
-    const [rows, setRows] = React.useState<CreatorPoolTableProps[]>([]);
+    const [rows, setRows] = React.useState<PoolSummary[]>([]);
     const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
     React.useEffect(() => {
-        async function loadBlocks() {
+        async function loadPools() {
             try {
-                const response = await axios.get(`${apiEndpoint}/creatorPools`);
-                const pool = response.data.result.pool;
-
-                const blockRows = pool.map((pool: any) => ({
-                    creator: pool.creator,
-                    address: pool.address,
-                    liquidity: Number(pool.liquidity) || 0,
-                    feesCollected: Number(pool.feeCollected) || 0,
-                    feesCreated: Number(pool.feesCreated) || 0,
-                    liquidityPositions: Number(pool.liquidityPositions) || 0,
-                    avgCommitSize: Number(pool.avgCommitSize) || 0,
-                    avgTransactionSize: Number(pool.avgTransactionSize) || 0,
-                    topProvider: pool.topProvider,
-                }));
-
-                setRows(blockRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
+                if (!factoryAddress) {
+                    setError('Factory address not configured. Set REACT_APP_FACTORY_ADDRESS env var.');
+                    setLoading(false);
+                    return;
+                }
+                const summaries = await fetchAllPoolSummaries(factoryAddress);
+                setRows(summaries);
+            } catch (err) {
+                console.error('Error loading pools:', err);
+                setError('Failed to load pool data from chain.');
             } finally {
                 setLoading(false);
             }
         }
-
-        loadBlocks();
+        loadPools();
     }, []);
-    const handleChangePage = (event: unknown, newPage: number) => {
-        setPage(newPage);
-    };
 
-    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setRowsPerPage(+event.target.value);
-        setPage(0);
-    };
+    if (loading) {
+        return (
+            <Paper sx={{ width: '100%', p: 4, textAlign: 'center' }}>
+                <CircularProgress size={28} />
+                <Typography variant="body2" sx={{ mt: 1 }}>Loading pools from chain...</Typography>
+            </Paper>
+        );
+    }
+
+    if (error) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="error">{error}</Typography>
+            </Paper>
+        );
+    }
+
+    if (rows.length === 0) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="text.secondary">No creator pools found on chain.</Typography>
+            </Paper>
+        );
+    }
 
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
-                <Table stickyHeader aria-label="sticky table">
+            <TableContainer sx={{ maxHeight: 540, padding: '15px' }}>
+                <Table stickyHeader aria-label="creator pools table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                >
-                                    {column.label}
-                                </TableCell>
+                                <TableCell key={column.id}>{column.label}</TableCell>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                    {rows
+                        {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                         <Link to={`/creatorpool/${row.address}`}>{row.creator}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                           <Link to={`/creatorpool/${row.address}`}>{row.address}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.liquidity.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.feesCollected.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.feesCreated.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.liquidityPositions.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.avgCommitSize.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.avgTransactionSize.toLocaleString()}
-                                        </TableCell>
-                                        <TableCell >
-                                          <Link to={`/wallet/${row.topProvider}`}>{row.topProvider}</Link>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.poolAddress} hover>
+                                    <TableCell>
+                                        <Link to={`/creatorpool/${row.poolAddress}`}>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                <Typography fontWeight="bold" variant="body2">{row.tokenSymbol}</Typography>
+                                                <Typography variant="caption" color="text.secondary">{row.tokenName}</Typography>
+                                            </Box>
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Link to={`/creatorpool/${row.poolAddress}`}>
+                                            {abbreviateAddress(row.poolAddress)}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={row.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            color={row.thresholdReached ? 'success' : 'warning'}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell>{formatMicroAmount(row.totalLiquidity)}</TableCell>
+                                    <TableCell>{formatMicroAmount(row.totalFeesCollected0)}</TableCell>
+                                    <TableCell>{row.totalPositions}</TableCell>
+                                    <TableCell>{row.totalCommitters}</TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -173,11 +136,14 @@ const CreatorPoolTable: React.FC = () => {
                 count={rows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                    setRowsPerPage(+e.target.value);
+                    setPage(0);
+                }}
             />
         </Paper>
     );
-}
+};
 
 export default CreatorPoolTable;

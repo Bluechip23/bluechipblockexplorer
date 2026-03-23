@@ -27,6 +27,7 @@ import StakingPage from './pages/StakingPage';
 import IBCTransfersPage from './pages/IBCTransfersPage';
 import ContractVerificationPage from './pages/ContractVerificationPage';
 import IntegrationGuidePage from './pages/IntegrationGuidePage';
+import DefiPage from './defi/DefiPage';
 import { ThemeContextProvider } from './context/ThemeContext';
 
 function App() {
@@ -42,11 +43,11 @@ function App() {
                     <Route path="/recenttransactions" element={<RecentTransactionsPage />} />
                     <Route path="/recentblocks" element={<RecentBlocksPage />} />
                     <Route path="/topwallets" element={<TopWalletsPage />} />
-                    <Route path="/toptokens" element={<ComingSoonPage/>/*<TopCreatorTokensPage />*/} />
-                    <Route path="/topcreatorcontracts" element={<ComingSoonPage/>/*<TopCreatorContractPage />*/} />
+                    <Route path="/toptokens" element={<TopCreatorTokensPage />} />
+                    <Route path="/topcreatorcontracts" element={<TopCreatorContractPage />} />
                     <Route path="/topvalidators" element={<TopValidatorsPage />} />
                     <Route path="/bluechiptransactions" element={<RecentBlueChipTransactionPage/>} />
-                    <Route path="/topcreatorpools" element={<ComingSoonPage/>/*<TopCreatorPoolPage />*/} />
+                    <Route path="/topcreatorpools" element={<TopCreatorPoolPage />} />
                     <Route path="/transactionpage/:id" element={<TransactionPage />} />
                     <Route path="/creatorpool/:id" element={<CreatorPoolPage />} />
                     <Route path="/comingsoonpage" element={<ComingSoonPage />} />
@@ -60,6 +61,7 @@ function App() {
                     <Route path="/ibc" element={<IBCTransfersPage />} />
                     <Route path="/contract-explorer" element={<ContractVerificationPage />} />
                     <Route path="/integration-guide" element={<IntegrationGuidePage />} />
+                    <Route path="/defi" element={<DefiPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
             </Router>

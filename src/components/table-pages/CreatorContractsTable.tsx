@@ -7,123 +7,126 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
+import { Chip, CircularProgress, Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { factoryAddress } from '../universal/IndividualPage.const';
+import {
+    fetchAllPoolSummaries,
+    abbreviateAddress,
+    PoolSummary,
+} from '../../utils/contractQueries';
 
 interface Column {
-    id: 'Creator' | 'Address' | 'MonthlyTransactions' | 'TotalTransactions' | 'CreationDate';
+    id: string;
     label: string;
-    format?: (value: number) => string;
 }
 
 const columns: readonly Column[] = [
-    { id: 'Creator', label: 'Creator'},
-    { id: 'Address', label: 'Address'},
-    {
-        id: 'MonthlyTransactions',
-        label: 'Monthly Transactions',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'TotalTransactions',
-        label: 'Total Transactions',
-        format: (value: number) => value.toLocaleString('en-US'),
-    },
-    {
-        id: 'CreationDate',
-        label: 'Date Created',
-        format: (value: number) => value.toFixed(2),
-    },
+    { id: 'token', label: 'Token Name' },
+    { id: 'symbol', label: 'Symbol' },
+    { id: 'contractAddress', label: 'Contract Address' },
+    { id: 'poolAddress', label: 'Pool Address' },
+    { id: 'status', label: 'Status' },
+    { id: 'totalSupply', label: 'Total Supply' },
 ];
 
-interface CreatorContractTableProps {
-    creator: string;
-    address: string;
-    monthlyTransactions: number;
-    totalTransactions: number;
-    creationDate: string;
-}
+const CreatorContractTable: React.FC = () => {
+    const [page, setPage] = React.useState(0);
+    const [rowsPerPage, setRowsPerPage] = React.useState(10);
+    const [rows, setRows] = React.useState<PoolSummary[]>([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
-
-const CreatorContractTable: React.FC= () => {
-    const [page, setPage] = useState(0);
-    const [rowsPerPage, setRowsPerPage] = useState(10);
-    const [rows, setRows] = useState<CreatorContractTableProps[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        async function loadCreatorContract() {
+    React.useEffect(() => {
+        async function loadContracts() {
             try {
-                const response = await axios.get(`${apiEndpoint}/creatorContract`); 
-                const contract = response.data.result.tx; 
-
-                const creatorContractRows = contract.map((contract: any) => ({
-                    creator: contract.hash,
-                    address: contract.method,
-                    monthlyTransactions: contract.height,
-                    totalTransactions: contract.sender,
-                    creationDate: contract.recipient,
-                }));
-                setRows(creatorContractRows);
-            } catch (error) {
-                console.error('Error loading blocks:', error);
+                if (!factoryAddress) {
+                    setError('Factory address not configured. Set REACT_APP_FACTORY_ADDRESS env var.');
+                    setLoading(false);
+                    return;
+                }
+                const summaries = await fetchAllPoolSummaries(factoryAddress);
+                setRows(summaries);
+            } catch (err) {
+                console.error('Error loading contracts:', err);
+                setError('Failed to load contract data from chain.');
             } finally {
                 setLoading(false);
             }
         }
-        loadCreatorContract();
+        loadContracts();
     }, []);
 
-    const handleChangePage = (event: unknown, newPage: number) => {
-        setPage(newPage);
-    };
+    if (loading) {
+        return (
+            <Paper sx={{ width: '100%', p: 4, textAlign: 'center' }}>
+                <CircularProgress size={28} />
+                <Typography variant="body2" sx={{ mt: 1 }}>Loading contracts from chain...</Typography>
+            </Paper>
+        );
+    }
 
-    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setRowsPerPage(+event.target.value);
-        setPage(0);
-    };
+    if (error) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="error">{error}</Typography>
+            </Paper>
+        );
+    }
+
+    if (rows.length === 0) {
+        return (
+            <Paper sx={{ width: '100%', p: 3 }}>
+                <Typography color="text.secondary">No creator contracts found on chain.</Typography>
+            </Paper>
+        );
+    }
 
     return (
         <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer sx={{ maxHeight: 440, padding:'15px' }}>
-                <Table stickyHeader aria-label="sticky table">
+            <TableContainer sx={{ maxHeight: 540, padding: '15px' }}>
+                <Table stickyHeader aria-label="creator contracts table">
                     <TableHead>
                         <TableRow>
                             {columns.map((column) => (
-                                <TableCell
-                                    key={column.id}
-                                >
-                                    {column.label}
-                                </TableCell>
+                                <TableCell key={column.id}>{column.label}</TableCell>
                             ))}
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                    {rows
+                        {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => {
-                                return (
-                                    <TableRow>
-                                        <TableCell >
-                                         <Link to={`/creatorcontract/${row.address}`}>{row.creator}</Link>
-                                        </TableCell>
-                                        <TableCell  >
-                                           <Link to={`/creatorcontract/${row.address}`}>{row.address}</Link> 
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.monthlyTransactions}
-                                        </TableCell>
-                                        <TableCell  >
-                                            {row.totalTransactions}
-                                        </TableCell>
-                                        <TableCell >
-                                         {row.creationDate}  
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
+                            .map((row) => (
+                                <TableRow key={row.creatorTokenAddress || row.poolAddress} hover>
+                                    <TableCell>
+                                        <Link to={`/creatorcontract/${row.creatorTokenAddress}`}>
+                                            {row.tokenName}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>{row.tokenSymbol}</TableCell>
+                                    <TableCell>
+                                        <Link to={`/creatorcontract/${row.creatorTokenAddress}`}>
+                                            {abbreviateAddress(row.creatorTokenAddress || '')}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Link to={`/creatorpool/${row.poolAddress}`}>
+                                            {abbreviateAddress(row.poolAddress)}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={row.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            color={row.thresholdReached ? 'success' : 'warning'}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell>
+                                        {(parseInt(row.totalSupply) / Math.pow(10, row.tokenDecimals)).toLocaleString()}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
                     </TableBody>
                 </Table>
             </TableContainer>
@@ -133,11 +136,14 @@ const CreatorContractTable: React.FC= () => {
                 count={rows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
+                onPageChange={(_, newPage) => setPage(newPage)}
+                onRowsPerPageChange={(e) => {
+                    setRowsPerPage(+e.target.value);
+                    setPage(0);
+                }}
             />
         </Paper>
     );
-}
+};
 
 export default CreatorContractTable;
