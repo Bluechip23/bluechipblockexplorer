@@ -21,6 +21,7 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import PoolActionMenu from '../../components/actions/PoolActionMenu';
 
 const StatCard: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
     <Card variant="outlined" sx={{ height: '100%' }}>
@@ -98,6 +99,12 @@ const CreatorPoolPage: React.FC = () => {
                                             label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
                                             color={pool.thresholdReached ? 'success' : 'warning'}
                                             size="small"
+                                        />
+                                        <PoolActionMenu
+                                            poolAddress={pool.poolAddress}
+                                            tokenSymbol={pool.tokenSymbol}
+                                            creatorTokenAddress={pool.creatorTokenAddress}
+                                            thresholdReached={pool.thresholdReached}
                                         />
                                     </Box>
                                     <Divider sx={{ my: 1 }} />

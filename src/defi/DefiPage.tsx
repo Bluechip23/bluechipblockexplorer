@@ -2,16 +2,15 @@ import React, { useState } from 'react';
 import { Grid, Stack, Typography, Tabs, Tab, Box, Card, CardContent, TextField, Button, Alert, IconButton, Tooltip } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { Coin } from '@cosmjs/stargate';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
 import BlockExpSideBar from '../navigation/BlockExpSideBar';
 import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
-import WalletConnect from './WalletConnect';
 import CommitTracker from './CommitTracker';
 import { NATIVE_DENOM } from './types';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
+import { useWallet } from '../context/WalletContext';
 
 // ----------- Tab Panel -----------
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
@@ -447,9 +446,7 @@ const FeesTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 // MAIN DEFI PAGE
 // =========================================================================
 const DefiPage: React.FC = () => {
-    const [client, setClient] = useState<SigningCosmWasmClient | null>(null);
-    const [address, setAddress] = useState('');
-    const [balance, setBalance] = useState<Coin | null>(null);
+    const { client, address, balance } = useWallet();
     const [mainTab, setMainTab] = useState(0);
 
     return (
@@ -467,14 +464,11 @@ const DefiPage: React.FC = () => {
                         <CardContent>
                             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
                                 <Typography variant="h5" fontWeight="bold">Creator Economy</Typography>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                    {balance && (
-                                        <Typography variant="body2">
-                                            {(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP
-                                        </Typography>
-                                    )}
-                                    <WalletConnect setClient={setClient} setAddress={setAddress} setBalance={setBalance} />
-                                </Box>
+                                {balance && (
+                                    <Typography variant="body2">
+                                        {(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP
+                                    </Typography>
+                                )}
                             </Stack>
 
                             <Tabs

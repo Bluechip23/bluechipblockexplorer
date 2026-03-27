@@ -16,6 +16,7 @@ import {
     abbreviateAddress,
     PoolSummary,
 } from '../../utils/contractQueries';
+import PoolActionMenu from '../actions/PoolActionMenu';
 
 interface Column {
     id: string;
@@ -30,6 +31,7 @@ const columns: readonly Column[] = [
     { id: 'feesCollected', label: 'Fees Collected' },
     { id: 'positions', label: 'LP Positions' },
     { id: 'committers', label: 'Committers' },
+    { id: 'actions', label: '' },
 ];
 
 const CreatorPoolTable: React.FC = () => {
@@ -125,6 +127,14 @@ const CreatorPoolTable: React.FC = () => {
                                     <TableCell>{formatMicroAmount(row.totalFeesCollected0)}</TableCell>
                                     <TableCell>{row.totalPositions}</TableCell>
                                     <TableCell>{row.totalCommitters}</TableCell>
+                                    <TableCell align="right">
+                                        <PoolActionMenu
+                                            poolAddress={row.poolAddress}
+                                            tokenSymbol={row.tokenSymbol}
+                                            creatorTokenAddress={row.creatorTokenAddress}
+                                            thresholdReached={row.thresholdReached}
+                                        />
+                                    </TableCell>
                                 </TableRow>
                             ))}
                     </TableBody>
