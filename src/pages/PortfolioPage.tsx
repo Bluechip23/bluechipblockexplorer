@@ -239,8 +239,9 @@ const MyPositionsTab: React.FC<{
                             <TableCell>Pool</TableCell>
                             <TableCell>Position ID</TableCell>
                             <TableCell>Liquidity</TableCell>
-                            <TableCell>Unclaimed Fees (Asset 0)</TableCell>
-                            <TableCell>Unclaimed Fees (Asset 1)</TableCell>
+                            <TableCell>Unclaimed Fees (BLUECHIP)</TableCell>
+                            <TableCell>Unclaimed Fees (Token)</TableCell>
+                            <TableCell>Last Fee Collection</TableCell>
                             <TableCell>Created</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>
@@ -259,6 +260,11 @@ const MyPositionsTab: React.FC<{
                                 <TableCell>{formatMicroAmount(p.position.liquidity)}</TableCell>
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_0)}</TableCell>
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_1)}</TableCell>
+                                <TableCell>
+                                    {p.position.last_fee_collection
+                                        ? new Date(p.position.last_fee_collection / 1_000_000).toLocaleDateString()
+                                        : 'Never'}
+                                </TableCell>
                                 <TableCell>
                                     {p.position.created_at
                                         ? new Date(p.position.created_at / 1_000_000).toLocaleDateString()
@@ -445,6 +451,10 @@ const PortfolioPage: React.FC = () => {
         (sum, c) => sum + parseInt(c.commit.total_paid_usd || '0'),
         0
     );
+    const totalCommittedBluechip = commitments.reduce(
+        (sum, c) => sum + parseInt(c.commit.total_paid_bluechip || '0'),
+        0
+    );
     const totalUnclaimedFees0 = positions.reduce(
         (sum, p) => sum + parseInt(p.position.unclaimed_fees_0 || '0'),
         0
@@ -457,6 +467,10 @@ const PortfolioPage: React.FC = () => {
         (sum, p) => sum + parseInt(p.position.liquidity || '0'),
         0
     );
+    const lastFeeCollection = positions.reduce((latest, p) => {
+        const ts = p.position.last_fee_collection || 0;
+        return ts > latest ? ts : latest;
+    }, 0);
 
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
@@ -499,12 +513,26 @@ const PortfolioPage: React.FC = () => {
                                     <StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
+                                    <StatCard label="Total Committed (BLUECHIP)" value={formatMicroAmount(totalCommittedBluechip.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
                                     <StatCard label="LP Positions" value={positions.length} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
+                                    <StatCard label="Total Liquidity Provided" value={formatMicroAmount(totalLiquidity.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                    <StatCard label="Unclaimed Fees (BLUECHIP)" value={formatMicroAmount(totalUnclaimedFees0.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                    <StatCard label="Unclaimed Fees (Token)" value={formatMicroAmount(totalUnclaimedFees1.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
                                     <StatCard
-                                        label="Unclaimed Fees"
-                                        value={`${formatMicroAmount(totalUnclaimedFees0.toString())} / ${formatMicroAmount(totalUnclaimedFees1.toString())}`}
+                                        label="Last Fee Collection"
+                                        value={lastFeeCollection > 0
+                                            ? new Date(lastFeeCollection / 1_000_000).toLocaleDateString()
+                                            : 'Never'}
                                     />
                                 </Grid>
                             </Grid>

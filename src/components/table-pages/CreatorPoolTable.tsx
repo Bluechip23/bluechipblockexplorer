@@ -24,6 +24,7 @@ interface Column {
 }
 
 const columns: readonly Column[] = [
+    { id: 'rank', label: 'Rank' },
     { id: 'token', label: 'Token' },
     { id: 'address', label: 'Pool Address' },
     { id: 'status', label: 'Status' },
@@ -50,6 +51,8 @@ const CreatorPoolTable: React.FC = () => {
                     return;
                 }
                 const summaries = await fetchAllPoolSummaries(factoryAddress);
+                // Sort by total liquidity (TVL) descending
+                summaries.sort((a, b) => parseInt(b.totalLiquidity) - parseInt(a.totalLiquidity));
                 setRows(summaries);
             } catch (err) {
                 console.error('Error loading pools:', err);
@@ -100,8 +103,13 @@ const CreatorPoolTable: React.FC = () => {
                     <TableBody>
                         {rows
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => (
+                            .map((row, idx) => (
                                 <TableRow key={row.poolAddress} hover>
+                                    <TableCell>
+                                        <Typography variant="body2" fontWeight="bold">
+                                            #{page * rowsPerPage + idx + 1}
+                                        </Typography>
+                                    </TableCell>
                                     <TableCell>
                                         <Link to={`/creatorpool/${row.poolAddress}`}>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

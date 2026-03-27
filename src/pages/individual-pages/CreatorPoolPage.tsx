@@ -181,15 +181,16 @@ const CreatorPoolPage: React.FC = () => {
                             </Grid>
                         </Grid>
 
-                        {/* Committers Table */}
+                        {/* Committer Leaderboard */}
                         {committers.length > 0 && (
                             <Grid item xs={12} md={8}>
-                                <Typography variant="h6" sx={{ mb: 1 }}>Recent Committers</Typography>
+                                <Typography variant="h6" sx={{ mb: 1 }}>Committer Leaderboard</Typography>
                                 <Paper sx={{ width: '100%', overflow: 'hidden' }}>
                                     <TableContainer sx={{ maxHeight: 440 }}>
                                         <Table stickyHeader size="small">
                                             <TableHead>
                                                 <TableRow>
+                                                    <TableCell sx={{ width: 50 }}>Rank</TableCell>
                                                     <TableCell>Wallet</TableCell>
                                                     <TableCell>Total Paid (USD)</TableCell>
                                                     <TableCell>Total Paid (Bluechip)</TableCell>
@@ -197,8 +198,19 @@ const CreatorPoolPage: React.FC = () => {
                                                 </TableRow>
                                             </TableHead>
                                             <TableBody>
-                                                {committers.map((c) => (
+                                                {[...committers]
+                                                    .sort((a, b) => parseInt(b.total_paid_usd) - parseInt(a.total_paid_usd))
+                                                    .map((c, idx) => (
                                                     <TableRow key={c.wallet} hover>
+                                                        <TableCell>
+                                                            <Typography
+                                                                variant="body2"
+                                                                fontWeight="bold"
+                                                                color={idx === 0 ? 'warning.main' : idx === 1 ? 'text.secondary' : idx === 2 ? '#cd7f32' : 'text.primary'}
+                                                            >
+                                                                #{idx + 1}
+                                                            </Typography>
+                                                        </TableCell>
                                                         <TableCell>
                                                             <Link to={`/wallet/${c.wallet}`}>{abbreviateAddress(c.wallet)}</Link>
                                                         </TableCell>
