@@ -20,7 +20,9 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import CodeIcon from '@mui/icons-material/Code';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import AccountBoxIcon from '@mui/icons-material/AccountBox';
 import { Link } from 'react-router-dom';
+import { useWallet } from '../context/WalletContext';
 
 type Item = {
     title: string;
@@ -99,37 +101,38 @@ const newSidebarItems: Item[] = [
     },
 ];
 
+const SidebarLink: React.FC<{ item: Item; highlight?: boolean }> = ({ item, highlight }) => (
+    <Link to={item.link} style={{ color: 'inherit', textDecoration: 'none' }}>
+        <ListItem sx={highlight ? { bgcolor: 'action.selected', borderRadius: 1 } : undefined}>
+            <Tooltip title={item.title}>
+                <ListItemIcon>{item.icon}</ListItemIcon>
+            </Tooltip>
+            <ListItemText primary={item.title} />
+        </ListItem>
+    </Link>
+);
+
 const BlockExpSideBar: React.FC = () => {
+    const { address } = useWallet();
+
     return (
         <List component="nav">
             {sidebarItems.map((item: Item, index: number) => (
-                <Link
-                    to={item.link}
-                    key={index.toString()}
-                    style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                    <ListItem>
-                        <Tooltip title={item.title}>
-                            <ListItemIcon>{item.icon}</ListItemIcon>
-                        </Tooltip>
-                        <ListItemText primary={item.title} />
-                    </ListItem>
-                </Link>
+                <SidebarLink key={index} item={item} />
             ))}
             <Divider sx={{ my: 1 }} />
+            {address && (
+                <SidebarLink
+                    item={{
+                        title: 'My Portfolio',
+                        icon: <AccountBoxIcon />,
+                        link: '/portfolio',
+                    }}
+                    highlight
+                />
+            )}
             {newSidebarItems.map((item: Item, index: number) => (
-                <Link
-                    to={item.link}
-                    key={`new-${index}`}
-                    style={{ color: 'inherit', textDecoration: 'none' }}
-                >
-                    <ListItem>
-                        <Tooltip title={item.title}>
-                            <ListItemIcon>{item.icon}</ListItemIcon>
-                        </Tooltip>
-                        <ListItemText primary={item.title} />
-                    </ListItem>
-                </Link>
+                <SidebarLink key={`new-${index}`} item={item} />
             ))}
         </List>
     );

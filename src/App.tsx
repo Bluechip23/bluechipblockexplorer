@@ -28,11 +28,14 @@ import IBCTransfersPage from './pages/IBCTransfersPage';
 import ContractVerificationPage from './pages/ContractVerificationPage';
 import IntegrationGuidePage from './pages/IntegrationGuidePage';
 import DefiPage from './defi/DefiPage';
+import PortfolioPage from './pages/PortfolioPage';
 import { ThemeContextProvider } from './context/ThemeContext';
+import { WalletContextProvider } from './context/WalletContext';
 
 function App() {
     return (
         <ThemeContextProvider>
+            <WalletContextProvider>
             <Router>
                 <Routes>
                     <Route
@@ -62,9 +65,11 @@ function App() {
                     <Route path="/contract-explorer" element={<ContractVerificationPage />} />
                     <Route path="/integration-guide" element={<IntegrationGuidePage />} />
                     <Route path="/defi" element={<DefiPage />} />
+                    <Route path="/portfolio" element={<PortfolioPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
             </Router>
+            </WalletContextProvider>
         </ThemeContextProvider>
     );
 }
