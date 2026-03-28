@@ -297,6 +297,105 @@ export function abbreviateAddress(address: string, prefixLen: number = 12, suffi
     return `${address.slice(0, prefixLen)}...${address.slice(-suffixLen)}`;
 }
 
+// ------------------------------------------------------------------
+// Pool creator detection
+// ------------------------------------------------------------------
+
+export interface PoolCreatorConfig {
+    creator_wallet_address: string;
+    bluechip_wallet_address?: string;
+    commit_fee_bluechip?: string;
+    commit_fee_creator?: string;
+}
+
+/**
+ * Try to determine the creator wallet for a pool.
+ * Strategy:
+ *   1. Query pool contract for `config` / `pool_config` (returns commit_fee_info with creator_wallet_address)
+ *   2. Fallback: query the contract's instantiation info via REST to find the original sender
+ */
+export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
+    const client = await getCosmWasmClient();
+
+    // Attempt 1: query pool config (try common query names)
+    for (const queryMsg of [{ config: {} }, { pool_config: {} }, { get_config: {} }]) {
+        try {
+            const result = await client.queryContractSmart(poolAddress, queryMsg);
+            // The config may directly have creator_wallet_address or be nested in commit_fee_info
+            if (result?.creator_wallet_address) return result.creator_wallet_address;
+            if (result?.commit_fee_info?.creator_wallet_address) return result.commit_fee_info.creator_wallet_address;
+            if (result?.config?.creator_wallet_address) return result.config.creator_wallet_address;
+            if (result?.config?.commit_fee_info?.creator_wallet_address) return result.config.commit_fee_info.creator_wallet_address;
+        } catch {
+            // Query not supported, try next
+        }
+    }
+
+    // Attempt 2: check contract history via REST (the first entry's msg sender is the creator)
+    try {
+        const response = await fetch(
+            `${apiEndpoint}/cosmwasm/wasm/v1/contract/${poolAddress}/history?pagination.limit=1&pagination.reverse=false`
+        );
+        const data = await response.json();
+        const entries = data.entries || [];
+        if (entries.length > 0 && entries[0].msg) {
+            // The instantiate msg may contain creator info
+            try {
+                const msg = typeof entries[0].msg === 'string'
+                    ? JSON.parse(atob(entries[0].msg))
+                    : entries[0].msg;
+                if (msg?.commit_fee_info?.creator_wallet_address) {
+                    return msg.commit_fee_info.creator_wallet_address;
+                }
+                if (msg?.creator_token_address) {
+                    return msg.creator_token_address;
+                }
+            } catch {
+                // msg decode failed
+            }
+        }
+    } catch {
+        // REST fallback failed
+    }
+
+    // Attempt 3: check contract info (admin is often the creator/factory, but sender is in the tx)
+    try {
+        const response = await fetch(
+            `${apiEndpoint}/cosmwasm/wasm/v1/contract/${poolAddress}`
+        );
+        const data = await response.json();
+        // The creator field in contract info is the address that instantiated the contract
+        if (data?.contract_info?.creator) {
+            return data.contract_info.creator;
+        }
+    } catch {
+        // REST fallback failed
+    }
+
+    return null;
+}
+
+/**
+ * Given all pools, find those created by a specific wallet address.
+ */
+export async function findPoolsByCreator(
+    pools: PoolSummary[],
+    walletAddress: string
+): Promise<PoolSummary[]> {
+    const results: PoolSummary[] = [];
+
+    await Promise.all(
+        pools.map(async (pool) => {
+            const creator = await queryPoolCreator(pool.poolAddress);
+            if (creator === walletAddress) {
+                results.push(pool);
+            }
+        })
+    );
+
+    return results;
+}
+
 export interface PoolSummary {
     poolAddress: string;
     creatorTokenAddress: string | null;
@@ -314,6 +413,7 @@ export interface PoolSummary {
     raised: string;
     target: string;
     totalCommitters: number;
+    blockTimeLast: number;
 }
 
 /**
@@ -361,6 +461,7 @@ export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary
             raised,
             target,
             totalCommitters: commits?.total_count || 0,
+            blockTimeLast: poolInfo.pool_state.block_time_last,
         };
     } catch (err) {
         console.error(`Error fetching pool summary for ${poolAddress}:`, err);

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
     Box,
+    Button,
     Card,
     CardContent,
     Chip,
@@ -28,10 +29,12 @@ import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import { useWallet } from '../context/WalletContext';
 import PoolActionMenu from '../components/actions/PoolActionMenu';
+import CreatePoolModal from '../components/actions/CreatePoolModal';
 import {
     fetchAllPoolSummaries,
     queryPoolCommits,
     queryPositions,
+    findPoolsByCreator,
     formatMicroAmount,
     abbreviateAddress,
     PoolSummary,
@@ -239,8 +242,9 @@ const MyPositionsTab: React.FC<{
                             <TableCell>Pool</TableCell>
                             <TableCell>Position ID</TableCell>
                             <TableCell>Liquidity</TableCell>
-                            <TableCell>Unclaimed Fees (Asset 0)</TableCell>
-                            <TableCell>Unclaimed Fees (Asset 1)</TableCell>
+                            <TableCell>Unclaimed Fees (BLUECHIP)</TableCell>
+                            <TableCell>Unclaimed Fees (Token)</TableCell>
+                            <TableCell>Last Fee Collection</TableCell>
                             <TableCell>Created</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>
@@ -259,6 +263,11 @@ const MyPositionsTab: React.FC<{
                                 <TableCell>{formatMicroAmount(p.position.liquidity)}</TableCell>
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_0)}</TableCell>
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_1)}</TableCell>
+                                <TableCell>
+                                    {p.position.last_fee_collection
+                                        ? new Date(p.position.last_fee_collection / 1_000_000).toLocaleDateString()
+                                        : 'Never'}
+                                </TableCell>
                                 <TableCell>
                                     {p.position.created_at
                                         ? new Date(p.position.created_at / 1_000_000).toLocaleDateString()
@@ -373,6 +382,148 @@ const MyTransactionsTab: React.FC<{
     );
 };
 
+// ─── My Created Pools Tab ───────────────────────────────────────────────────
+
+const MyCreatedPoolsTab: React.FC<{
+    createdPools: PoolSummary[];
+    loading: boolean;
+    onCreatePool: () => void;
+}> = ({ createdPools, loading, onCreatePool }) => {
+    if (loading) {
+        return (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+                <CircularProgress size={28} />
+                <Typography variant="body2" sx={{ mt: 1 }}>Checking if you've created any pools...</Typography>
+            </Box>
+        );
+    }
+
+    if (createdPools.length === 0) {
+        return (
+            <Card>
+                <CardContent sx={{ textAlign: 'center', py: 6 }}>
+                    <Typography variant="h6" sx={{ mb: 1 }}>
+                        You have not created a pool yet
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Create your own creator token and liquidity pool. Subscribers will commit BLUECHIP
+                        to fund your pool, and you'll earn fees on every transaction.
+                    </Typography>
+                    <Button variant="contained" size="large" onClick={onCreatePool}>
+                        Create Pool
+                    </Button>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    // Creator metrics across all created pools
+    const totalFeesEarned0 = createdPools.reduce(
+        (sum, p) => sum + parseInt(p.totalFeesCollected0 || '0'), 0
+    );
+    const totalFeesEarned1 = createdPools.reduce(
+        (sum, p) => sum + parseInt(p.totalFeesCollected1 || '0'), 0
+    );
+    const totalPoolLiquidity = createdPools.reduce(
+        (sum, p) => sum + parseInt(p.totalLiquidity || '0'), 0
+    );
+    const totalSubscribers = createdPools.reduce(
+        (sum, p) => sum + p.totalCommitters, 0
+    );
+    const totalLpPositions = createdPools.reduce(
+        (sum, p) => sum + p.totalPositions, 0
+    );
+
+    return (
+        <Stack spacing={2}>
+            {/* Creator summary stats */}
+            <Grid container spacing={2}>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Pools Created" value={createdPools.length} />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Total Subscribers" value={totalSubscribers} />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Total LP Positions" value={totalLpPositions} />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Total TVL" value={formatMicroAmount(totalPoolLiquidity.toString())} />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Fees Earned (BLUECHIP)" value={formatMicroAmount(totalFeesEarned0.toString())} />
+                </Grid>
+                <Grid item xs={6} sm={4}>
+                    <StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} />
+                </Grid>
+            </Grid>
+
+            {/* Created pools table */}
+            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+                <TableContainer>
+                    <Table stickyHeader size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Pool</TableCell>
+                                <TableCell>Status</TableCell>
+                                <TableCell>TVL</TableCell>
+                                <TableCell>Fees (BLUECHIP)</TableCell>
+                                <TableCell>Fees (Token)</TableCell>
+                                <TableCell>Subscribers</TableCell>
+                                <TableCell>LP Positions</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {createdPools.map((pool) => (
+                                <TableRow key={pool.poolAddress} hover>
+                                    <TableCell>
+                                        <Link to={`/creatorpool/${pool.poolAddress}`} style={{ textDecoration: 'none' }}>
+                                            <Typography fontWeight="bold" variant="body2" color="primary">
+                                                {pool.tokenSymbol}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary">
+                                                {pool.tokenName}
+                                            </Typography>
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip
+                                            label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            color={pool.thresholdReached ? 'success' : 'warning'}
+                                            size="small"
+                                            variant="outlined"
+                                        />
+                                    </TableCell>
+                                    <TableCell>{formatMicroAmount(pool.totalLiquidity)}</TableCell>
+                                    <TableCell>{formatMicroAmount(pool.totalFeesCollected0)}</TableCell>
+                                    <TableCell>{formatMicroAmount(pool.totalFeesCollected1)}</TableCell>
+                                    <TableCell>{pool.totalCommitters}</TableCell>
+                                    <TableCell>{pool.totalPositions}</TableCell>
+                                    <TableCell align="right">
+                                        <PoolActionMenu
+                                            poolAddress={pool.poolAddress}
+                                            tokenSymbol={pool.tokenSymbol}
+                                            creatorTokenAddress={pool.creatorTokenAddress}
+                                            thresholdReached={pool.thresholdReached}
+                                        />
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </Paper>
+
+            <Box sx={{ textAlign: 'center' }}>
+                <Button variant="outlined" onClick={onCreatePool}>
+                    Create Another Pool
+                </Button>
+            </Box>
+        </Stack>
+    );
+};
+
 // ─── Main Portfolio Page ────────────────────────────────────────────────────
 
 const PortfolioPage: React.FC = () => {
@@ -382,6 +533,9 @@ const PortfolioPage: React.FC = () => {
     const [commitments, setCommitments] = useState<MyCommitment[]>([]);
     const [positions, setPositions] = useState<MyPosition[]>([]);
     const [allPools, setAllPools] = useState<PoolSummary[]>([]);
+    const [createdPools, setCreatedPools] = useState<PoolSummary[]>([]);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [loadKey, setLoadKey] = useState(0);
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -429,6 +583,12 @@ const PortfolioPage: React.FC = () => {
                     setCommitments(myCommitments);
                     setPositions(myPositions);
                 }
+
+                // Find pools created by this wallet
+                const myCreatedPools = await findPoolsByCreator(pools, address);
+                if (!cancelled) {
+                    setCreatedPools(myCreatedPools);
+                }
             } catch (err) {
                 console.error('Error loading portfolio:', err);
             } finally {
@@ -438,11 +598,15 @@ const PortfolioPage: React.FC = () => {
 
         loadPortfolio();
         return () => { cancelled = true; };
-    }, [address]);
+    }, [address, loadKey]);
 
     // Calculate summary stats
     const totalCommittedUsd = commitments.reduce(
         (sum, c) => sum + parseInt(c.commit.total_paid_usd || '0'),
+        0
+    );
+    const totalCommittedBluechip = commitments.reduce(
+        (sum, c) => sum + parseInt(c.commit.total_paid_bluechip || '0'),
         0
     );
     const totalUnclaimedFees0 = positions.reduce(
@@ -457,6 +621,10 @@ const PortfolioPage: React.FC = () => {
         (sum, p) => sum + parseInt(p.position.liquidity || '0'),
         0
     );
+    const lastFeeCollection = positions.reduce((latest, p) => {
+        const ts = p.position.last_fee_collection || 0;
+        return ts > latest ? ts : latest;
+    }, 0);
 
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
@@ -499,12 +667,26 @@ const PortfolioPage: React.FC = () => {
                                     <StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
+                                    <StatCard label="Total Committed (BLUECHIP)" value={formatMicroAmount(totalCommittedBluechip.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
                                     <StatCard label="LP Positions" value={positions.length} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
+                                    <StatCard label="Total Liquidity Provided" value={formatMicroAmount(totalLiquidity.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                    <StatCard label="Unclaimed Fees (BLUECHIP)" value={formatMicroAmount(totalUnclaimedFees0.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
+                                    <StatCard label="Unclaimed Fees (Token)" value={formatMicroAmount(totalUnclaimedFees1.toString())} />
+                                </Grid>
+                                <Grid item xs={6} sm={3}>
                                     <StatCard
-                                        label="Unclaimed Fees"
-                                        value={`${formatMicroAmount(totalUnclaimedFees0.toString())} / ${formatMicroAmount(totalUnclaimedFees1.toString())}`}
+                                        label="Last Fee Collection"
+                                        value={lastFeeCollection > 0
+                                            ? new Date(lastFeeCollection / 1_000_000).toLocaleDateString()
+                                            : 'Never'}
                                     />
                                 </Grid>
                             </Grid>
@@ -522,6 +704,10 @@ const PortfolioPage: React.FC = () => {
                                         <Tab label={`Pools I Committed To (${commitments.length})`} />
                                         <Tab label={`My LP Positions (${positions.length})`} />
                                         <Tab label="My Transactions" />
+                                        <Tab label={createdPools.length > 0
+                                            ? `My Created Pools (${createdPools.length})`
+                                            : 'Creator'
+                                        } />
                                     </Tabs>
                                 </CardContent>
                                 <CardContent>
@@ -538,8 +724,22 @@ const PortfolioPage: React.FC = () => {
                                             loading={loading}
                                         />
                                     </TabPanel>
+                                    <TabPanel value={tab} index={3}>
+                                        <MyCreatedPoolsTab
+                                            createdPools={createdPools}
+                                            loading={loading}
+                                            onCreatePool={() => setShowCreateModal(true)}
+                                        />
+                                    </TabPanel>
                                 </CardContent>
                             </Card>
+
+                            {/* Create Pool Modal */}
+                            <CreatePoolModal
+                                open={showCreateModal}
+                                onClose={() => setShowCreateModal(false)}
+                                onSuccess={() => setLoadKey((k) => k + 1)}
+                            />
                         </Stack>
                     )}
                 </Grid>
