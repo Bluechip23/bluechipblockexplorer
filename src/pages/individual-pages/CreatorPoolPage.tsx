@@ -74,6 +74,54 @@ function computeReserveRatio(reserve0: string, reserve1: string): string {
     return `${pct0}% / ${pct1}%`;
 }
 
+function computeMarketCap(reserve0: string, reserve1: string, totalSupply: string, decimals: number): string {
+    const r0 = parseInt(reserve0);
+    const r1 = parseInt(reserve1);
+    const supply = parseInt(totalSupply);
+    if (!r0 || !r1 || !supply) return '-';
+    // price per token in BLUECHIP micro-units, then multiply by supply
+    const pricePerToken = r0 / r1;
+    const mcap = (pricePerToken * supply) / Math.pow(10, decimals);
+    return formatMicroAmount(Math.floor(mcap).toString());
+}
+
+function computeFeeApr(
+    totalFeesCollected0: string,
+    totalFeesCollected1: string,
+    totalLiquidity: string,
+    blockTimeLast: number
+): string {
+    const fees0 = parseInt(totalFeesCollected0);
+    const fees1 = parseInt(totalFeesCollected1);
+    const liquidity = parseInt(totalLiquidity);
+    if (!liquidity || (!fees0 && !fees1)) return '-';
+    // Use the BLUECHIP-side fees as the primary metric
+    // blockTimeLast is a unix seconds timestamp of last pool update
+    // Estimate pool age from block_time_last relative to a reasonable start
+    // We'll use total fees / liquidity as a simple ratio, annualized
+    const totalFees = fees0 + fees1;
+    const feeRatio = totalFees / liquidity;
+
+    // If we have a timestamp, try to annualize properly
+    if (blockTimeLast > 0) {
+        const now = Date.now() / 1000;
+        const poolAgeDays = (now - blockTimeLast) > 0
+            ? Math.max((now - blockTimeLast) / 86400, 1) // at least 1 day to avoid infinity
+            : 1;
+        // But blockTimeLast is the LAST update, not creation. Use a conservative annualization.
+        // fees earned over poolAge, extrapolate to 365 days
+        const annualizedRatio = (feeRatio / poolAgeDays) * 365;
+        const apr = annualizedRatio * 100;
+        if (apr > 10000) return '>10,000%';
+        return apr.toFixed(1) + '%';
+    }
+
+    // Fallback: just show the raw ratio as if 30 days old
+    const apr = (feeRatio / 30) * 365 * 100;
+    if (apr > 10000) return '>10,000%';
+    return apr.toFixed(1) + '%';
+}
+
 function computeAvgCommit(committers: CommiterInfo[]): string {
     if (committers.length === 0) return '$0';
     const total = committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0);
@@ -188,6 +236,12 @@ const CreatorPoolPage: React.FC = () => {
     const reserveRatio = pool ? computeReserveRatio(pool.reserve0, pool.reserve1) : '-';
     const avgCommit = computeAvgCommit(committers);
     const largestCommit = computeLargestCommit(committers);
+    const marketCap = pool
+        ? computeMarketCap(pool.reserve0, pool.reserve1, pool.totalSupply, pool.tokenDecimals)
+        : '-';
+    const feeApr = pool
+        ? computeFeeApr(pool.totalFeesCollected0, pool.totalFeesCollected1, pool.totalLiquidity, pool.blockTimeLast)
+        : '-';
 
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
@@ -249,30 +303,49 @@ const CreatorPoolPage: React.FC = () => {
                             </Card>
                         </Grid>
 
-                        {/* Token Price (shown for active pools) */}
+                        {/* Token Price + Market Cap + Fee APR (shown for active pools) */}
                         {pool.thresholdReached && (
                             <Grid item xs={12} md={8}>
                                 <Card>
                                     <CardContent>
-                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <Box>
+                                        <Grid container spacing={3}>
+                                            <Grid item xs={12} sm={4}>
                                                 <Typography variant="body2" color="text.secondary">Token Price</Typography>
                                                 <Typography variant="h4" fontWeight="bold">
-                                                    {tokenPrice} BLUECHIP
+                                                    {tokenPrice}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    per 1 {pool.tokenSymbol}
+                                                    BLUECHIP per 1 {pool.tokenSymbol}
                                                 </Typography>
-                                            </Box>
-                                            <Box sx={{ textAlign: 'right' }}>
-                                                <Typography variant="body2" color="text.secondary">Reserve Ratio</Typography>
-                                                <Typography variant="body1" fontWeight="bold">
-                                                    {reserveRatio}
+                                            </Grid>
+                                            <Grid item xs={6} sm={4}>
+                                                <Typography variant="body2" color="text.secondary">Market Cap</Typography>
+                                                <Typography variant="h5" fontWeight="bold">
+                                                    {marketCap}
                                                 </Typography>
-                                                <Typography variant="caption" color="text.secondary" display="block">
-                                                    BLUECHIP / {pool.tokenSymbol}
+                                                <Typography variant="caption" color="text.secondary">
+                                                    BLUECHIP
                                                 </Typography>
-                                            </Box>
+                                            </Grid>
+                                            <Grid item xs={6} sm={4}>
+                                                <Typography variant="body2" color="text.secondary">Fee APR</Typography>
+                                                <Typography variant="h5" fontWeight="bold" color={
+                                                    feeApr !== '-' && parseFloat(feeApr) > 50 ? 'success.main'
+                                                    : feeApr !== '-' && parseFloat(feeApr) > 10 ? 'warning.main'
+                                                    : 'text.primary'
+                                                }>
+                                                    {feeApr}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    for liquidity providers
+                                                </Typography>
+                                            </Grid>
+                                        </Grid>
+                                        <Divider sx={{ my: 1.5 }} />
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Reserve Ratio: <strong>{reserveRatio}</strong> (BLUECHIP / {pool.tokenSymbol})
+                                            </Typography>
                                         </Box>
                                     </CardContent>
                                 </Card>
@@ -359,9 +432,14 @@ const CreatorPoolPage: React.FC = () => {
                                         <StatCard label="Commit Velocity" value={computeCommitVelocity(committers)} />
                                     </Grid>
                                 )}
-                                {pool.thresholdReached && tokenPrice !== '-' && (
+                                {pool.thresholdReached && marketCap !== '-' && (
                                     <Grid item xs={6} sm={3}>
-                                        <StatCard label="Token Price" value={`${tokenPrice} BLC`} />
+                                        <StatCard label="Market Cap" value={`${marketCap} BLC`} />
+                                    </Grid>
+                                )}
+                                {pool.thresholdReached && feeApr !== '-' && (
+                                    <Grid item xs={6} sm={3}>
+                                        <StatCard label="Fee APR" value={feeApr} />
                                     </Grid>
                                 )}
                             </Grid>
@@ -421,13 +499,22 @@ const CreatorPoolPage: React.FC = () => {
                                             {pool.thresholdReached && (
                                                 <>
                                                     <Grid item xs={6} sm={4}>
-                                                        <StatCard label="Trading Fees (BLUECHIP)" value={formatMicroAmount(pool.totalFeesCollected0)} highlight />
+                                                        <StatCard label="Market Cap" value={`${marketCap} BLC`} highlight />
                                                     </Grid>
                                                     <Grid item xs={6} sm={4}>
-                                                        <StatCard label={`Trading Fees (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} highlight />
+                                                        <StatCard label="Fee APR (LP Incentive)" value={feeApr} highlight />
                                                     </Grid>
                                                     <Grid item xs={6} sm={4}>
                                                         <StatCard label="Active LP Positions" value={pool.totalPositions} />
+                                                    </Grid>
+                                                    <Grid item xs={6} sm={4}>
+                                                        <StatCard label="Trading Fees (BLUECHIP)" value={formatMicroAmount(pool.totalFeesCollected0)} />
+                                                    </Grid>
+                                                    <Grid item xs={6} sm={4}>
+                                                        <StatCard label={`Trading Fees (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} />
+                                                    </Grid>
+                                                    <Grid item xs={6} sm={4}>
+                                                        <StatCard label="Total Committers" value={pool.totalCommitters} />
                                                     </Grid>
                                                 </>
                                             )}

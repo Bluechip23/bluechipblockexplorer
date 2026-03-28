@@ -413,6 +413,7 @@ export interface PoolSummary {
     raised: string;
     target: string;
     totalCommitters: number;
+    blockTimeLast: number;
 }
 
 /**
@@ -460,6 +461,7 @@ export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary
             raised,
             target,
             totalCommitters: commits?.total_count || 0,
+            blockTimeLast: poolInfo.pool_state.block_time_last,
         };
     } catch (err) {
         console.error(`Error fetching pool summary for ${poolAddress}:`, err);
