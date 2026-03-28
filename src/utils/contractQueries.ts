@@ -1,21 +1,12 @@
-import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
+// ============================================================
+// MOCK MODE — All queries return fake data for UI preview.
+// No chain connection required.
+// ============================================================
 
-// Singleton client
-let clientPromise: Promise<CosmWasmClient> | null = null;
-
-export function getCosmWasmClient(): Promise<CosmWasmClient> {
-    if (!clientPromise) {
-        clientPromise = CosmWasmClient.connect(rpcEndpoint).catch((err) => {
-            clientPromise = null;
-            throw err;
-        });
-    }
-    return clientPromise;
-}
+const MOCK_WALLET = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 
 // ------------------------------------------------------------------
-// Types mirroring the on-chain contract responses
+// Types (unchanged — same interfaces as production)
 // ------------------------------------------------------------------
 
 export interface PoolStateResponseForFactory {
@@ -126,274 +117,11 @@ export interface PositionsResponse {
     positions: PositionResponse[];
 }
 
-// ------------------------------------------------------------------
-// Query helpers
-// ------------------------------------------------------------------
-
-/**
- * Discover all pool contract addresses by querying CosmWasm for contracts
- * instantiated from the pool code ID.
- */
-export async function discoverPoolContracts(poolCodeId: number): Promise<string[]> {
-    try {
-        const response = await fetch(
-            `${apiEndpoint}/cosmwasm/wasm/v1/code/${poolCodeId}/contracts?pagination.limit=100`
-        );
-        const data = await response.json();
-        return data.contracts || [];
-    } catch (err) {
-        console.error('Error discovering pool contracts:', err);
-        return [];
-    }
-}
-
-/** Query the factory contract config */
-export async function queryFactoryConfig(factoryAddress: string): Promise<FactoryConfig | null> {
-    try {
-        const client = await getCosmWasmClient();
-        const result: FactoryInstantiateResponse = await client.queryContractSmart(
-            factoryAddress,
-            { factory: {} }
-        );
-        return result.factory;
-    } catch (err) {
-        console.error('Error querying factory config:', err);
-        return null;
-    }
-}
-
-/** Query a pool contract's pair info (asset_infos, contract_addr, pool_type) */
-export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, { pair: {} });
-    } catch (err) {
-        console.error(`Error querying pool pair for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query pool state (reserves, liquidity) */
-export async function queryPoolState(poolAddress: string): Promise<PoolStateResponse | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, { pool_state: {} });
-    } catch (err) {
-        console.error(`Error querying pool state for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query pool info (state + fees + positions count) */
-export async function queryPoolInfo(poolAddress: string): Promise<PoolInfoResponse | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, { pool_info: {} });
-    } catch (err) {
-        console.error(`Error querying pool info for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query pool fee state */
-export async function queryFeeState(poolAddress: string): Promise<PoolFeeStateResponse | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, { fee_state: {} });
-    } catch (err) {
-        console.error(`Error querying fee state for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query whether a pool's commit threshold is reached */
-export async function queryCommitStatus(poolAddress: string): Promise<CommitStatus | null> {
-    try {
-        const client = await getCosmWasmClient();
-        const result = await client.queryContractSmart(poolAddress, { is_fully_commited: {} });
-        // The response can be either "fully_committed" (string) or { in_progress: { raised, target } }
-        if (result === 'fully_committed' || result === 'FullyCommitted') {
-            return { fully_committed: {} };
-        }
-        if (typeof result === 'object' && (result.in_progress || result.InProgress)) {
-            const progress = result.in_progress || result.InProgress;
-            return { in_progress: { raised: progress.raised, target: progress.target } };
-        }
-        return result;
-    } catch (err) {
-        console.error(`Error querying commit status for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query pool commits */
-export async function queryPoolCommits(
-    poolAddress: string,
-    limit?: number
-): Promise<PoolCommitResponse | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, {
-            pool_commits: {
-                pool_contract_address: poolAddress,
-                limit: limit || 100,
-            },
-        });
-    } catch (err) {
-        console.error(`Error querying pool commits for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query CW20 token info */
-export async function queryTokenInfo(tokenAddress: string): Promise<CW20TokenInfo | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(tokenAddress, { token_info: {} });
-    } catch (err) {
-        console.error(`Error querying token info for ${tokenAddress}:`, err);
-        return null;
-    }
-}
-
-/** Query positions for a pool */
-export async function queryPositions(
-    poolAddress: string,
-    limit?: number
-): Promise<PositionsResponse | null> {
-    try {
-        const client = await getCosmWasmClient();
-        return await client.queryContractSmart(poolAddress, {
-            positions: { limit: limit || 30 },
-        });
-    } catch (err) {
-        console.error(`Error querying positions for ${poolAddress}:`, err);
-        return null;
-    }
-}
-
-// ------------------------------------------------------------------
-// Higher-level helpers
-// ------------------------------------------------------------------
-
-export function getCreatorTokenAddress(assetInfos: [TokenType, TokenType]): string | null {
-    const creatorToken = assetInfos.find(
-        (asset): asset is { creator_token: { contract_addr: string } } =>
-            asset.creator_token !== undefined
-    );
-    return creatorToken?.creator_token.contract_addr ?? null;
-}
-
-/** Format micro amounts (6 decimals) to human-readable */
-export function formatMicroAmount(amount: string, decimals: number = 6): string {
-    const num = parseInt(amount) / Math.pow(10, decimals);
-    if (isNaN(num)) return '0';
-    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
-
-/** Abbreviate an address: bluechip1abc...xyz */
-export function abbreviateAddress(address: string, prefixLen: number = 12, suffixLen: number = 6): string {
-    if (address.length <= prefixLen + suffixLen + 3) return address;
-    return `${address.slice(0, prefixLen)}...${address.slice(-suffixLen)}`;
-}
-
-// ------------------------------------------------------------------
-// Pool creator detection
-// ------------------------------------------------------------------
-
 export interface PoolCreatorConfig {
     creator_wallet_address: string;
     bluechip_wallet_address?: string;
     commit_fee_bluechip?: string;
     commit_fee_creator?: string;
-}
-
-/**
- * Try to determine the creator wallet for a pool.
- * Strategy:
- *   1. Query pool contract for `config` / `pool_config` (returns commit_fee_info with creator_wallet_address)
- *   2. Fallback: query the contract's instantiation info via REST to find the original sender
- */
-export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
-    const client = await getCosmWasmClient();
-
-    // Attempt 1: query pool config (try common query names)
-    for (const queryMsg of [{ config: {} }, { pool_config: {} }, { get_config: {} }]) {
-        try {
-            const result = await client.queryContractSmart(poolAddress, queryMsg);
-            // The config may directly have creator_wallet_address or be nested in commit_fee_info
-            if (result?.creator_wallet_address) return result.creator_wallet_address;
-            if (result?.commit_fee_info?.creator_wallet_address) return result.commit_fee_info.creator_wallet_address;
-            if (result?.config?.creator_wallet_address) return result.config.creator_wallet_address;
-            if (result?.config?.commit_fee_info?.creator_wallet_address) return result.config.commit_fee_info.creator_wallet_address;
-        } catch {
-            // Query not supported, try next
-        }
-    }
-
-    // Attempt 2: check contract history via REST (the first entry's msg sender is the creator)
-    try {
-        const response = await fetch(
-            `${apiEndpoint}/cosmwasm/wasm/v1/contract/${poolAddress}/history?pagination.limit=1&pagination.reverse=false`
-        );
-        const data = await response.json();
-        const entries = data.entries || [];
-        if (entries.length > 0 && entries[0].msg) {
-            // The instantiate msg may contain creator info
-            try {
-                const msg = typeof entries[0].msg === 'string'
-                    ? JSON.parse(atob(entries[0].msg))
-                    : entries[0].msg;
-                if (msg?.commit_fee_info?.creator_wallet_address) {
-                    return msg.commit_fee_info.creator_wallet_address;
-                }
-                if (msg?.creator_token_address) {
-                    return msg.creator_token_address;
-                }
-            } catch {
-                // msg decode failed
-            }
-        }
-    } catch {
-        // REST fallback failed
-    }
-
-    // Attempt 3: check contract info (admin is often the creator/factory, but sender is in the tx)
-    try {
-        const response = await fetch(
-            `${apiEndpoint}/cosmwasm/wasm/v1/contract/${poolAddress}`
-        );
-        const data = await response.json();
-        // The creator field in contract info is the address that instantiated the contract
-        if (data?.contract_info?.creator) {
-            return data.contract_info.creator;
-        }
-    } catch {
-        // REST fallback failed
-    }
-
-    return null;
-}
-
-/**
- * Given all pools, find those created by a specific wallet address.
- */
-export async function findPoolsByCreator(
-    pools: PoolSummary[],
-    walletAddress: string
-): Promise<PoolSummary[]> {
-    const results: PoolSummary[] = [];
-
-    await Promise.all(
-        pools.map(async (pool) => {
-            const creator = await queryPoolCreator(pool.poolAddress);
-            if (creator === walletAddress) {
-                results.push(pool);
-            }
-        })
-    );
-
-    return results;
 }
 
 export interface PoolSummary {
@@ -416,69 +144,375 @@ export interface PoolSummary {
     blockTimeLast: number;
 }
 
-/**
- * Fetch a full summary for a single pool contract.
- */
-export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
-    try {
-        const [pair, poolInfo, commitStatus, commits] = await Promise.all([
-            queryPoolPair(poolAddress),
-            queryPoolInfo(poolAddress),
-            queryCommitStatus(poolAddress),
-            queryPoolCommits(poolAddress),
-        ]);
+// ------------------------------------------------------------------
+// Mock data
+// ------------------------------------------------------------------
 
-        if (!pair || !poolInfo) return null;
+const now = Date.now();
+const day = 86400000;
 
-        const creatorTokenAddr = getCreatorTokenAddress(pair.asset_infos);
-        let tokenInfo: CW20TokenInfo = { name: 'Unknown', symbol: '???', decimals: 6, total_supply: '0' };
-        if (creatorTokenAddr) {
-            const ti = await queryTokenInfo(creatorTokenAddr);
-            if (ti) tokenInfo = ti;
-        }
+const MOCK_COMMITTERS: CommiterInfo[] = [
+    {
+        wallet: MOCK_WALLET,
+        total_paid_usd: '5200000000',
+        total_paid_bluechip: '41600000000',
+        last_payment_usd: '1200000000',
+        last_payment_bluechip: '9600000000',
+        last_commited: ((now - 2 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
+        total_paid_usd: '8400000000',
+        total_paid_bluechip: '67200000000',
+        last_payment_usd: '3000000000',
+        last_payment_bluechip: '24000000000',
+        last_commited: ((now - 1 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
+        total_paid_usd: '3100000000',
+        total_paid_bluechip: '24800000000',
+        last_payment_usd: '800000000',
+        last_payment_bluechip: '6400000000',
+        last_commited: ((now - 5 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
+        total_paid_usd: '2750000000',
+        total_paid_bluechip: '22000000000',
+        last_payment_usd: '2750000000',
+        last_payment_bluechip: '22000000000',
+        last_commited: ((now - 3 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
+        total_paid_usd: '1500000000',
+        total_paid_bluechip: '12000000000',
+        last_payment_usd: '500000000',
+        last_payment_bluechip: '4000000000',
+        last_commited: ((now - 7 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1hodl6n3m8k2f5wp4xr7qt0jv9ydclhsab3ue2',
+        total_paid_usd: '950000000',
+        total_paid_bluechip: '7600000000',
+        last_payment_usd: '950000000',
+        last_payment_bluechip: '7600000000',
+        last_commited: ((now - 10 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1',
+        total_paid_usd: '680000000',
+        total_paid_bluechip: '5440000000',
+        last_payment_usd: '680000000',
+        last_payment_bluechip: '5440000000',
+        last_commited: ((now - 12 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1tiny3m7k2f8n5wp4xr6qt0jv9ydclhsab1ue4',
+        total_paid_usd: '250000000',
+        total_paid_bluechip: '2000000000',
+        last_payment_usd: '250000000',
+        last_payment_bluechip: '2000000000',
+        last_commited: ((now - 14 * day) * 1000000).toString(),
+    },
+];
 
-        const thresholdReached = commitStatus
-            ? commitStatus.fully_committed !== undefined
-            : false;
+const MOCK_POOLS: PoolSummary[] = [
+    {
+        poolAddress: 'bluechip1pool_alpha_7k3jx9f7tn2m4qp6rz0sdvwcy5e72',
+        creatorTokenAddress: 'bluechip1token_alpha_cw20_contract_addr_placeholder',
+        tokenName: 'Alpha Creator Token',
+        tokenSymbol: 'ALPHA',
+        tokenDecimals: 6,
+        totalSupply: '1000000000000',
+        reserve0: '425000000000',
+        reserve1: '850000000000',
+        totalLiquidity: '600000000000',
+        totalFeesCollected0: '12500000000',
+        totalFeesCollected1: '8200000000',
+        totalPositions: 14,
+        thresholdReached: true,
+        raised: '25000000000',
+        target: '25000000000',
+        totalCommitters: 8,
+        blockTimeLast: Math.floor(now / 1000) - 86400 * 45,
+    },
+    {
+        poolAddress: 'bluechip1pool_beta_4m2n7xp8wk5dv3qt6rj0yfscalh9z',
+        creatorTokenAddress: 'bluechip1token_beta_cw20_contract_addr_placeholder',
+        tokenName: 'Beta Stream',
+        tokenSymbol: 'BETA',
+        tokenDecimals: 6,
+        totalSupply: '500000000000',
+        reserve0: '180000000000',
+        reserve1: '290000000000',
+        totalLiquidity: '230000000000',
+        totalFeesCollected0: '4100000000',
+        totalFeesCollected1: '2800000000',
+        totalPositions: 7,
+        thresholdReached: true,
+        raised: '25000000000',
+        target: '25000000000',
+        totalCommitters: 12,
+        blockTimeLast: Math.floor(now / 1000) - 86400 * 30,
+    },
+    {
+        poolAddress: 'bluechip1pool_gamma_9p4r6t2n7xm3k5wqv8jf0ychlsa',
+        creatorTokenAddress: 'bluechip1token_gamma_cw20_contract_addr_placeholder',
+        tokenName: 'Gamma Gaming',
+        tokenSymbol: 'GAMMA',
+        tokenDecimals: 6,
+        totalSupply: '2000000000000',
+        reserve0: '95000000000',
+        reserve1: '620000000000',
+        totalLiquidity: '150000000000',
+        totalFeesCollected0: '1800000000',
+        totalFeesCollected1: '3500000000',
+        totalPositions: 4,
+        thresholdReached: true,
+        raised: '25000000000',
+        target: '25000000000',
+        totalCommitters: 6,
+        blockTimeLast: Math.floor(now / 1000) - 86400 * 60,
+    },
+    {
+        poolAddress: 'bluechip1pool_delta_2k8f5n3m7wp4xr6qt9jv0ydclhga',
+        creatorTokenAddress: 'bluechip1token_delta_cw20_contract_addr_placeholder',
+        tokenName: 'Delta Music',
+        tokenSymbol: 'DELTA',
+        tokenDecimals: 6,
+        totalSupply: '750000000000',
+        reserve0: '0',
+        reserve1: '0',
+        totalLiquidity: '0',
+        totalFeesCollected0: '0',
+        totalFeesCollected1: '0',
+        totalPositions: 0,
+        thresholdReached: false,
+        raised: '16800000000',
+        target: '25000000000',
+        totalCommitters: 5,
+        blockTimeLast: 0,
+    },
+    {
+        poolAddress: 'bluechip1pool_epsilon_6n3m8k2f5wp4xr7qt0jv9ydclhs',
+        creatorTokenAddress: 'bluechip1token_epsilon_cw20_contract_addr_placeholder',
+        tokenName: 'Epsilon Art',
+        tokenSymbol: 'EPS',
+        tokenDecimals: 6,
+        totalSupply: '300000000000',
+        reserve0: '0',
+        reserve1: '0',
+        totalLiquidity: '0',
+        totalFeesCollected0: '0',
+        totalFeesCollected1: '0',
+        totalPositions: 0,
+        thresholdReached: false,
+        raised: '3200000000',
+        target: '25000000000',
+        totalCommitters: 3,
+        blockTimeLast: 0,
+    },
+];
 
-        const raised = commitStatus?.in_progress?.raised || '0';
-        const target = commitStatus?.in_progress?.target || '25000000000'; // default $25k in micro
+const MOCK_POSITIONS: PositionResponse[] = [
+    {
+        position_id: '1',
+        liquidity: '45000000000',
+        owner: MOCK_WALLET,
+        fee_growth_inside_0_last: '100000',
+        fee_growth_inside_1_last: '80000',
+        created_at: (now - 30 * day) * 1000000,
+        last_fee_collection: (now - 5 * day) * 1000000,
+        unclaimed_fees_0: '320000000',
+        unclaimed_fees_1: '210000000',
+    },
+    {
+        position_id: '2',
+        liquidity: '18000000000',
+        owner: MOCK_WALLET,
+        fee_growth_inside_0_last: '50000',
+        fee_growth_inside_1_last: '40000',
+        created_at: (now - 15 * day) * 1000000,
+        last_fee_collection: (now - 2 * day) * 1000000,
+        unclaimed_fees_0: '95000000',
+        unclaimed_fees_1: '72000000',
+    },
+    {
+        position_id: '3',
+        liquidity: '72000000000',
+        owner: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
+        fee_growth_inside_0_last: '200000',
+        fee_growth_inside_1_last: '160000',
+        created_at: (now - 40 * day) * 1000000,
+        last_fee_collection: (now - 1 * day) * 1000000,
+        unclaimed_fees_0: '580000000',
+        unclaimed_fees_1: '420000000',
+    },
+];
 
-        return {
-            poolAddress,
-            creatorTokenAddress: creatorTokenAddr,
-            tokenName: tokenInfo.name,
-            tokenSymbol: tokenInfo.symbol,
-            tokenDecimals: tokenInfo.decimals,
-            totalSupply: tokenInfo.total_supply,
-            reserve0: poolInfo.pool_state.reserve0,
-            reserve1: poolInfo.pool_state.reserve1,
-            totalLiquidity: poolInfo.pool_state.total_liquidity,
-            totalFeesCollected0: poolInfo.fee_state.total_fees_collected_0,
-            totalFeesCollected1: poolInfo.fee_state.total_fees_collected_1,
-            totalPositions: poolInfo.total_positions,
-            thresholdReached,
-            raised,
-            target,
-            totalCommitters: commits?.total_count || 0,
-            blockTimeLast: poolInfo.pool_state.block_time_last,
-        };
-    } catch (err) {
-        console.error(`Error fetching pool summary for ${poolAddress}:`, err);
-        return null;
-    }
+// Committers for the pre-launch pool (DELTA)
+const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
+    {
+        wallet: MOCK_WALLET,
+        total_paid_usd: '4200000000',
+        total_paid_bluechip: '33600000000',
+        last_payment_usd: '1500000000',
+        last_payment_bluechip: '12000000000',
+        last_commited: ((now - 3 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
+        total_paid_usd: '6500000000',
+        total_paid_bluechip: '52000000000',
+        last_payment_usd: '2000000000',
+        last_payment_bluechip: '16000000000',
+        last_commited: ((now - 1 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
+        total_paid_usd: '3500000000',
+        total_paid_bluechip: '28000000000',
+        last_payment_usd: '3500000000',
+        last_payment_bluechip: '28000000000',
+        last_commited: ((now - 6 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
+        total_paid_usd: '1800000000',
+        total_paid_bluechip: '14400000000',
+        last_payment_usd: '1800000000',
+        last_payment_bluechip: '14400000000',
+        last_commited: ((now - 8 * day) * 1000000).toString(),
+    },
+    {
+        wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
+        total_paid_usd: '800000000',
+        total_paid_bluechip: '6400000000',
+        last_payment_usd: '800000000',
+        last_payment_bluechip: '6400000000',
+        last_commited: ((now - 12 * day) * 1000000).toString(),
+    },
+];
+
+// ------------------------------------------------------------------
+// Mock query functions
+// ------------------------------------------------------------------
+
+function delay(ms: number = 300): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Discover all pools via the factory and fetch summaries for each.
- */
-export async function fetchAllPoolSummaries(factoryAddress: string): Promise<PoolSummary[]> {
-    const config = await queryFactoryConfig(factoryAddress);
-    if (!config) return [];
+function findPool(address: string): PoolSummary | undefined {
+    return MOCK_POOLS.find((p) => p.poolAddress === address);
+}
 
-    const poolAddresses = await discoverPoolContracts(config.create_pool_wasm_contract_id);
-    if (poolAddresses.length === 0) return [];
+export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
+    await delay(400);
+    return findPool(poolAddress) || MOCK_POOLS[0];
+}
 
-    const summaries = await Promise.all(poolAddresses.map(fetchPoolSummary));
-    return summaries.filter((s): s is PoolSummary => s !== null);
+export async function fetchAllPoolSummaries(_factoryAddress: string): Promise<PoolSummary[]> {
+    await delay(600);
+    return [...MOCK_POOLS];
+}
+
+export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitResponse | null> {
+    await delay(200);
+    const pool = findPool(poolAddress);
+    if (pool && (pool.tokenSymbol === 'DELTA' || pool.tokenSymbol === 'EPS')) {
+        return { total_count: MOCK_DELTA_COMMITTERS.length, commiters: MOCK_DELTA_COMMITTERS };
+    }
+    return { total_count: MOCK_COMMITTERS.length, commiters: MOCK_COMMITTERS };
+}
+
+export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
+    await delay(200);
+    const pool = findPool(poolAddress);
+    if (pool && !pool.thresholdReached) return { positions: [] };
+    // First active pool gets positions
+    if (pool === MOCK_POOLS[0]) return { positions: MOCK_POSITIONS };
+    // Second pool: user has one position
+    if (pool === MOCK_POOLS[1]) {
+        return {
+            positions: [{
+                position_id: '4',
+                liquidity: '28000000000',
+                owner: MOCK_WALLET,
+                fee_growth_inside_0_last: '75000',
+                fee_growth_inside_1_last: '60000',
+                created_at: (now - 20 * day) * 1000000,
+                last_fee_collection: (now - 8 * day) * 1000000,
+                unclaimed_fees_0: '180000000',
+                unclaimed_fees_1: '140000000',
+            }],
+        };
+    }
+    return { positions: [] };
+}
+
+export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
+    await delay(100);
+    const pool = findPool(poolAddress);
+    return {
+        asset_infos: [
+            { bluechip: { denom: 'ubluechip' } },
+            { creator_token: { contract_addr: pool?.creatorTokenAddress || 'bluechip1mock_token' } },
+        ],
+        contract_addr: poolAddress,
+        pool_type: { xyk: {} },
+    };
+}
+
+export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
+    await delay(100);
+    const pool = findPool(poolAddress);
+    // The mock user is the creator of ALPHA and DELTA
+    if (pool && (pool.tokenSymbol === 'ALPHA' || pool.tokenSymbol === 'DELTA')) {
+        return MOCK_WALLET;
+    }
+    return 'bluechip1othercreator_not_you_random_addr_placeholder';
+}
+
+export async function findPoolsByCreator(
+    pools: PoolSummary[],
+    walletAddress: string
+): Promise<PoolSummary[]> {
+    await delay(300);
+    // Mock user created ALPHA and DELTA
+    return pools.filter((p) => p.tokenSymbol === 'ALPHA' || p.tokenSymbol === 'DELTA');
+}
+
+// Unused in pages but exported for type compatibility
+export async function queryPoolState(_: string): Promise<PoolStateResponse | null> { return null; }
+export async function queryPoolInfo(_: string): Promise<PoolInfoResponse | null> { return null; }
+export async function queryFeeState(_: string): Promise<PoolFeeStateResponse | null> { return null; }
+export async function queryCommitStatus(_: string): Promise<CommitStatus | null> { return null; }
+export async function queryTokenInfo(_: string): Promise<CW20TokenInfo | null> { return null; }
+export async function queryFactoryConfig(_: string): Promise<FactoryConfig | null> { return null; }
+export async function discoverPoolContracts(_: number): Promise<string[]> { return []; }
+export function getCosmWasmClient(): Promise<any> { return Promise.resolve(null); }
+
+// ------------------------------------------------------------------
+// Helpers (unchanged from production)
+// ------------------------------------------------------------------
+
+export function getCreatorTokenAddress(assetInfos: [TokenType, TokenType]): string | null {
+    const creatorToken = assetInfos.find(
+        (asset): asset is { creator_token: { contract_addr: string } } =>
+            asset.creator_token !== undefined
+    );
+    return creatorToken?.creator_token.contract_addr ?? null;
+}
+
+export function formatMicroAmount(amount: string, decimals: number = 6): string {
+    const num = parseInt(amount) / Math.pow(10, decimals);
+    if (isNaN(num)) return '0';
+    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+export function abbreviateAddress(address: string, prefixLen: number = 12, suffixLen: number = 6): string {
+    if (address.length <= prefixLen + suffixLen + 3) return address;
+    return `${address.slice(0, prefixLen)}...${address.slice(-suffixLen)}`;
 }

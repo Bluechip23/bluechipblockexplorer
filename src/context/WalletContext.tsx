@@ -1,7 +1,14 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { Coin } from '@cosmjs/stargate';
-import { MAINNET_CONFIG } from '../defi/types';
+
+// ============================================================
+// MOCK MODE — This branch uses fake data for UI preview.
+// No real wallet or chain connection needed.
+// ============================================================
+
+const MOCK_ADDRESS = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
+const MOCK_BALANCE: Coin = { denom: 'ubluechip', amount: '84720000000' }; // 84,720 BLUECHIP
 
 interface WalletContextType {
     client: SigningCosmWasmClient | null;
@@ -26,57 +33,24 @@ const WalletContext = createContext<WalletContextType>({
 export const useWallet = () => useContext(WalletContext);
 
 export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-    const [client, setClient] = useState<SigningCosmWasmClient | null>(null);
-    const [address, setAddress] = useState('');
-    const [balance, setBalance] = useState<Coin | null>(null);
-    const [connecting, setConnecting] = useState(false);
-    const [error, setError] = useState('');
+    // Start connected by default for UI preview
+    const [address, setAddress] = useState(MOCK_ADDRESS);
+    const [balance, setBalance] = useState<Coin | null>(MOCK_BALANCE);
+    const [connecting] = useState(false);
+    const [error] = useState('');
 
     const connect = useCallback(async () => {
-        setError('');
-        setConnecting(true);
-
-        if (!window.getOfflineSigner || !window.keplr) {
-            setError('Please install Keplr extension');
-            setConnecting(false);
-            return;
-        }
-
-        try {
-            await window.keplr.experimentalSuggestChain(MAINNET_CONFIG);
-            await window.keplr.enable(MAINNET_CONFIG.chainId);
-
-            const offlineSigner = window.getOfflineSigner(MAINNET_CONFIG.chainId);
-            const accounts = await offlineSigner.getAccounts();
-            const addr = accounts[0].address;
-
-            const signingClient = await SigningCosmWasmClient.connectWithSigner(
-                MAINNET_CONFIG.rpc,
-                offlineSigner
-            );
-
-            const bal = await signingClient.getBalance(addr, 'ubluechip');
-
-            setClient(signingClient);
-            setAddress(addr);
-            setBalance(bal);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Unknown error';
-            setError(`Failed to connect: ${message}`);
-        } finally {
-            setConnecting(false);
-        }
+        setAddress(MOCK_ADDRESS);
+        setBalance(MOCK_BALANCE);
     }, []);
 
     const disconnect = useCallback(() => {
-        setClient(null);
         setAddress('');
         setBalance(null);
-        setError('');
     }, []);
 
     return (
-        <WalletContext.Provider value={{ client, address, balance, connecting, error, connect, disconnect }}>
+        <WalletContext.Provider value={{ client: null, address, balance, connecting, error, connect, disconnect }}>
             {children}
         </WalletContext.Provider>
     );
