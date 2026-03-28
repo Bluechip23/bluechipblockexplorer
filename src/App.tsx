@@ -28,7 +28,8 @@ import IBCTransfersPage from './pages/IBCTransfersPage';
 import ContractVerificationPage from './pages/ContractVerificationPage';
 import IntegrationGuidePage from './pages/IntegrationGuidePage';
 import DefiPage from './defi/DefiPage';
-import PortfolioPage from './pages/PortfolioPage';
+import ChainPortfolioPage from './pages/ChainPortfolioPage';
+import CreatorPortfolioPage from './pages/CreatorPortfolioPage';
 import { ThemeContextProvider } from './context/ThemeContext';
 import { WalletContextProvider } from './context/WalletContext';
 
@@ -65,7 +66,8 @@ function App() {
                     <Route path="/contract-explorer" element={<ContractVerificationPage />} />
                     <Route path="/integration-guide" element={<IntegrationGuidePage />} />
                     <Route path="/defi" element={<DefiPage />} />
-                    <Route path="/portfolio" element={<PortfolioPage />} />
+                    <Route path="/portfolio/chain" element={<ChainPortfolioPage />} />
+                    <Route path="/portfolio/creator" element={<CreatorPortfolioPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
             </Router>
