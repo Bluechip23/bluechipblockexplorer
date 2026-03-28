@@ -45,7 +45,7 @@ export interface FeeCurrencyConfig extends CurrencyConfig {
 }
 
 export const MAINNET_CONFIG: ChainConfig = {
-    chainId: 'bluechip-1',
+    chainId: 'bluechip-3',
     chainName: 'Bluechip Mainnet',
     rpc: 'https://bluechip.rpc.bluechip.link',
     rest: 'https://bluechip.api.bluechip.link',
