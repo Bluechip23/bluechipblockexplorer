@@ -124,6 +124,33 @@ export interface PoolCreatorConfig {
     commit_fee_creator?: string;
 }
 
+export interface TokenHolderEntry {
+    address: string;
+    balance: string;
+}
+
+export interface HolderDistribution {
+    totalHolders: number;
+    whales: number;      // 60,000+ tokens
+    mid: number;         // 100 < balance < 60,000
+    small: number;       // < 100 tokens
+    topHolders: TokenHolderEntry[];
+}
+
+export interface ThresholdAnalytics {
+    thresholdCrossedAt: number | null;   // unix timestamp (seconds) when threshold was hit
+    poolCreatedAt: number | null;        // unix timestamp (seconds) when pool was created
+    daysToThreshold: number | null;      // days from creation to threshold crossing
+    totalCommittersAtThreshold: number;
+    avgCommitValueUsd: string;           // micro USD average per committer
+    totalRaisedUsd: string;
+    walletBreakdown: {
+        whaleCommitters: number;         // $5,000+ USD committed
+        midCommitters: number;           // $500 – $5,000
+        smallCommitters: number;         // < $500
+    };
+}
+
 export interface PoolSummary {
     poolAddress: string;
     creatorTokenAddress: string | null;
@@ -415,6 +442,68 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
 ];
 
 // ------------------------------------------------------------------
+// Mock holder data
+// ------------------------------------------------------------------
+
+const MOCK_ALPHA_HOLDERS: TokenHolderEntry[] = [
+    { address: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n', balance: '185000000000' },  // 185,000 tokens (whale)
+    { address: MOCK_WALLET, balance: '92000000000' },                                            // 92,000 tokens (whale)
+    { address: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6', balance: '68000000000' },     // 68,000 tokens (whale)
+    { address: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3', balance: '45000000000' },    // 45,000 tokens (mid)
+    { address: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e', balance: '28000000000' },    // 28,000 tokens (mid)
+    { address: 'bluechip1hodl6n3m8k2f5wp4xr7qt0jv9ydclhsab3ue2', balance: '15000000000' },     // 15,000 tokens (mid)
+    { address: 'bluechip1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1', balance: '8200000000' },      // 8,200 tokens (mid)
+    { address: 'bluechip1tiny3m7k2f8n5wp4xr6qt0jv9ydclhsab1ue4', balance: '3500000000' },      // 3,500 tokens (mid)
+    { address: 'bluechip1micro1a2b3c4d5e6f7g8h9i0jklmnopqrstuv', balance: '1200000000' },       // 1,200 tokens (mid)
+    { address: 'bluechip1dust2b3c4d5e6f7g8h9i0jklmnopqrstuvwxy', balance: '420000000' },         // 420 tokens (mid)
+    { address: 'bluechip1frag3c4d5e6f7g8h9i0jklmnopqrstuvwxyz1', balance: '75000000' },          // 75 tokens (small)
+    { address: 'bluechip1atom4d5e6f7g8h9i0jklmnopqrstuvwxyz123', balance: '50000000' },           // 50 tokens (small)
+    { address: 'bluechip1nano5e6f7g8h9i0jklmnopqrstuvwxyz12345', balance: '12000000' },           // 12 tokens (small)
+    { address: 'bluechip1pico6f7g8h9i0jklmnopqrstuvwxyz1234567', balance: '5000000' },            // 5 tokens (small)
+    { address: 'bluechip1zepto7g8h9i0jklmnopqrstuvwxyz12345678', balance: '800000' },             // 0.8 tokens (small)
+];
+
+const MOCK_DELTA_HOLDERS: TokenHolderEntry[] = [
+    { address: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n', balance: '120000000000' },
+    { address: MOCK_WALLET, balance: '65000000000' },
+    { address: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3', balance: '32000000000' },
+    { address: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6', balance: '18000000000' },
+    { address: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e', balance: '5000000000' },
+];
+
+// Pre-computed distributions
+const MOCK_ALPHA_DISTRIBUTION: HolderDistribution = {
+    totalHolders: 15,
+    whales: 3,   // 60,000+
+    mid: 7,      // 100 – 60,000
+    small: 5,    // < 100
+    topHolders: MOCK_ALPHA_HOLDERS.slice(0, 5),
+};
+
+const MOCK_DELTA_DISTRIBUTION: HolderDistribution = {
+    totalHolders: 5,
+    whales: 2,
+    mid: 3,
+    small: 0,
+    topHolders: MOCK_DELTA_HOLDERS.slice(0, 5),
+};
+
+// Threshold analytics for pools that have crossed
+const MOCK_ALPHA_THRESHOLD: ThresholdAnalytics = {
+    thresholdCrossedAt: Math.floor(now / 1000) - 86400 * 45,
+    poolCreatedAt: Math.floor(now / 1000) - 86400 * 72,
+    daysToThreshold: 27,
+    totalCommittersAtThreshold: 8,
+    avgCommitValueUsd: '3125000000',   // $3,125 avg per committer
+    totalRaisedUsd: '25000000000',
+    walletBreakdown: {
+        whaleCommitters: 2,   // $5,000+
+        midCommitters: 4,     // $500 – $5,000
+        smallCommitters: 2,   // < $500
+    },
+};
+
+// ------------------------------------------------------------------
 // Mock query functions
 // ------------------------------------------------------------------
 
@@ -500,6 +589,58 @@ export async function findPoolsByCreator(
     await delay(300);
     // Mock user created ALPHA and DELTA
     return pools.filter((p) => p.tokenSymbol === 'ALPHA' || p.tokenSymbol === 'DELTA');
+}
+
+export async function queryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
+    await delay(350);
+    // Match by token address to the right pool
+    if (tokenAddress.includes('alpha')) return MOCK_ALPHA_DISTRIBUTION;
+    if (tokenAddress.includes('delta')) return MOCK_DELTA_DISTRIBUTION;
+    // Default fallback for any other pool
+    return MOCK_ALPHA_DISTRIBUTION;
+}
+
+export async function queryThresholdAnalytics(
+    poolAddress: string,
+    committers: CommiterInfo[]
+): Promise<ThresholdAnalytics | null> {
+    await delay(200);
+    const pool = findPool(poolAddress);
+    if (!pool) return null;
+
+    if (pool.thresholdReached) {
+        // For crossed pools, return pre-computed analytics
+        if (pool.tokenSymbol === 'ALPHA') return MOCK_ALPHA_THRESHOLD;
+        // Generic crossed pool
+        return {
+            ...MOCK_ALPHA_THRESHOLD,
+            totalCommittersAtThreshold: pool.totalCommitters,
+        };
+    }
+
+    // Pre-threshold: compute live progress from committer data
+    const totalUsd = committers.reduce((s, c) => s + parseInt(c.total_paid_usd || '0'), 0);
+    const avgUsd = committers.length > 0 ? Math.floor(totalUsd / committers.length) : 0;
+
+    const WHALE_USD = 5000_000_000;  // $5,000 in micro
+    const MID_USD = 500_000_000;     // $500 in micro
+
+    return {
+        thresholdCrossedAt: null,
+        poolCreatedAt: Math.floor(now / 1000) - 86400 * 90,
+        daysToThreshold: null,
+        totalCommittersAtThreshold: committers.length,
+        avgCommitValueUsd: avgUsd.toString(),
+        totalRaisedUsd: pool.raised,
+        walletBreakdown: {
+            whaleCommitters: committers.filter(c => parseInt(c.total_paid_usd) >= WHALE_USD).length,
+            midCommitters: committers.filter(c => {
+                const v = parseInt(c.total_paid_usd);
+                return v >= MID_USD && v < WHALE_USD;
+            }).length,
+            smallCommitters: committers.filter(c => parseInt(c.total_paid_usd) < MID_USD).length,
+        },
+    };
 }
 
 // Unused in pages but exported for type compatibility
