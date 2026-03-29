@@ -142,6 +142,8 @@ export interface PoolSummary {
     target: string;
     totalCommitters: number;
     blockTimeLast: number;
+    createdAtBlock: number;
+    thresholdCrossedAtBlock: number | null;
 }
 
 // ------------------------------------------------------------------
@@ -240,6 +242,8 @@ const MOCK_POOLS: PoolSummary[] = [
         target: '25000000000',
         totalCommitters: 8,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 45,
+        createdAtBlock: 1_024_300,
+        thresholdCrossedAtBlock: 1_187_650,
     },
     {
         poolAddress: 'bluechip1pool_beta_4m2n7xp8wk5dv3qt6rj0yfscalh9z',
@@ -259,6 +263,8 @@ const MOCK_POOLS: PoolSummary[] = [
         target: '25000000000',
         totalCommitters: 12,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 30,
+        createdAtBlock: 1_310_800,
+        thresholdCrossedAtBlock: 1_425_100,
     },
     {
         poolAddress: 'bluechip1pool_gamma_9p4r6t2n7xm3k5wqv8jf0ychlsa',
@@ -278,6 +284,8 @@ const MOCK_POOLS: PoolSummary[] = [
         target: '25000000000',
         totalCommitters: 6,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 60,
+        createdAtBlock: 892_150,
+        thresholdCrossedAtBlock: 1_053_400,
     },
     {
         poolAddress: 'bluechip1pool_delta_2k8f5n3m7wp4xr6qt9jv0ydclhga',
@@ -297,6 +305,8 @@ const MOCK_POOLS: PoolSummary[] = [
         target: '25000000000',
         totalCommitters: 5,
         blockTimeLast: 0,
+        createdAtBlock: 1_502_900,
+        thresholdCrossedAtBlock: null,
     },
     {
         poolAddress: 'bluechip1pool_epsilon_6n3m8k2f5wp4xr7qt0jv9ydclhs',
@@ -316,6 +326,8 @@ const MOCK_POOLS: PoolSummary[] = [
         target: '25000000000',
         totalCommitters: 3,
         blockTimeLast: 0,
+        createdAtBlock: 1_580_200,
+        thresholdCrossedAtBlock: null,
     },
 ];
 

@@ -18,6 +18,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import SyncAltIcon from '@mui/icons-material/SyncAlt';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 import {
     CommiterInfo,
     formatMicroAmount,
@@ -171,6 +172,26 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         </Typography>
                     ) : (
                         <Box>
+                            {/* Pool Created */}
+                            <MetricRow
+                                icon={<ViewInArIcon color="action" />}
+                                label="Pool Created"
+                                value={`Block #${pool.createdAtBlock.toLocaleString()}`}
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
+
+                            {/* Threshold Crossed */}
+                            <MetricRow
+                                icon={<ViewInArIcon color={pool.thresholdCrossedAtBlock ? 'success' : 'disabled'} />}
+                                label="Threshold Crossed"
+                                value={pool.thresholdCrossedAtBlock ? `Block #${pool.thresholdCrossedAtBlock.toLocaleString()}` : 'Pending'}
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
+
                             {/* Token Price */}
                             <MetricRow
                                 icon={<TrendingUpIcon color="primary" />}
