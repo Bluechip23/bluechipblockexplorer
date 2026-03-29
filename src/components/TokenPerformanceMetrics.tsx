@@ -1,28 +1,45 @@
 import React, { useEffect, useState } from 'react';
 import {
     Box,
-    Button,
     Card,
     CardContent,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
+    Chip,
+    Divider,
     Grid,
+    LinearProgress,
     MenuItem,
     Select,
     SelectChangeEvent,
+    Skeleton,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
     Typography,
 } from '@mui/material';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
-import SyncAltIcon from '@mui/icons-material/SyncAlt';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import PieChartIcon from '@mui/icons-material/PieChart';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
+import WaterDropIcon from '@mui/icons-material/WaterDrop';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import LockIcon from '@mui/icons-material/Lock';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import {
+    abbreviateAddress,
     CommiterInfo,
     formatMicroAmount,
+    HolderDistribution,
     PoolSummary,
+    queryHolderDistribution,
     queryPoolCommits,
+    queryThresholdAnalytics,
+    ThresholdAnalytics,
 } from '../utils/contractQueries';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -58,6 +75,26 @@ function computeCurrentPrice(pool: PoolSummary): string {
     return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
+function computeCreatorFeeRevenue(pool: PoolSummary): string {
+    // Creator earns 5% of commit fees (commit_fee_creator = 0.05)
+    const fee0 = parseInt(pool.totalFeesCollected0 || '0');
+    const fee1 = parseInt(pool.totalFeesCollected1 || '0');
+    const creatorShare = Math.floor((fee0 + fee1) * 0.05);
+    return creatorShare.toString();
+}
+
+function computeCirculatingSupply(pool: PoolSummary): {
+    circulating: number;
+    locked: number;
+    total: number;
+} {
+    const total = parseInt(pool.totalSupply || '0');
+    // Locked = tokens sitting in the pool reserves (reserve1 = creator token side)
+    const locked = parseInt(pool.reserve1 || '0');
+    const circulating = Math.max(0, total - locked);
+    return { circulating, locked, total };
+}
+
 // ─── Metric Row ─────────────────────────────────────────────────────────────
 
 const MetricRow: React.FC<{
@@ -65,10 +102,10 @@ const MetricRow: React.FC<{
     label: string;
     value: string | number;
     subtext?: string;
-    period: TimePeriod;
-    onPeriodChange: (p: TimePeriod) => void;
+    period?: TimePeriod;
+    onPeriodChange?: (p: TimePeriod) => void;
     showDropdown?: boolean;
-}> = ({ icon, label, value, subtext, period, onPeriodChange, showDropdown = true }) => (
+}> = ({ icon, label, value, subtext, period, onPeriodChange, showDropdown = false }) => (
     <Box
         sx={{
             display: 'flex',
@@ -98,7 +135,7 @@ const MetricRow: React.FC<{
             <Typography variant="h6" fontWeight="bold">
                 {typeof value === 'number' ? value.toLocaleString() : value}
             </Typography>
-            {showDropdown && (
+            {showDropdown && period && onPeriodChange && (
                 <Select
                     size="small"
                     value={period}
@@ -114,6 +151,146 @@ const MetricRow: React.FC<{
     </Box>
 );
 
+// ─── Section Header ─────────────────────────────────────────────────────────
+
+const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pt: 2, pb: 1 }}>
+        {icon}
+        <Typography variant="subtitle2" fontWeight="bold" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            {title}
+        </Typography>
+    </Box>
+);
+
+// ─── Holder Distribution Bar ────────────────────────────────────────────────
+
+const HolderBar: React.FC<{ distribution: HolderDistribution }> = ({ distribution }) => {
+    const { whales, mid, small, totalHolders } = distribution;
+    if (totalHolders === 0) return null;
+    const whalePct = (whales / totalHolders) * 100;
+    const midPct = (mid / totalHolders) * 100;
+    const smallPct = (small / totalHolders) * 100;
+
+    return (
+        <Box sx={{ px: 2, pb: 1.5 }}>
+            <Box sx={{ display: 'flex', height: 12, borderRadius: 1, overflow: 'hidden', mb: 1 }}>
+                <Box sx={{ width: `${whalePct}%`, bgcolor: '#f44336', minWidth: whalePct > 0 ? 4 : 0 }} />
+                <Box sx={{ width: `${midPct}%`, bgcolor: '#ff9800', minWidth: midPct > 0 ? 4 : 0 }} />
+                <Box sx={{ width: `${smallPct}%`, bgcolor: '#4caf50', minWidth: smallPct > 0 ? 4 : 0 }} />
+            </Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f44336' }} />
+                    <Typography variant="caption">Whales (60K+): <strong>{whales}</strong></Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#ff9800' }} />
+                    <Typography variant="caption">Mid (100–60K): <strong>{mid}</strong></Typography>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#4caf50' }} />
+                    <Typography variant="caption">Small (&lt;100): <strong>{small}</strong></Typography>
+                </Box>
+            </Box>
+        </Box>
+    );
+};
+
+// ─── Threshold Progress Section ─────────────────────────────────────────────
+
+const ThresholdSection: React.FC<{
+    pool: PoolSummary;
+    analytics: ThresholdAnalytics | null;
+    committers: CommiterInfo[];
+}> = ({ pool, analytics, committers }) => {
+    const raised = parseInt(pool.raised || '0');
+    const target = parseInt(pool.target || '0');
+    const progressPct = target > 0 ? Math.min(100, (raised / target) * 100) : 0;
+
+    if (!pool.thresholdReached) {
+        // ── Pre-threshold: show progress bar and live stats ──
+        const avgCommitUsd = committers.length > 0
+            ? Math.floor(raised / committers.length)
+            : 0;
+
+        return (
+            <Box>
+                <SectionHeader icon={<RocketLaunchIcon fontSize="small" color="warning" />} title="Threshold Progress" />
+                <Box sx={{ px: 2, pb: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2" fontWeight="bold">
+                            ${formatMicroAmount(raised.toString())} raised
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            ${formatMicroAmount(target.toString())} target
+                        </Typography>
+                    </Box>
+                    <LinearProgress
+                        variant="determinate"
+                        value={progressPct}
+                        sx={{ height: 10, borderRadius: 1, mb: 1 }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                        {progressPct.toFixed(1)}% funded — {committers.length} committer{committers.length !== 1 ? 's' : ''}
+                    </Typography>
+                </Box>
+                {analytics && (
+                    <Box>
+                        <MetricRow
+                            icon={<MonetizationOnIcon fontSize="small" color="action" />}
+                            label="Avg Commit Value"
+                            value={`$${formatMicroAmount(avgCommitUsd.toString())}`}
+                        />
+                        <MetricRow
+                            icon={<GroupIcon fontSize="small" color="action" />}
+                            label="Committer Breakdown"
+                            value={`${analytics.walletBreakdown.whaleCommitters}W / ${analytics.walletBreakdown.midCommitters}M / ${analytics.walletBreakdown.smallCommitters}S`}
+                            subtext="Whale ($5K+) / Mid ($500–$5K) / Small (<$500)"
+                        />
+                    </Box>
+                )}
+            </Box>
+        );
+    }
+
+    // ── Post-threshold: show crossing analytics ──
+    return (
+        <Box>
+            <SectionHeader icon={<CheckCircleIcon fontSize="small" color="success" />} title="Threshold Achieved" />
+            <MetricRow
+                icon={<EmojiEventsIcon fontSize="small" sx={{ color: '#ffd700' }} />}
+                label="Total Raised"
+                value={`$${formatMicroAmount(pool.raised)}`}
+                subtext={`Target: $${formatMicroAmount(pool.target)}`}
+            />
+            {analytics && (
+                <>
+                    {analytics.daysToThreshold !== null && (
+                        <MetricRow
+                            icon={<RocketLaunchIcon fontSize="small" color="success" />}
+                            label="Time to Threshold"
+                            value={`${analytics.daysToThreshold} days`}
+                            subtext="From pool creation to fully funded"
+                        />
+                    )}
+                    <MetricRow
+                        icon={<MonetizationOnIcon fontSize="small" color="action" />}
+                        label="Avg Commit to Cross"
+                        value={`$${formatMicroAmount(analytics.avgCommitValueUsd)}`}
+                        subtext={`${analytics.totalCommittersAtThreshold} committers`}
+                    />
+                    <MetricRow
+                        icon={<GroupIcon fontSize="small" color="action" />}
+                        label="Committer Breakdown"
+                        value={`${analytics.walletBreakdown.whaleCommitters}W / ${analytics.walletBreakdown.midCommitters}M / ${analytics.walletBreakdown.smallCommitters}S`}
+                        subtext="Whale ($5K+) / Mid ($500–$5K) / Small (<$500)"
+                    />
+                </>
+            )}
+        </Box>
+    );
+};
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 interface TokenPerformanceMetricsProps {
@@ -123,111 +300,258 @@ interface TokenPerformanceMetricsProps {
 const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool }) => {
     const [period, setPeriod] = useState<TimePeriod>('1m');
     const [committers, setCommitters] = useState<CommiterInfo[]>([]);
+    const [holders, setHolders] = useState<HolderDistribution | null>(null);
+    const [thresholdAnalytics, setThresholdAnalytics] = useState<ThresholdAnalytics | null>(null);
     const [loading, setLoading] = useState(true);
-    const [churnModalOpen, setChurnModalOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
         async function load() {
             setLoading(true);
             try {
-                const data = await queryPoolCommits(pool.poolAddress);
-                if (!cancelled) setCommitters(data?.commiters || []);
+                const [commitData, holderData] = await Promise.all([
+                    queryPoolCommits(pool.poolAddress),
+                    pool.creatorTokenAddress
+                        ? queryHolderDistribution(pool.creatorTokenAddress)
+                        : Promise.resolve(null),
+                ]);
+
+                if (cancelled) return;
+                const fetchedCommitters = commitData?.commiters || [];
+                setCommitters(fetchedCommitters);
+                setHolders(holderData);
+
+                const threshold = await queryThresholdAnalytics(pool.poolAddress, fetchedCommitters);
+                if (!cancelled) setThresholdAnalytics(threshold);
             } catch (err) {
-                console.error('Error loading committers for metrics:', err);
+                console.error('Error loading performance metrics:', err);
             } finally {
                 if (!cancelled) setLoading(false);
             }
         }
         load();
         return () => { cancelled = true; };
-    }, [pool.poolAddress]);
+    }, [pool.poolAddress, pool.creatorTokenAddress]);
 
+    // ── Computed values ──
     const currentPrice = computeCurrentPrice(pool);
     const activeSubscribers = getActiveSubscribers(committers, period);
     const totalSubscribers = pool.totalCommitters;
+    const creatorFeeRevenue = computeCreatorFeeRevenue(pool);
+    const supply = computeCirculatingSupply(pool);
 
-    return (
-        <>
+    const avgCommitSize = committers.length > 0
+        ? Math.floor(
+              committers.reduce((s, c) => s + parseInt(c.total_paid_usd || '0'), 0) / committers.length
+          ).toString()
+        : '0';
+
+    const avgLiquidityPosition = pool.totalPositions > 0
+        ? Math.floor(parseInt(pool.totalLiquidity || '0') / pool.totalPositions).toString()
+        : '0';
+
+    const totalFeesProduced = (
+        parseInt(pool.totalFeesCollected0 || '0') + parseInt(pool.totalFeesCollected1 || '0')
+    ).toString();
+
+    if (loading) {
+        return (
             <Card variant="outlined">
-                <CardContent sx={{ pb: '8px !important' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                            {pool.tokenSymbol} — Performance
-                        </Typography>
-                        <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => setChurnModalOpen(true)}
-                            startIcon={<SyncAltIcon />}
-                        >
-                            See Churn
-                        </Button>
-                    </Box>
-
-                    {loading ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                            Loading metrics...
-                        </Typography>
-                    ) : (
-                        <Box>
-                            {/* Token Price */}
-                            <MetricRow
-                                icon={<TrendingUpIcon color="primary" />}
-                                label="Token Price"
-                                value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-launch'}
-                                subtext="Price change tracking coming soon"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
-
-                            {/* Active Subscribers */}
-                            <MetricRow
-                                icon={<PersonAddIcon color="success" />}
-                                label="Active Subscribers"
-                                value={activeSubscribers}
-                                subtext="Wallets with commit activity in period"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                            />
-
-                            {/* Total Subscribers */}
-                            <MetricRow
-                                icon={<GroupIcon color="info" />}
-                                label="Total Subscribers"
-                                value={totalSubscribers}
-                                subtext="All-time unique committers"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
-                        </Box>
-                    )}
+                <CardContent>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>
+                        {pool.tokenSymbol} — Performance
+                    </Typography>
+                    <Skeleton variant="rectangular" height={300} sx={{ borderRadius: 1 }} />
                 </CardContent>
             </Card>
+        );
+    }
 
-            {/* Churn Modal — Coming Soon */}
-            <Dialog open={churnModalOpen} onClose={() => setChurnModalOpen(false)} maxWidth="xs" fullWidth>
-                <DialogTitle>Subscriber Churn</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ textAlign: 'center', py: 3 }}>
-                        <SyncAltIcon sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
-                        <Typography variant="h6" gutterBottom>
-                            Coming Soon
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                            Churn analysis will compare subscriber wallets across time periods to identify
-                            repeat subscribers, new subscribers, and lost subscribers. This requires
-                            historical transaction indexing which is currently in development.
-                        </Typography>
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setChurnModalOpen(false)}>Close</Button>
-                </DialogActions>
-            </Dialog>
-        </>
+    return (
+        <Card variant="outlined">
+            <CardContent sx={{ pb: '8px !important' }}>
+                {/* ── Header ── */}
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                        {pool.tokenSymbol} — Performance
+                    </Typography>
+                    <Chip
+                        label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                        color={pool.thresholdReached ? 'success' : 'warning'}
+                        size="small"
+                        variant="outlined"
+                    />
+                </Box>
+
+                {/* ── Price & Subscribers ── */}
+                <SectionHeader icon={<TrendingUpIcon fontSize="small" color="primary" />} title="Price & Activity" />
+                <MetricRow
+                    icon={<TrendingUpIcon color="primary" />}
+                    label="Token Price"
+                    value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-launch'}
+                />
+                <MetricRow
+                    icon={<PersonAddIcon color="success" />}
+                    label="Active Subscribers"
+                    value={activeSubscribers}
+                    subtext="Wallets with commit activity in period"
+                    period={period}
+                    onPeriodChange={setPeriod}
+                    showDropdown
+                />
+                <MetricRow
+                    icon={<GroupIcon color="info" />}
+                    label="Total Subscribers"
+                    value={totalSubscribers}
+                    subtext="All-time unique committers"
+                />
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* ── Holder Distribution ── */}
+                {holders && (
+                    <>
+                        <SectionHeader icon={<PieChartIcon fontSize="small" color="secondary" />} title="Holder Distribution" />
+                        <MetricRow
+                            icon={<GroupIcon color="secondary" />}
+                            label="Token Holders"
+                            value={holders.totalHolders}
+                        />
+                        <HolderBar distribution={holders} />
+
+                        {/* Top Holders Table */}
+                        {holders.topHolders.length > 0 && (
+                            <Box sx={{ px: 2, pb: 1.5 }}>
+                                <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+                                    Top Holders
+                                </Typography>
+                                <TableContainer sx={{ maxHeight: 200 }}>
+                                    <Table size="small" stickyHeader>
+                                        <TableHead>
+                                            <TableRow>
+                                                <TableCell sx={{ py: 0.5 }}>#</TableCell>
+                                                <TableCell sx={{ py: 0.5 }}>Wallet</TableCell>
+                                                <TableCell align="right" sx={{ py: 0.5 }}>Balance</TableCell>
+                                                <TableCell align="right" sx={{ py: 0.5 }}>% Supply</TableCell>
+                                            </TableRow>
+                                        </TableHead>
+                                        <TableBody>
+                                            {holders.topHolders.map((h, i) => {
+                                                const bal = parseInt(h.balance);
+                                                const totalSupply = parseInt(pool.totalSupply || '1');
+                                                const pctSupply = totalSupply > 0
+                                                    ? ((bal / totalSupply) * 100).toFixed(2)
+                                                    : '0';
+                                                const tierColor = bal >= 60_000_000_000 ? '#f44336'
+                                                    : bal >= 100_000_000 ? '#ff9800'
+                                                    : '#4caf50';
+                                                return (
+                                                    <TableRow key={h.address} hover>
+                                                        <TableCell sx={{ py: 0.5 }}>{i + 1}</TableCell>
+                                                        <TableCell sx={{ py: 0.5, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: tierColor, flexShrink: 0 }} />
+                                                                {abbreviateAddress(h.address)}
+                                                            </Box>
+                                                        </TableCell>
+                                                        <TableCell align="right" sx={{ py: 0.5 }}>
+                                                            {formatMicroAmount(h.balance, pool.tokenDecimals)}
+                                                        </TableCell>
+                                                        <TableCell align="right" sx={{ py: 0.5 }}>{pctSupply}%</TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                            </Box>
+                        )}
+
+                        <Divider sx={{ my: 1 }} />
+                    </>
+                )}
+
+                {/* ── Supply Breakdown ── */}
+                <SectionHeader icon={<LockIcon fontSize="small" color="action" />} title="Supply" />
+                <Box sx={{ px: 2, pb: 1.5 }}>
+                    <Grid container spacing={1}>
+                        <Grid item xs={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="caption" color="text.secondary">Total</Typography>
+                                <Typography variant="body2" fontWeight="bold">
+                                    {formatMicroAmount(supply.total.toString(), pool.tokenDecimals)}
+                                </Typography>
+                            </Box>
+                        </Grid>
+                        <Grid item xs={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="caption" color="text.secondary">Circulating</Typography>
+                                <Typography variant="body2" fontWeight="bold" color="success.main">
+                                    {formatMicroAmount(supply.circulating.toString(), pool.tokenDecimals)}
+                                </Typography>
+                            </Box>
+                        </Grid>
+                        <Grid item xs={4}>
+                            <Box sx={{ textAlign: 'center' }}>
+                                <Typography variant="caption" color="text.secondary">Locked in Pool</Typography>
+                                <Typography variant="body2" fontWeight="bold" color="warning.main">
+                                    {formatMicroAmount(supply.locked.toString(), pool.tokenDecimals)}
+                                </Typography>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                    {supply.total > 0 && (
+                        <Box sx={{ display: 'flex', height: 8, borderRadius: 1, overflow: 'hidden', mt: 1 }}>
+                            <Box sx={{ width: `${(supply.circulating / supply.total) * 100}%`, bgcolor: 'success.main' }} />
+                            <Box sx={{ width: `${(supply.locked / supply.total) * 100}%`, bgcolor: 'warning.main' }} />
+                        </Box>
+                    )}
+                </Box>
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* ── Fees & Revenue ── */}
+                <SectionHeader icon={<MonetizationOnIcon fontSize="small" color="success" />} title="Fees & Revenue" />
+                <MetricRow
+                    icon={<AccountBalanceIcon color="success" />}
+                    label="Total Fees Produced"
+                    value={formatMicroAmount(totalFeesProduced)}
+                    subtext={`BLUECHIP: ${formatMicroAmount(pool.totalFeesCollected0)} | Token: ${formatMicroAmount(pool.totalFeesCollected1)}`}
+                />
+                <MetricRow
+                    icon={<MonetizationOnIcon sx={{ color: '#ffd700' }} />}
+                    label="Creator Fee Revenue"
+                    value={formatMicroAmount(creatorFeeRevenue)}
+                    subtext="5% of commit fees earned by creator"
+                />
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* ── Pool Metrics ── */}
+                <SectionHeader icon={<WaterDropIcon fontSize="small" color="info" />} title="Pool Metrics" />
+                <MetricRow
+                    icon={<MonetizationOnIcon color="action" />}
+                    label="Avg Commitment Size"
+                    value={`$${formatMicroAmount(avgCommitSize)}`}
+                    subtext={`Across ${committers.length} committer${committers.length !== 1 ? 's' : ''}`}
+                />
+                <MetricRow
+                    icon={<WaterDropIcon color="info" />}
+                    label="Avg Liquidity Position"
+                    value={formatMicroAmount(avgLiquidityPosition)}
+                    subtext={`${pool.totalPositions} position${pool.totalPositions !== 1 ? 's' : ''} in pool`}
+                />
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* ── Threshold Section ── */}
+                <ThresholdSection
+                    pool={pool}
+                    analytics={thresholdAnalytics}
+                    committers={committers}
+                />
+            </CardContent>
+        </Card>
     );
 };
 
