@@ -152,6 +152,7 @@ const now = Date.now();
 const day = 86400000;
 
 const MOCK_COMMITTERS: CommiterInfo[] = [
+    // ── Active within last 1 month (3 wallets) ──
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '5200000000',
@@ -174,15 +175,16 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '24800000000',
         last_payment_usd: '800000000',
         last_payment_bluechip: '6400000000',
-        last_commited: ((now - 5 * day) * 1000000).toString(),
+        last_commited: ((now - 18 * day) * 1000000).toString(),
     },
+    // ── Active between 1–3 months ago (3 wallets) ──
     {
         wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
         total_paid_usd: '2750000000',
         total_paid_bluechip: '22000000000',
         last_payment_usd: '2750000000',
         last_payment_bluechip: '22000000000',
-        last_commited: ((now - 3 * day) * 1000000).toString(),
+        last_commited: ((now - 45 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
@@ -190,7 +192,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '12000000000',
         last_payment_usd: '500000000',
         last_payment_bluechip: '4000000000',
-        last_commited: ((now - 7 * day) * 1000000).toString(),
+        last_commited: ((now - 60 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1hodl6n3m8k2f5wp4xr7qt0jv9ydclhsab3ue2',
@@ -198,15 +200,16 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '7600000000',
         last_payment_usd: '950000000',
         last_payment_bluechip: '7600000000',
-        last_commited: ((now - 10 * day) * 1000000).toString(),
+        last_commited: ((now - 75 * day) * 1000000).toString(),
     },
+    // ── Active between 3–12 months ago (2 wallets) ──
     {
         wallet: 'bluechip1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1',
         total_paid_usd: '680000000',
         total_paid_bluechip: '5440000000',
         last_payment_usd: '680000000',
         last_payment_bluechip: '5440000000',
-        last_commited: ((now - 12 * day) * 1000000).toString(),
+        last_commited: ((now - 150 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1tiny3m7k2f8n5wp4xr6qt0jv9ydclhsab1ue4',
@@ -214,7 +217,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '2000000000',
         last_payment_usd: '250000000',
         last_payment_bluechip: '2000000000',
-        last_commited: ((now - 14 * day) * 1000000).toString(),
+        last_commited: ((now - 300 * day) * 1000000).toString(),
     },
 ];
 
@@ -354,6 +357,7 @@ const MOCK_POSITIONS: PositionResponse[] = [
 
 // Committers for the pre-launch pool (DELTA)
 const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
+    // ── Active within last 1 month (2 wallets) ──
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '4200000000',
@@ -370,13 +374,14 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         last_payment_bluechip: '16000000000',
         last_commited: ((now - 1 * day) * 1000000).toString(),
     },
+    // ── Active between 1–3 months ago (2 wallets) ──
     {
         wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
         total_paid_usd: '3500000000',
         total_paid_bluechip: '28000000000',
         last_payment_usd: '3500000000',
         last_payment_bluechip: '28000000000',
-        last_commited: ((now - 6 * day) * 1000000).toString(),
+        last_commited: ((now - 40 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
@@ -384,15 +389,16 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '14400000000',
         last_payment_usd: '1800000000',
         last_payment_bluechip: '14400000000',
-        last_commited: ((now - 8 * day) * 1000000).toString(),
+        last_commited: ((now - 55 * day) * 1000000).toString(),
     },
+    // ── Active between 3–12 months ago (1 wallet) ──
     {
         wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
         total_paid_usd: '800000000',
         total_paid_bluechip: '6400000000',
         last_payment_usd: '800000000',
         last_payment_bluechip: '6400000000',
-        last_commited: ((now - 12 * day) * 1000000).toString(),
+        last_commited: ((now - 200 * day) * 1000000).toString(),
     },
 ];
 
