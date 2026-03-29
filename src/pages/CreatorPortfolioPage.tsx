@@ -28,6 +28,7 @@ import GeneralStats from '../navigation/GeneralStats';
 import { useWallet } from '../context/WalletContext';
 import PoolActionMenu from '../components/actions/PoolActionMenu';
 import CreatePoolModal from '../components/actions/CreatePoolModal';
+import TokenPerformanceMetrics from '../components/TokenPerformanceMetrics';
 import {
     fetchAllPoolSummaries,
     findPoolsByCreator,
@@ -183,6 +184,21 @@ const CreatorPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={4}><StatCard label="Fees Earned (BLUECHIP)" value={formatMicroAmount(totalFeesEarned0.toString())} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} /></Grid>
                             </Grid>
+
+                            {/* Token Performance Metrics */}
+                            <Card>
+                                <CardContent sx={{ pb: 1 }}>
+                                    <Typography variant="h6" fontWeight="bold">Token Performance</Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        Activity and pricing metrics for each of your tokens.
+                                    </Typography>
+                                </CardContent>
+                                <CardContent sx={{ pt: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                    {createdPools.map((pool) => (
+                                        <TokenPerformanceMetrics key={pool.poolAddress} pool={pool} />
+                                    ))}
+                                </CardContent>
+                            </Card>
 
                             {/* Created pools table */}
                             <Card>
