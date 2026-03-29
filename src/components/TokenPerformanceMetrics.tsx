@@ -22,6 +22,8 @@ import {
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import GroupIcon from '@mui/icons-material/Group';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import SyncAltIcon from '@mui/icons-material/SyncAlt';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import PieChartIcon from '@mui/icons-material/PieChart';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
@@ -367,6 +369,63 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
         );
     }
 
+                    {loading ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                            Loading metrics...
+                        </Typography>
+                    ) : (
+                        <Box>
+                            {/* Pool Created */}
+                            <MetricRow
+                                icon={<ViewInArIcon color="action" />}
+                                label="Pool Created"
+                                value={`Block #${pool.createdAtBlock.toLocaleString()}`}
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
+
+                            {/* Threshold Crossed */}
+                            <MetricRow
+                                icon={<ViewInArIcon color={pool.thresholdCrossedAtBlock ? 'success' : 'disabled'} />}
+                                label="Threshold Crossed"
+                                value={pool.thresholdCrossedAtBlock ? `Block #${pool.thresholdCrossedAtBlock.toLocaleString()}` : 'Pending'}
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
+
+                            {/* Token Price */}
+                            <MetricRow
+                                icon={<TrendingUpIcon color="primary" />}
+                                label="Token Price"
+                                value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-launch'}
+                                subtext="Price change tracking coming soon"
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
+
+                            {/* Active Subscribers */}
+                            <MetricRow
+                                icon={<PersonAddIcon color="success" />}
+                                label="Active Subscribers"
+                                value={activeSubscribers}
+                                subtext="Wallets with commit activity in period"
+                                period={period}
+                                onPeriodChange={setPeriod}
+                            />
+
+                            {/* Total Subscribers */}
+                            <MetricRow
+                                icon={<GroupIcon color="info" />}
+                                label="Total Subscribers"
+                                value={totalSubscribers}
+                                subtext="All-time unique committers"
+                                period={period}
+                                onPeriodChange={setPeriod}
+                                showDropdown={false}
+                            />
     return (
         <Card variant="outlined">
             <CardContent sx={{ pb: '8px !important' }}>
