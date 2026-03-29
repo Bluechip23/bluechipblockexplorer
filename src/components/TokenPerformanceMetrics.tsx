@@ -369,63 +369,6 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
         );
     }
 
-                    {loading ? (
-                        <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-                            Loading metrics...
-                        </Typography>
-                    ) : (
-                        <Box>
-                            {/* Pool Created */}
-                            <MetricRow
-                                icon={<ViewInArIcon color="action" />}
-                                label="Pool Created"
-                                value={`Block #${pool.createdAtBlock.toLocaleString()}`}
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
-
-                            {/* Threshold Crossed */}
-                            <MetricRow
-                                icon={<ViewInArIcon color={pool.thresholdCrossedAtBlock ? 'success' : 'disabled'} />}
-                                label="Threshold Crossed"
-                                value={pool.thresholdCrossedAtBlock ? `Block #${pool.thresholdCrossedAtBlock.toLocaleString()}` : 'Pending'}
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
-
-                            {/* Token Price */}
-                            <MetricRow
-                                icon={<TrendingUpIcon color="primary" />}
-                                label="Token Price"
-                                value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-launch'}
-                                subtext="Price change tracking coming soon"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
-
-                            {/* Active Subscribers */}
-                            <MetricRow
-                                icon={<PersonAddIcon color="success" />}
-                                label="Active Subscribers"
-                                value={activeSubscribers}
-                                subtext="Wallets with commit activity in period"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                            />
-
-                            {/* Total Subscribers */}
-                            <MetricRow
-                                icon={<GroupIcon color="info" />}
-                                label="Total Subscribers"
-                                value={totalSubscribers}
-                                subtext="All-time unique committers"
-                                period={period}
-                                onPeriodChange={setPeriod}
-                                showDropdown={false}
-                            />
     return (
         <Card variant="outlined">
             <CardContent sx={{ pb: '8px !important' }}>
@@ -441,6 +384,21 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         variant="outlined"
                     />
                 </Box>
+
+                {/* ── Pool Timeline ── */}
+                <SectionHeader icon={<ViewInArIcon fontSize="small" color="action" />} title="Pool Timeline" />
+                <MetricRow
+                    icon={<ViewInArIcon color="action" />}
+                    label="Pool Created"
+                    value={`Block #${pool.createdAtBlock.toLocaleString()}`}
+                />
+                <MetricRow
+                    icon={<ViewInArIcon color={pool.thresholdCrossedAtBlock ? 'success' : 'disabled'} />}
+                    label="Threshold Crossed"
+                    value={pool.thresholdCrossedAtBlock ? `Block #${pool.thresholdCrossedAtBlock.toLocaleString()}` : 'Pending'}
+                />
+
+                <Divider sx={{ my: 1 }} />
 
                 {/* ── Price & Subscribers ── */}
                 <SectionHeader icon={<TrendingUpIcon fontSize="small" color="primary" />} title="Price & Activity" />
