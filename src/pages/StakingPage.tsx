@@ -33,6 +33,7 @@ import { apiEndpoint } from '../components/universal/IndividualPage.const';
 import { formatAmount } from '../utils/txDecoder';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import CopyableId from '../components/universal/CopyableId';
 import { TableSkeleton } from '../components/universal/LoadingSkeleton';
 
 interface ValidatorInfo {
@@ -174,9 +175,9 @@ const StakingPage: React.FC = () => {
                                                     <TableRow key={v.operator_address}>
                                                         <TableCell>{page * rowsPerPage + i + 1}</TableCell>
                                                         <TableCell>
-                                                            <Link to={`/validator/${v.operator_address}`}>
+                                                            <CopyableId value={v.operator_address}><Link to={`/validator/${v.operator_address}`}>
                                                                 {v.description.moniker || v.operator_address}
-                                                            </Link>
+                                                            </Link></CopyableId>
                                                         </TableCell>
                                                         <TableCell>
                                                             {formatAmount(v.tokens, 'ubluechip')} ({votingPower}%)

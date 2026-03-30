@@ -15,6 +15,7 @@ import {
     PoolSummary,
 } from '../../utils/contractQueries';
 import { factoryAddress } from '../../components/universal/IndividualPage.const';
+import CopyableId from '../../components/universal/CopyableId';
 
 const CreatorTokenPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -79,7 +80,7 @@ const CreatorTokenPage: React.FC = () => {
                                     )}
                                 </Box>
                                 <Divider />
-                                <Typography sx={{ mt: 1 }}>Contract Address: {abbreviateAddress(id)}</Typography>
+                                <Typography sx={{ mt: 1 }}>Contract Address: <CopyableId value={id}>{abbreviateAddress(id)}</CopyableId></Typography>
                                 <Typography>Decimals: {tokenInfo.decimals}</Typography>
                                 <Typography>Total Supply: {formatMicroAmount(tokenInfo.total_supply, tokenInfo.decimals)}</Typography>
                                 {pool && (
@@ -87,7 +88,7 @@ const CreatorTokenPage: React.FC = () => {
                                         <Divider sx={{ my: 1 }} />
                                         <Typography variant="subtitle2" color="text.secondary">Pool Info</Typography>
                                         <Typography>
-                                            Pool: <Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link>
+                                            Pool: <CopyableId value={pool.poolAddress}><Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link></CopyableId>
                                         </Typography>
                                         <Typography>Total Liquidity: {formatMicroAmount(pool.totalLiquidity)}</Typography>
                                         <Typography>LP Positions: {pool.totalPositions}</Typography>

@@ -37,6 +37,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import LockIcon from '@mui/icons-material/Lock';
 import PoolActionMenu from '../../components/actions/PoolActionMenu';
+import CopyableId from '../../components/universal/CopyableId';
 import { useWallet } from '../../context/WalletContext';
 
 // ─── Stat Card ──────────────────────────────────────────────────────────────
@@ -292,11 +293,11 @@ const CreatorPoolPage: React.FC = () => {
                                     </Box>
                                     <Divider sx={{ my: 1 }} />
                                     <Typography variant="body2" color="text.secondary">
-                                        Pool Address: <Link to={`/wallet/${id}`} style={{ color: '#1976d2' }}>{id}</Link>
+                                        Pool Address: <CopyableId value={id}><Link to={`/wallet/${id}`} style={{ color: '#1976d2' }}>{id}</Link></CopyableId>
                                     </Typography>
                                     {pool.creatorTokenAddress && (
                                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                            Token Contract: <Link to={`/creatorcontract/${pool.creatorTokenAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.creatorTokenAddress)}</Link>
+                                            Token Contract: <CopyableId value={pool.creatorTokenAddress}><Link to={`/creatorcontract/${pool.creatorTokenAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.creatorTokenAddress)}</Link></CopyableId>
                                         </Typography>
                                     )}
                                 </CardContent>
@@ -592,7 +593,7 @@ const CreatorPoolPage: React.FC = () => {
                                                                     </Typography>
                                                                 </TableCell>
                                                                 <TableCell>
-                                                                    <Link to={`/wallet/${c.wallet}`}>{abbreviateAddress(c.wallet)}</Link>
+                                                                    <CopyableId value={c.wallet}><Link to={`/wallet/${c.wallet}`}>{abbreviateAddress(c.wallet)}</Link></CopyableId>
                                                                 </TableCell>
                                                                 <TableCell>${formatMicroAmount(c.total_paid_usd)}</TableCell>
                                                                 <TableCell>{formatMicroAmount(c.total_paid_bluechip)}</TableCell>

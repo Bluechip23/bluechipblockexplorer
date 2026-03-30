@@ -9,6 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
@@ -118,17 +119,17 @@ const RecentTransactionsTable: React.FC = () => {
                             .map((row) => (
                                 <TableRow key={row.hash}>
                                     <TableCell>
-                                        <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
+                                        <CopyableId value={row.hash}><Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link></CopyableId>
                                     </TableCell>
                                     <TableCell>{row.method}</TableCell>
                                     <TableCell>
                                         <Link to={`/block/${row.block}`}>{row.block}</Link>
                                     </TableCell>
                                     <TableCell>
-                                        <Link to={`/wallet/${row.sender}`}>{row.sender}</Link>
+                                        <CopyableId value={row.sender}><Link to={`/wallet/${row.sender}`}>{row.sender}</Link></CopyableId>
                                     </TableCell>
                                     <TableCell>
-                                        <Link to={`/wallet/${row.recipient}`}>{row.recipient}</Link>
+                                        <CopyableId value={row.recipient}><Link to={`/wallet/${row.recipient}`}>{row.recipient}</Link></CopyableId>
                                     </TableCell>
                                     <TableCell>{row.value}</TableCell>
                                     <TableCell>{row.fee}</TableCell>

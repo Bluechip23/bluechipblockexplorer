@@ -22,6 +22,7 @@ import { apiEndpoint } from '../components/universal/IndividualPage.const';
 import { decodeMessageType, formatAmount, formatDenom } from '../utils/txDecoder';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import CopyableId from '../components/universal/CopyableId';
 import { TableSkeleton } from '../components/universal/LoadingSkeleton';
 
 interface IBCTransfer {
@@ -121,19 +122,19 @@ const IBCTransfersPage: React.FC = () => {
                                                 .map((t) => (
                                                     <TableRow key={t.hash}>
                                                         <TableCell>
-                                                            <Link to={`/transactionpage/${t.hash}`}>
+                                                            <CopyableId value={t.hash}><Link to={`/transactionpage/${t.hash}`}>
                                                                 {t.hash.slice(0, 10)}...
-                                                            </Link>
+                                                            </Link></CopyableId>
                                                         </TableCell>
                                                         <TableCell>
                                                             <Link to={`/blockpage/${t.height}`}>{t.height}</Link>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <Link to={`/wallet/${t.sender}`}>
+                                                            <CopyableId value={t.sender}><Link to={`/wallet/${t.sender}`}>
                                                                 {t.sender.slice(0, 12)}...
-                                                            </Link>
+                                                            </Link></CopyableId>
                                                         </TableCell>
-                                                        <TableCell>{t.receiver.slice(0, 12)}...</TableCell>
+                                                        <TableCell><CopyableId value={t.receiver}>{t.receiver.slice(0, 12)}...</CopyableId></TableCell>
                                                         <TableCell>
                                                             {formatAmount(t.amount, t.denom)} {formatDenom(t.denom)}
                                                         </TableCell>

@@ -8,6 +8,7 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
@@ -108,7 +109,7 @@ const ValidatorTable: React.FC = () => {
                             .map((row) => (
                                 <TableRow key={row.valId}>
                                     <TableCell>
-                                        <Link to={`/validator/${row.valId}`}>{row.validator}</Link>
+                                        <CopyableId value={row.valId}><Link to={`/validator/${row.valId}`}>{row.validator}</Link></CopyableId>
                                     </TableCell>
                                     <TableCell>
                                         {row.commision}

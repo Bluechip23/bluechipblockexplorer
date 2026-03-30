@@ -9,6 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 import { useState } from 'react';
 
 
@@ -95,7 +96,7 @@ const WalletTransactionsTable: React.FC<WalletTransactionsTableProps> = ({ walle
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                            <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
+                                            <CopyableId value={row.hash}><Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell  >
                                             {row.method}
@@ -104,10 +105,10 @@ const WalletTransactionsTable: React.FC<WalletTransactionsTableProps> = ({ walle
                                             <Link to={`/blockpage/${row.block}`}>{row.block}</Link>
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to={`/walletpage/${row.sender}`}>{row.sender}</Link>
+                                            <CopyableId value={row.sender}><Link to={`/walletpage/${row.sender}`}>{row.sender}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to={`/walletpage/${row.recipient}`}>{row.recipient}</Link>
+                                            <CopyableId value={row.recipient}><Link to={`/walletpage/${row.recipient}`}>{row.recipient}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}
