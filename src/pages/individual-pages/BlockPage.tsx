@@ -10,6 +10,7 @@ import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import axios from 'axios';
 import { CardSkeleton, TableSkeleton } from '../../components/universal/LoadingSkeleton';
+import CopyableId from '../../components/universal/CopyableId';
 
 const BlockPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -89,9 +90,9 @@ const BlockPage: React.FC = () => {
                                 <Typography variant='h5'>Block Height: {blockInfo.height}</Typography>
                                 <Divider />
                                 <Typography>Timestamp: {blockInfo.timestamp}</Typography>
-                                <Typography sx={{ wordBreak: 'break-all' }}>Block Hash: <a href={`/blockpage/${blockInfo.height}`} style={{ color: '#1976d2' }}>{blockInfo.hash}</a></Typography>
+                                <Typography sx={{ wordBreak: 'break-all' }}>Block Hash: <CopyableId value={blockInfo.hash}><a href={`/blockpage/${blockInfo.height}`} style={{ color: '#1976d2' }}>{blockInfo.hash}</a></CopyableId></Typography>
                                 <Typography>Block Reward: {blockInfo.reward}</Typography>
-                                <Typography sx={{ wordBreak: 'break-all' }}>Block Proposer: <Link to={`/validator/${blockInfo.proposer}`} style={{ color: '#1976d2' }}>{blockInfo.proposer}</Link></Typography>
+                                <Typography sx={{ wordBreak: 'break-all' }}>Block Proposer: <CopyableId value={blockInfo.proposer}><Link to={`/validator/${blockInfo.proposer}`} style={{ color: '#1976d2' }}>{blockInfo.proposer}</Link></CopyableId></Typography>
                                 <Typography>Transaction Fee: {blockInfo.fee}</Typography>
                                 <Typography># of Transactions: {blockInfo.transactionCount}</Typography>
                             </CardContent>

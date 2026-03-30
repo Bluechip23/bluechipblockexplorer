@@ -9,6 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 
 interface Column {
     id: 'hash' | 'method' | 'sender' | 'recipient' | 'value' | 'fee';
@@ -88,16 +89,16 @@ const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = ({ rows })
                                 return (
                                     <TableRow>
                                         <TableCell >
-                                            <Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link>
+                                            <CopyableId value={row.hash}><Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell  >
                                             {row.method}
                                         </TableCell>
                                         <TableCell  >
-                                            <Link to={`/transactionpage/${row.sender}`}>{row.sender}</Link>
+                                            <CopyableId value={row.sender}><Link to={`/transactionpage/${row.sender}`}>{row.sender}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell >
-                                            <Link to={`/transactionpage/${row.recipient}`}>{row.recipient}</Link>
+                                            <CopyableId value={row.recipient}><Link to={`/transactionpage/${row.recipient}`}>{row.recipient}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell >
                                             {row.value}

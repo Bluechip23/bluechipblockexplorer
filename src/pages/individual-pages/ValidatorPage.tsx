@@ -8,6 +8,7 @@ import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import ValidatorTable from '../../components/table-pages/ValidatorTable';
 import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import CopyableId from '../../components/universal/CopyableId';
 
 interface ValidatorData {
     id: string;
@@ -63,8 +64,8 @@ const Validator: React.FC = () => {
 
                         />
                         <Stack direction='row' spacing={8}>
-                            <Typography variant='h5'>Validator Address: {validator.id} </Typography>
-                            <Typography>Wallet Address: {validator.address}</Typography>
+                            <Typography variant='h5'>Validator Address: <CopyableId value={validator.id}>{validator.id}</CopyableId></Typography>
+                            <Typography>Wallet Address: <CopyableId value={validator.address}>{validator.address}</CopyableId></Typography>
                         </Stack>
                         <CardContent>
                             <Typography>Rank: {validator.rank}</Typography>

@@ -9,6 +9,7 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
 import { useEffect, useState } from 'react';
 import { Typography } from '@mui/material';
@@ -109,7 +110,7 @@ const TopWalletsTable: React.FC = () => {
                                 return (
                                     <TableRow key={row.walletAddress}>
                                         <TableCell>
-                                            <Link to={`/wallet/${row.walletAddress}`}>{row.walletAddress}</Link>
+                                            <CopyableId value={row.walletAddress}><Link to={`/wallet/${row.walletAddress}`}>{row.walletAddress}</Link></CopyableId>
                                         </TableCell>
                                         <TableCell>{row.balance}</TableCell>
                                         <TableCell>{row.percentage}</TableCell>

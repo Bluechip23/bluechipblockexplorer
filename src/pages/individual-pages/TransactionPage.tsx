@@ -10,6 +10,7 @@ import RecentTransactionsTable from '../../components/table-pages/RecentTransact
 import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import { decodeMessageType, formatAmount, formatDenom } from '../../utils/txDecoder';
 import { CardSkeleton } from '../../components/universal/LoadingSkeleton';
+import CopyableId from '../../components/universal/CopyableId';
 
 const TransactionPage: React.FC = () => {
 
@@ -92,7 +93,7 @@ const TransactionPage: React.FC = () => {
                         <Card>
                             <CardContent>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                                    <Typography variant='h5' sx={{ wordBreak: 'break-all' }}>Transaction Hash: {txInfo.hash}</Typography>
+                                    <Typography variant='h5' sx={{ wordBreak: 'break-all' }}>Transaction Hash: <CopyableId value={txInfo.hash}>{txInfo.hash}</CopyableId></Typography>
                                     <Chip
                                         label={txInfo.status}
                                         color={txInfo.status === 'Success' ? 'success' : 'error'}
@@ -103,8 +104,8 @@ const TransactionPage: React.FC = () => {
                                 <Typography sx={{ mt: 1 }}>Type: <Chip label={decodeMessageType(txInfo.messageType)} size="small" variant="outlined" /></Typography>
                                 <Typography>Block: <Link to={`/blockpage/${txInfo.block}`}>{txInfo.block}</Link></Typography>
                                 <Typography>Timestamp: {txInfo.timestamp}</Typography>
-                                <Link to={`/wallet/${txInfo.sender}`}><Typography>From: {txInfo.sender}</Typography></Link>
-                                <Link to={`/wallet/${txInfo.recipient}`}><Typography>To: {txInfo.recipient}</Typography></Link>
+                                <Typography>From: <CopyableId value={txInfo.sender}><Link to={`/wallet/${txInfo.sender}`}>{txInfo.sender}</Link></CopyableId></Typography>
+                                <Typography>To: <CopyableId value={txInfo.recipient}><Link to={`/wallet/${txInfo.recipient}`}>{txInfo.recipient}</Link></CopyableId></Typography>
                                 <Typography>Value: {formatAmount(txInfo.value, txInfo.denom)} {formatDenom(txInfo.denom)}</Typography>
                                 <Typography>Gas Price: {txInfo.gasPrice}</Typography>
                                 {txInfo.memo && <Typography>Memo: {txInfo.memo}</Typography>}

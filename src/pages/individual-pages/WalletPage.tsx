@@ -12,6 +12,7 @@ import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualP
 import axios from 'axios';
 import { CardSkeleton, TableSkeleton } from '../../components/universal/LoadingSkeleton';
 import { formatAmount } from '../../utils/txDecoder';
+import CopyableId from '../../components/universal/CopyableId';
 
 
 const Wallet: React.FC = () => {
@@ -74,7 +75,7 @@ const Wallet: React.FC = () => {
                     ) : (
                         <Card>
                             <CardContent>
-                                <Typography variant='h5' sx={{ wordBreak: 'break-all' }}>Wallet: {wallet.address.toString()}</Typography>
+                                <Typography variant='h5' sx={{ wordBreak: 'break-all' }}>Wallet: <CopyableId value={wallet.address}>{wallet.address.toString()}</CopyableId></Typography>
                                 <Divider />
                                 <Typography>Balance: {formatAmount(wallet.balance, 'ubluechip')} BLUECHIP</Typography>
                             </CardContent>

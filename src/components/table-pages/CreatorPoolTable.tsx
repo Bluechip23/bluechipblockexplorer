@@ -9,6 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Chip, CircularProgress, Typography, Box } from '@mui/material';
 import { Link } from 'react-router-dom';
+import CopyableId from '../universal/CopyableId';
 import { factoryAddress } from '../universal/IndividualPage.const';
 import {
     fetchAllPoolSummaries,
@@ -119,9 +120,9 @@ const CreatorPoolTable: React.FC = () => {
                                         </Link>
                                     </TableCell>
                                     <TableCell>
-                                        <Link to={`/creatorpool/${row.poolAddress}`}>
+                                        <CopyableId value={row.poolAddress}><Link to={`/creatorpool/${row.poolAddress}`}>
                                             {abbreviateAddress(row.poolAddress)}
-                                        </Link>
+                                        </Link></CopyableId>
                                     </TableCell>
                                     <TableCell>
                                         <Chip

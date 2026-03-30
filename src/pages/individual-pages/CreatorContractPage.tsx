@@ -15,6 +15,7 @@ import {
     PoolSummary,
 } from '../../utils/contractQueries';
 import { factoryAddress } from '../../components/universal/IndividualPage.const';
+import CopyableId from '../../components/universal/CopyableId';
 
 const CreatorContract: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -82,14 +83,14 @@ const CreatorContract: React.FC = () => {
                                 <Typography sx={{ mt: 1 }}>Token Name: {tokenInfo.name}</Typography>
                                 <Typography>Symbol: {tokenInfo.symbol}</Typography>
                                 <Typography>Decimals: {tokenInfo.decimals}</Typography>
-                                <Typography>Contract Address: {id}</Typography>
+                                <Typography>Contract Address: <CopyableId value={id}>{id}</CopyableId></Typography>
                                 <Typography>Total Supply: {formatMicroAmount(tokenInfo.total_supply, tokenInfo.decimals)}</Typography>
                                 {pool && (
                                     <>
                                         <Divider sx={{ my: 1 }} />
                                         <Typography variant="subtitle2" color="text.secondary">Associated Pool</Typography>
                                         <Typography>
-                                            Pool: <Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link>
+                                            Pool: <CopyableId value={pool.poolAddress}><Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link></CopyableId>
                                         </Typography>
                                         <Typography>Total Liquidity: {formatMicroAmount(pool.totalLiquidity)}</Typography>
                                         <Typography>Fees Collected: {formatMicroAmount(pool.totalFeesCollected0)}</Typography>
