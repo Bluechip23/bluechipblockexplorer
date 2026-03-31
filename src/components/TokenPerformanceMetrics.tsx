@@ -204,7 +204,8 @@ const ThresholdSection: React.FC<{
     pool: PoolSummary;
     analytics: ThresholdAnalytics | null;
     committers: CommiterInfo[];
-}> = ({ pool, analytics, committers }) => {
+    totalCommitCount: number;
+}> = ({ pool, analytics, committers, totalCommitCount }) => {
     const raised = parseInt(pool.raised || '0');
     const target = parseInt(pool.target || '0');
     const progressPct = target > 0 ? Math.min(100, (raised / target) * 100) : 0;
@@ -236,6 +237,20 @@ const ThresholdSection: React.FC<{
                         {progressPct.toFixed(1)}% funded — {committers.length} committer{committers.length !== 1 ? 's' : ''}
                     </Typography>
                 </Box>
+                <MetricRow
+                    icon={<MonetizationOnIcon fontSize="small" color="primary" />}
+                    label="Total Committed"
+                    value={`$${formatMicroAmount(
+                        committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0).toString()
+                    )}`}
+                    subtext="Aggregate of all commit contributions"
+                />
+                <MetricRow
+                    icon={<GroupIcon fontSize="small" color="primary" />}
+                    label="Number of Commits"
+                    value={totalCommitCount.toLocaleString()}
+                    subtext={`${committers.length} unique committer${committers.length !== 1 ? 's' : ''}`}
+                />
                 {analytics && (
                     <Box>
                         <MetricRow
@@ -264,6 +279,20 @@ const ThresholdSection: React.FC<{
                 label="Total Raised"
                 value={`$${formatMicroAmount(pool.raised)}`}
                 subtext={`Target: $${formatMicroAmount(pool.target)}`}
+            />
+            <MetricRow
+                icon={<MonetizationOnIcon fontSize="small" color="primary" />}
+                label="Total Committed"
+                value={`$${formatMicroAmount(
+                    committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0).toString()
+                )}`}
+                subtext="Aggregate of all commit contributions"
+            />
+            <MetricRow
+                icon={<GroupIcon fontSize="small" color="primary" />}
+                label="Number of Commits"
+                value={totalCommitCount.toLocaleString()}
+                subtext={`${committers.length} unique committer${committers.length !== 1 ? 's' : ''}`}
             />
             {analytics && (
                 <>
@@ -302,6 +331,7 @@ interface TokenPerformanceMetricsProps {
 const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool }) => {
     const [period, setPeriod] = useState<TimePeriod>('1m');
     const [committers, setCommitters] = useState<CommiterInfo[]>([]);
+    const [totalCommitCount, setTotalCommitCount] = useState<number>(0);
     const [holders, setHolders] = useState<HolderDistribution | null>(null);
     const [thresholdAnalytics, setThresholdAnalytics] = useState<ThresholdAnalytics | null>(null);
     const [loading, setLoading] = useState(true);
@@ -321,6 +351,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 if (cancelled) return;
                 const fetchedCommitters = commitData?.commiters || [];
                 setCommitters(fetchedCommitters);
+                setTotalCommitCount(commitData?.total_count || 0);
                 setHolders(holderData);
 
                 const threshold = await queryThresholdAnalytics(pool.poolAddress, fetchedCommitters);
@@ -566,6 +597,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     pool={pool}
                     analytics={thresholdAnalytics}
                     committers={committers}
+                    totalCommitCount={totalCommitCount}
                 />
             </CardContent>
         </Card>
