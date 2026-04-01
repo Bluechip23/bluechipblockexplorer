@@ -33,7 +33,6 @@ const WalletContext = createContext<WalletContextType>({
 export const useWallet = () => useContext(WalletContext);
 
 export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-    // Start connected by default for UI preview
     const [address, setAddress] = useState(MOCK_ADDRESS);
     const [balance, setBalance] = useState<Coin | null>(MOCK_BALANCE);
     const [connecting] = useState(false);

@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import CopyableId from '../universal/CopyableId';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'validator' | 'commision' | 'maxCommision' | 'totalStaked' | 'delegated';

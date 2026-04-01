@@ -6,7 +6,6 @@ import {
     CardContent,
     Chip,
     CircularProgress,
-    Divider,
     Grid,
     Stack,
     Tab,
@@ -20,7 +19,6 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
@@ -30,20 +28,18 @@ import GeneralStats from '../navigation/GeneralStats';
 import { useWallet } from '../context/WalletContext';
 import PoolActionMenu from '../components/actions/PoolActionMenu';
 import CreatePoolModal from '../components/actions/CreatePoolModal';
+import { TabPanel, StatCard, NotConnectedView } from '../components/universal/PortfolioShared';
 import {
     fetchAllPoolSummaries,
     queryPoolCommits,
     queryPositions,
     findPoolsByCreator,
     formatMicroAmount,
-    abbreviateAddress,
     PoolSummary,
     CommiterInfo,
     PositionResponse,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
-
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface MyCommitment {
     pool: PoolSummary;
@@ -61,74 +57,6 @@ interface TxRecord {
     amount: string;
     timestamp: string;
 }
-
-// ─── Tab Panel ──────────────────────────────────────────────────────────────
-
-const TabPanel: React.FC<{ children: React.ReactNode; value: number; index: number }> = ({
-    children,
-    value,
-    index,
-}) => (
-    <div role="tabpanel" hidden={value !== index}>
-        {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
-    </div>
-);
-
-// ─── Stat Card ──────────────────────────────────────────────────────────────
-
-const StatCard: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-        <CardContent sx={{ textAlign: 'center', py: 2, '&:last-child': { pb: 2 } }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                {label}
-            </Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                {typeof value === 'number' ? value.toLocaleString() : value}
-            </Typography>
-        </CardContent>
-    </Card>
-);
-
-// ─── Not Connected View ─────────────────────────────────────────────────────
-
-const NotConnectedView: React.FC = () => {
-    const { connect, connecting } = useWallet();
-    return (
-        <Card>
-            <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                <AccountBalanceWalletIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                    Connect Your Wallet
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Connect your Keplr wallet to view your portfolio, committed pools, positions, and transaction history.
-                </Typography>
-                <Box
-                    component="button"
-                    onClick={connect}
-                    disabled={connecting}
-                    sx={{
-                        px: 4,
-                        py: 1.5,
-                        fontSize: '1rem',
-                        fontWeight: 'bold',
-                        border: 'none',
-                        borderRadius: 2,
-                        bgcolor: 'primary.main',
-                        color: 'primary.contrastText',
-                        cursor: 'pointer',
-                        '&:hover': { bgcolor: 'primary.dark' },
-                        '&:disabled': { opacity: 0.6, cursor: 'not-allowed' },
-                    }}
-                >
-                    {connecting ? 'Connecting...' : 'Connect Wallet'}
-                </Box>
-            </CardContent>
-        </Card>
-    );
-};
-
-// ─── My Pools Tab (pools I committed to) ────────────────────────────────────
 
 const MyPoolsTab: React.FC<{
     commitments: MyCommitment[];
@@ -208,7 +136,6 @@ const MyPoolsTab: React.FC<{
     );
 };
 
-// ─── My Positions Tab (LP positions) ────────────────────────────────────────
 
 const MyPositionsTab: React.FC<{
     positions: MyPosition[];
@@ -290,7 +217,6 @@ const MyPositionsTab: React.FC<{
     );
 };
 
-// ─── My Transactions Tab ────────────────────────────────────────────────────
 
 const MyTransactionsTab: React.FC<{
     commitments: MyCommitment[];
@@ -306,7 +232,6 @@ const MyTransactionsTab: React.FC<{
         );
     }
 
-    // Build a unified transaction list from commits and positions
     const txs: TxRecord[] = [];
 
     commitments.forEach((c) => {
@@ -382,7 +307,6 @@ const MyTransactionsTab: React.FC<{
     );
 };
 
-// ─── My Created Pools Tab ───────────────────────────────────────────────────
 
 const MyCreatedPoolsTab: React.FC<{
     createdPools: PoolSummary[];
@@ -417,7 +341,6 @@ const MyCreatedPoolsTab: React.FC<{
         );
     }
 
-    // Creator metrics across all created pools
     const totalFeesEarned0 = createdPools.reduce(
         (sum, p) => sum + parseInt(p.totalFeesCollected0 || '0'), 0
     );
@@ -436,7 +359,6 @@ const MyCreatedPoolsTab: React.FC<{
 
     return (
         <Stack spacing={2}>
-            {/* Creator summary stats */}
             <Grid container spacing={2}>
                 <Grid item xs={6} sm={4}>
                     <StatCard label="Pools Created" value={createdPools.length} />
@@ -458,7 +380,6 @@ const MyCreatedPoolsTab: React.FC<{
                 </Grid>
             </Grid>
 
-            {/* Created pools table */}
             <Paper sx={{ width: '100%', overflow: 'hidden' }}>
                 <TableContainer>
                     <Table stickyHeader size="small">
@@ -524,7 +445,6 @@ const MyCreatedPoolsTab: React.FC<{
     );
 };
 
-// ─── Main Portfolio Page ────────────────────────────────────────────────────
 
 const PortfolioPage: React.FC = () => {
     const { address, balance } = useWallet();
@@ -554,7 +474,6 @@ const PortfolioPage: React.FC = () => {
 
                 await Promise.all(
                     pools.map(async (pool) => {
-                        // Check commits
                         const commits = await queryPoolCommits(pool.poolAddress);
                         if (commits?.commiters) {
                             const myCommit = commits.commiters.find(
@@ -565,7 +484,6 @@ const PortfolioPage: React.FC = () => {
                             }
                         }
 
-                        // Check positions
                         if (pool.thresholdReached) {
                             const positionsResp = await queryPositions(pool.poolAddress);
                             if (positionsResp?.positions) {
@@ -584,7 +502,6 @@ const PortfolioPage: React.FC = () => {
                     setPositions(myPositions);
                 }
 
-                // Find pools created by this wallet
                 const myCreatedPools = await findPoolsByCreator(pools, address);
                 if (!cancelled) {
                     setCreatedPools(myCreatedPools);
@@ -600,7 +517,6 @@ const PortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    // Calculate summary stats
     const totalCommittedUsd = commitments.reduce(
         (sum, c) => sum + parseInt(c.commit.total_paid_usd || '0'),
         0
@@ -641,7 +557,6 @@ const PortfolioPage: React.FC = () => {
                         <NotConnectedView />
                     ) : (
                         <Stack spacing={2}>
-                            {/* Header */}
                             <Card>
                                 <CardContent>
                                     <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>
@@ -658,7 +573,6 @@ const PortfolioPage: React.FC = () => {
                                 </CardContent>
                             </Card>
 
-                            {/* Summary Stats */}
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="Pools Committed" value={commitments.length} />
@@ -691,7 +605,6 @@ const PortfolioPage: React.FC = () => {
                                 </Grid>
                             </Grid>
 
-                            {/* Tabs */}
                             <Card>
                                 <CardContent sx={{ pb: 0 }}>
                                     <Tabs
@@ -734,7 +647,6 @@ const PortfolioPage: React.FC = () => {
                                 </CardContent>
                             </Card>
 
-                            {/* Create Pool Modal */}
                             <CreatePoolModal
                                 open={showCreateModal}
                                 onClose={() => setShowCreateModal(false)}

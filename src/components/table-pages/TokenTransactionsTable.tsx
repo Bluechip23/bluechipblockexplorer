@@ -11,7 +11,7 @@ import { Typography } from '@mui/material';
 import { Link, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint } from '../universal/IndividualPage.const';
 
 interface Column {
     id: 'creator' | 'hash' | 'method' | 'block' | 'sender' | 'recipient' | 'value' | 'fee';

@@ -1,13 +1,6 @@
-// ============================================================
-// MOCK MODE — All queries return fake data for UI preview.
-// No chain connection required.
-// ============================================================
 
 const MOCK_WALLET = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 
-// ------------------------------------------------------------------
-// Types (unchanged — same interfaces as production)
-// ------------------------------------------------------------------
 
 export interface PoolStateResponseForFactory {
     pool_contract_address: string;
@@ -173,15 +166,11 @@ export interface PoolSummary {
     thresholdCrossedAtBlock: number | null;
 }
 
-// ------------------------------------------------------------------
-// Mock data
-// ------------------------------------------------------------------
 
 const now = Date.now();
 const day = 86400000;
 
 const MOCK_COMMITTERS: CommiterInfo[] = [
-    // ── Active within last 1 month (3 wallets) ──
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '5200000000',
@@ -206,7 +195,6 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         last_payment_bluechip: '6400000000',
         last_commited: ((now - 18 * day) * 1000000).toString(),
     },
-    // ── Active between 1–3 months ago (3 wallets) ──
     {
         wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
         total_paid_usd: '2750000000',
@@ -231,7 +219,6 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         last_payment_bluechip: '7600000000',
         last_commited: ((now - 75 * day) * 1000000).toString(),
     },
-    // ── Active between 3–12 months ago (2 wallets) ──
     {
         wallet: 'bluechip1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1',
         total_paid_usd: '680000000',
@@ -394,9 +381,7 @@ const MOCK_POSITIONS: PositionResponse[] = [
     },
 ];
 
-// Committers for the pre-launch pool (DELTA)
 const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
-    // ── Active within last 1 month (2 wallets) ──
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '4200000000',
@@ -413,7 +398,6 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         last_payment_bluechip: '16000000000',
         last_commited: ((now - 1 * day) * 1000000).toString(),
     },
-    // ── Active between 1–3 months ago (2 wallets) ──
     {
         wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
         total_paid_usd: '3500000000',
@@ -430,7 +414,6 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         last_payment_bluechip: '14400000000',
         last_commited: ((now - 55 * day) * 1000000).toString(),
     },
-    // ── Active between 3–12 months ago (1 wallet) ──
     {
         wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
         total_paid_usd: '800000000',
@@ -441,9 +424,6 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
     },
 ];
 
-// ------------------------------------------------------------------
-// Mock holder data
-// ------------------------------------------------------------------
 
 const MOCK_ALPHA_HOLDERS: TokenHolderEntry[] = [
     { address: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n', balance: '185000000000' },  // 185,000 tokens (whale)
@@ -471,7 +451,6 @@ const MOCK_DELTA_HOLDERS: TokenHolderEntry[] = [
     { address: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e', balance: '5000000000' },
 ];
 
-// Pre-computed distributions
 const MOCK_ALPHA_DISTRIBUTION: HolderDistribution = {
     totalHolders: 15,
     whales: 3,   // 60,000+
@@ -488,7 +467,6 @@ const MOCK_DELTA_DISTRIBUTION: HolderDistribution = {
     topHolders: MOCK_DELTA_HOLDERS.slice(0, 5),
 };
 
-// Threshold analytics for pools that have crossed
 const MOCK_ALPHA_THRESHOLD: ThresholdAnalytics = {
     thresholdCrossedAt: Math.floor(now / 1000) - 86400 * 45,
     poolCreatedAt: Math.floor(now / 1000) - 86400 * 72,
@@ -503,9 +481,6 @@ const MOCK_ALPHA_THRESHOLD: ThresholdAnalytics = {
     },
 };
 
-// ------------------------------------------------------------------
-// Mock query functions
-// ------------------------------------------------------------------
 
 function delay(ms: number = 300): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
@@ -538,9 +513,7 @@ export async function queryPositions(poolAddress: string): Promise<PositionsResp
     await delay(200);
     const pool = findPool(poolAddress);
     if (pool && !pool.thresholdReached) return { positions: [] };
-    // First active pool gets positions
     if (pool === MOCK_POOLS[0]) return { positions: MOCK_POSITIONS };
-    // Second pool: user has one position
     if (pool === MOCK_POOLS[1]) {
         return {
             positions: [{
@@ -575,7 +548,6 @@ export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo |
 export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
     await delay(100);
     const pool = findPool(poolAddress);
-    // The mock user is the creator of ALPHA and DELTA
     if (pool && (pool.tokenSymbol === 'ALPHA' || pool.tokenSymbol === 'DELTA')) {
         return MOCK_WALLET;
     }
@@ -587,16 +559,13 @@ export async function findPoolsByCreator(
     walletAddress: string
 ): Promise<PoolSummary[]> {
     await delay(300);
-    // Mock user created ALPHA and DELTA
     return pools.filter((p) => p.tokenSymbol === 'ALPHA' || p.tokenSymbol === 'DELTA');
 }
 
 export async function queryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
     await delay(350);
-    // Match by token address to the right pool
     if (tokenAddress.includes('alpha')) return MOCK_ALPHA_DISTRIBUTION;
     if (tokenAddress.includes('delta')) return MOCK_DELTA_DISTRIBUTION;
-    // Default fallback for any other pool
     return MOCK_ALPHA_DISTRIBUTION;
 }
 
@@ -609,16 +578,13 @@ export async function queryThresholdAnalytics(
     if (!pool) return null;
 
     if (pool.thresholdReached) {
-        // For crossed pools, return pre-computed analytics
         if (pool.tokenSymbol === 'ALPHA') return MOCK_ALPHA_THRESHOLD;
-        // Generic crossed pool
         return {
             ...MOCK_ALPHA_THRESHOLD,
             totalCommittersAtThreshold: pool.totalCommitters,
         };
     }
 
-    // Pre-threshold: compute live progress from committer data
     const totalUsd = committers.reduce((s, c) => s + parseInt(c.total_paid_usd || '0'), 0);
     const avgUsd = committers.length > 0 ? Math.floor(totalUsd / committers.length) : 0;
 
@@ -643,7 +609,6 @@ export async function queryThresholdAnalytics(
     };
 }
 
-// Unused in pages but exported for type compatibility
 export async function queryPoolState(_: string): Promise<PoolStateResponse | null> { return null; }
 export async function queryPoolInfo(_: string): Promise<PoolInfoResponse | null> { return null; }
 export async function queryFeeState(_: string): Promise<PoolFeeStateResponse | null> { return null; }
@@ -653,9 +618,6 @@ export async function queryFactoryConfig(_: string): Promise<FactoryConfig | nul
 export async function discoverPoolContracts(_: number): Promise<string[]> { return []; }
 export function getCosmWasmClient(): Promise<any> { return Promise.resolve(null); }
 
-// ------------------------------------------------------------------
-// Helpers (unchanged from production)
-// ------------------------------------------------------------------
 
 export function getCreatorTokenAddress(assetInfos: [TokenType, TokenType]): string | null {
     const creatorToken = assetInfos.find(

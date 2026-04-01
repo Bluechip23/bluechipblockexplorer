@@ -118,7 +118,6 @@ const SectionCard: React.FC<{
     </Card>
 );
 
-// ─── Code snippets ──────────────────────────────────────────────────────────────
 
 const scriptTagsCode = `<!-- CosmJS — Required for all BlueChip interactions -->
 <script src="https://unpkg.com/@cosmjs/cosmwasm-stargate@0.32.4/build/bundle.js"></script>
@@ -1002,7 +1001,6 @@ const fullExampleCode = `<!DOCTYPE html>
 </body>
 </html>`;
 
-// ─── Table of Contents data ─────────────────────────────────────────────────────
 
 const tocItems = [
     { num: '1', title: 'Prerequisites — What You Need First', id: 'prerequisites' },
@@ -1021,7 +1019,6 @@ const tocItems = [
     { num: '14', title: 'Contract Address Reference', id: 'contract-reference' },
 ];
 
-// ─── Main page component ────────────────────────────────────────────────────────
 
 const IntegrationGuidePage: React.FC = () => {
     return (

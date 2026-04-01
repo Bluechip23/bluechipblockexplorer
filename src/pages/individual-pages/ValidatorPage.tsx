@@ -7,7 +7,7 @@ import { useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import ValidatorTable from '../../components/table-pages/ValidatorTable';
-import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint } from '../../components/universal/IndividualPage.const';
 import CopyableId from '../../components/universal/CopyableId';
 
 interface ValidatorData {

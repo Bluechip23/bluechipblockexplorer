@@ -7,7 +7,7 @@ import BlockTransactionsTable from '../../components/individual-pages/BlockTrans
 import { Link, useParams } from 'react-router-dom';
 import GeneralStats from '../../navigation/GeneralStats';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
-import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import axios from 'axios';
 import { CardSkeleton, TableSkeleton } from '../../components/universal/LoadingSkeleton';
 import CopyableId from '../../components/universal/CopyableId';
