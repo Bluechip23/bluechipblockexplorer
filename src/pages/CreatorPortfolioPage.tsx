@@ -17,7 +17,6 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
@@ -29,6 +28,7 @@ import { useWallet } from '../context/WalletContext';
 import PoolActionMenu from '../components/actions/PoolActionMenu';
 import CreatePoolModal from '../components/actions/CreatePoolModal';
 import TokenPerformanceMetrics from '../components/TokenPerformanceMetrics';
+import { StatCard, NotConnectedView } from '../components/universal/PortfolioShared';
 import {
     fetchAllPoolSummaries,
     findPoolsByCreator,
@@ -36,51 +36,6 @@ import {
     PoolSummary,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
-
-// ─── Stat Card ──────────────────────────────────────────────────────────────
-
-const StatCard: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-        <CardContent sx={{ textAlign: 'center', py: 2, '&:last-child': { pb: 2 } }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{label}</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                {typeof value === 'number' ? value.toLocaleString() : value}
-            </Typography>
-        </CardContent>
-    </Card>
-);
-
-// ─── Not Connected ──────────────────────────────────────────────────────────
-
-const NotConnectedView: React.FC = () => {
-    const { connect, connecting } = useWallet();
-    return (
-        <Card>
-            <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                <AccountBalanceWalletIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" sx={{ mb: 1 }}>Connect Your Wallet</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Connect your Keplr wallet to view your creator pools, token metrics, and fee revenue.
-                </Typography>
-                <Box
-                    component="button"
-                    onClick={connect}
-                    disabled={connecting}
-                    sx={{
-                        px: 4, py: 1.5, fontSize: '1rem', fontWeight: 'bold', border: 'none',
-                        borderRadius: 2, bgcolor: 'primary.main', color: 'primary.contrastText',
-                        cursor: 'pointer', '&:hover': { bgcolor: 'primary.dark' },
-                        '&:disabled': { opacity: 0.6, cursor: 'not-allowed' },
-                    }}
-                >
-                    {connecting ? 'Connecting...' : 'Connect Wallet'}
-                </Box>
-            </CardContent>
-        </Card>
-    );
-};
-
-// ─── No Pools CTA ───────────────────────────────────────────────────────────
 
 const NoPoolsView: React.FC<{ onCreatePool: () => void }> = ({ onCreatePool }) => (
     <Card>
@@ -99,8 +54,6 @@ const NoPoolsView: React.FC<{ onCreatePool: () => void }> = ({ onCreatePool }) =
         </CardContent>
     </Card>
 );
-
-// ─── Main Creator Portfolio Page ────────────────────────────────────────────
 
 const CreatorPortfolioPage: React.FC = () => {
     const { address, balance } = useWallet();
@@ -128,7 +81,6 @@ const CreatorPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    // Aggregate stats
     const totalFeesEarned0 = createdPools.reduce((s, p) => s + parseInt(p.totalFeesCollected0 || '0'), 0);
     const totalFeesEarned1 = createdPools.reduce((s, p) => s + parseInt(p.totalFeesCollected1 || '0'), 0);
     const totalPoolLiquidity = createdPools.reduce((s, p) => s + parseInt(p.totalLiquidity || '0'), 0);
@@ -159,7 +111,6 @@ const CreatorPortfolioPage: React.FC = () => {
                         </>
                     ) : (
                         <Stack spacing={2}>
-                            {/* Header */}
                             <Card>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
@@ -175,7 +126,6 @@ const CreatorPortfolioPage: React.FC = () => {
                                 </CardContent>
                             </Card>
 
-                            {/* Creator summary stats */}
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={4}><StatCard label="Pools Created" value={createdPools.length} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total Subscribers" value={totalSubscribers} /></Grid>
@@ -185,7 +135,6 @@ const CreatorPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={4}><StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} /></Grid>
                             </Grid>
 
-                            {/* Token Performance Metrics */}
                             <Card>
                                 <CardContent sx={{ pb: 1 }}>
                                     <Typography variant="h6" fontWeight="bold">Token Performance</Typography>
@@ -200,7 +149,6 @@ const CreatorPortfolioPage: React.FC = () => {
                                 </CardContent>
                             </Card>
 
-                            {/* Created pools table */}
                             <Card>
                                 <CardContent sx={{ pb: 1 }}>
                                     <Typography variant="h6" fontWeight="bold">Your Pools</Typography>

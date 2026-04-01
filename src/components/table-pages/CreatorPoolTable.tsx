@@ -52,7 +52,6 @@ const CreatorPoolTable: React.FC = () => {
                     return;
                 }
                 const summaries = await fetchAllPoolSummaries(factoryAddress);
-                // Sort by total liquidity (TVL) descending
                 summaries.sort((a, b) => parseInt(b.totalLiquidity) - parseInt(a.totalLiquidity));
                 setRows(summaries);
             } catch (err) {

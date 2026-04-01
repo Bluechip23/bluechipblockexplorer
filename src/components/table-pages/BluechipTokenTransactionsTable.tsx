@@ -9,7 +9,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { rpcEndpoint, denom, apiEndpoint } from '../universal/IndividualPage.const';
+import { denom, apiEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 
 interface Column {
@@ -73,28 +73,22 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
     };
 
     useEffect(() => {
-        const fetchTokenTransactions = async (
-            maxRetries: number = 3,
-            retryDelay: number = 2000,
-            timeout: number = 60000
-        ) => {
+        const MAX_PAGES = 10;
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY = 2000;
+
+        const fetchTokenTransactions = async () => {
             let allTransactions: Data[] = [];
             let nextKey: string | null = null;
-            let retries = maxRetries;
-            const startTime = Date.now();
+            let pageCount = 0;
+            let retries = MAX_RETRIES;
+
             do {
                 try {
-                    if (Date.now() - startTime > timeout) {
-                        console.error('Operation timed out');
-                        break;
-                    }
-                    const url: string = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
+                    const url = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
                     const txQuery = await axios.get(url);
                     const transactions = txQuery.data.txs || [];
-                    if (transactions.length === 0 && !nextKey) {
-                        console.log('No transactions found for the given denom.');
-                        break;
-                    }
+                    if (transactions.length === 0 && !nextKey) break;
 
                     const formattedRows: Data[] = transactions.map((tx: any) => ({
                         bluechip: 'YourToken',
@@ -107,21 +101,18 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
                         fee: Number(tx.auth_info.fee.amount[0]?.amount || 0),
                     }));
 
-                    allTransactions = allTransactions.concat(formattedRows);
+                    allTransactions = [...allTransactions, ...formattedRows];
                     nextKey = txQuery.data.pagination?.next_key;
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    pageCount++;
                 } catch (error) {
-                    console.error('Error fetching token transactions:', error);
                     if (retries > 0) {
                         retries--;
-                        console.log(`Retrying... ${retries} retries left.`);
-                        await new Promise(resolve => setTimeout(resolve, retryDelay));
+                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
                     } else {
-                        console.error('Failed to fetch token transactions after retries.');
                         break;
                     }
                 }
-            } while (nextKey);
+            } while (nextKey && pageCount < MAX_PAGES);
 
             setRows(allTransactions);
         };

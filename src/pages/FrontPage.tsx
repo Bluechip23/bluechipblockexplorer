@@ -45,9 +45,7 @@ const FrontPage: React.FC = () => {
 
             ws.onclose = () => setWsConnected(false);
             ws.onerror = () => setWsConnected(false);
-        } catch {
-            // WebSocket not available
-        }
+        } catch {}
 
         return () => {
             ws?.close();

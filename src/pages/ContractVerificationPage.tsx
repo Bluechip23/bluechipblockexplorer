@@ -69,9 +69,7 @@ const ContractVerificationPage: React.FC = () => {
                     `${apiEndpoint}/cosmwasm/wasm/v1/contract/${contractAddress}/state`
                 );
                 setContractState({ models: stateRes.data.models || [] });
-            } catch {
-                // State query may not be available
-            }
+            } catch {}
         } catch (err) {
             setError('Contract not found. Please check the address.');
         } finally {

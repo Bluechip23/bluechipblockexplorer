@@ -18,7 +18,6 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
@@ -27,6 +26,7 @@ import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import { useWallet } from '../context/WalletContext';
 import PoolActionMenu from '../components/actions/PoolActionMenu';
+import { TabPanel, StatCard, NotConnectedView } from '../components/universal/PortfolioShared';
 import {
     fetchAllPoolSummaries,
     queryPoolCommits,
@@ -37,8 +37,6 @@ import {
     PositionResponse,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
-
-// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface MyCommitment {
     pool: PoolSummary;
@@ -57,56 +55,6 @@ interface TxRecord {
     timestamp: string;
 }
 
-// ─── Shared components ─────────────────────────────────────────────────────
-
-const TabPanel: React.FC<{ children: React.ReactNode; value: number; index: number }> = ({
-    children, value, index,
-}) => (
-    <div role="tabpanel" hidden={value !== index}>
-        {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
-    </div>
-);
-
-const StatCard: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-        <CardContent sx={{ textAlign: 'center', py: 2, '&:last-child': { pb: 2 } }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{label}</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                {typeof value === 'number' ? value.toLocaleString() : value}
-            </Typography>
-        </CardContent>
-    </Card>
-);
-
-const NotConnectedView: React.FC = () => {
-    const { connect, connecting } = useWallet();
-    return (
-        <Card>
-            <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                <AccountBalanceWalletIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6" sx={{ mb: 1 }}>Connect Your Wallet</Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Connect your Keplr wallet to view your commits, LP positions, fees, and transaction history.
-                </Typography>
-                <Box
-                    component="button"
-                    onClick={connect}
-                    disabled={connecting}
-                    sx={{
-                        px: 4, py: 1.5, fontSize: '1rem', fontWeight: 'bold', border: 'none',
-                        borderRadius: 2, bgcolor: 'primary.main', color: 'primary.contrastText',
-                        cursor: 'pointer', '&:hover': { bgcolor: 'primary.dark' },
-                        '&:disabled': { opacity: 0.6, cursor: 'not-allowed' },
-                    }}
-                >
-                    {connecting ? 'Connecting...' : 'Connect Wallet'}
-                </Box>
-            </CardContent>
-        </Card>
-    );
-};
-
-// ─── My Pools Tab ───────────────────────────────────────────────────────────
 
 const MyPoolsTab: React.FC<{ commitments: MyCommitment[]; loading: boolean }> = ({ commitments, loading }) => {
     if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning pools for your commitments...</Typography></Box>;
@@ -149,7 +97,6 @@ const MyPoolsTab: React.FC<{ commitments: MyCommitment[]; loading: boolean }> = 
     );
 };
 
-// ─── My Positions Tab ───────────────────────────────────────────────────────
 
 const MyPositionsTab: React.FC<{ positions: MyPosition[]; loading: boolean }> = ({ positions, loading }) => {
     if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning pools for your positions...</Typography></Box>;
@@ -191,7 +138,6 @@ const MyPositionsTab: React.FC<{ positions: MyPosition[]; loading: boolean }> = 
     );
 };
 
-// ─── My Transactions Tab ────────────────────────────────────────────────────
 
 const MyTransactionsTab: React.FC<{ commitments: MyCommitment[]; positions: MyPosition[]; loading: boolean }> = ({ commitments, positions, loading }) => {
     if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Loading transactions...</Typography></Box>;
@@ -223,7 +169,6 @@ const MyTransactionsTab: React.FC<{ commitments: MyCommitment[]; positions: MyPo
     );
 };
 
-// ─── Main Chain Portfolio Page ──────────────────────────────────────────────
 
 const ChainPortfolioPage: React.FC = () => {
     const { address, balance } = useWallet();

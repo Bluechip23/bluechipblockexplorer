@@ -20,7 +20,6 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useWallet } from '../../context/WalletContext';
 import { NATIVE_DENOM } from '../../defi/types';
 
-// ─── Shared types ────────────────────────────────────────────────────────────
 
 interface BaseModalProps {
     open: boolean;
@@ -31,7 +30,6 @@ interface BaseModalProps {
 
 type TxStage = 'input' | 'confirm' | 'executing' | 'success' | 'error';
 
-// ─── Shared confirmation step ────────────────────────────────────────────────
 
 const ConfirmationView: React.FC<{
     title: string;
@@ -91,7 +89,6 @@ const ResultView: React.FC<{
     </Box>
 );
 
-// ─── Buy (Swap native → creator token) ──────────────────────────────────────
 
 export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => {
     const { client, address } = useWallet();
@@ -198,7 +195,6 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
     );
 };
 
-// ─── Sell (Swap creator token → native) ─────────────────────────────────────
 
 export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string }> = ({
     open, onClose, poolAddress, tokenSymbol, creatorTokenAddress,
@@ -312,7 +308,6 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
     );
 };
 
-// ─── Commit / Subscribe ─────────────────────────────────────────────────────
 
 export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => {
     const { client, address } = useWallet();
@@ -413,7 +408,6 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
     );
 };
 
-// ─── Deposit Liquidity ──────────────────────────────────────────────────────
 
 export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddress?: string }> = ({
     open, onClose, poolAddress, tokenSymbol, creatorTokenAddress,
@@ -551,7 +545,6 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
     );
 };
 
-// ─── Remove Liquidity ───────────────────────────────────────────────────────
 
 export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => {
     const { client, address } = useWallet();

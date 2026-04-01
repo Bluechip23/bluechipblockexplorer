@@ -1,43 +1,53 @@
+import { lazy, Suspense } from 'react';
 import {
     BrowserRouter as Router,
     Routes,
     Route,
     Navigate
 } from 'react-router-dom';
-import BlockPage from './pages/individual-pages/BlockPage';
-import RecentTransactionsPage from './pages/table-pages/RecentTransactionsPage';
-import RecentBlocksPage from './pages/table-pages/RecentBlocksPage';
-import TopCreatorContractPage from './pages/table-pages/TopCreatorContractPage';
-import TopWalletsPage from './pages/table-pages/TopWalletsPage';
-import TopCreatorTokensPage from './pages/table-pages/TopCreatorTokenPage';
-import Wallet from './pages/individual-pages/WalletPage';
-import CreatorTokenPage from './pages/individual-pages/CreatorTokenPage';
-import CreatorContract from './pages/individual-pages/CreatorContractPage';
-import FrontPage from './pages/FrontPage';
-import Validator from './pages/individual-pages/ValidatorPage';
-import TopValidatorsPage from './pages/table-pages/TopValidatorsPage';
-import TopCreatorPoolPage from './pages/table-pages/TopCreatorPoolPage';
-import RecentBlueChipTransactionPage from './pages/table-pages/RecentBlueChipTransactionsPage';
-import TransactionPage from './pages/individual-pages/TransactionPage';
-import CreatorPoolPage from './pages/individual-pages/CreatorPoolPage';
-import ComingSoonPage from './components/universal/ComingSoonPage';
-import NotFoundPage from './pages/NotFoundPage';
-import GovernancePage from './pages/GovernancePage';
-import StakingPage from './pages/StakingPage';
-import IBCTransfersPage from './pages/IBCTransfersPage';
-import ContractVerificationPage from './pages/ContractVerificationPage';
-import IntegrationGuidePage from './pages/IntegrationGuidePage';
-import DefiPage from './defi/DefiPage';
-import ChainPortfolioPage from './pages/ChainPortfolioPage';
-import CreatorPortfolioPage from './pages/CreatorPortfolioPage';
 import { ThemeContextProvider } from './context/ThemeContext';
 import { WalletContextProvider } from './context/WalletContext';
+import { CircularProgress, Box } from '@mui/material';
+
+const BlockPage = lazy(() => import('./pages/individual-pages/BlockPage'));
+const RecentTransactionsPage = lazy(() => import('./pages/table-pages/RecentTransactionsPage'));
+const RecentBlocksPage = lazy(() => import('./pages/table-pages/RecentBlocksPage'));
+const TopCreatorContractPage = lazy(() => import('./pages/table-pages/TopCreatorContractPage'));
+const TopWalletsPage = lazy(() => import('./pages/table-pages/TopWalletsPage'));
+const TopCreatorTokensPage = lazy(() => import('./pages/table-pages/TopCreatorTokenPage'));
+const Wallet = lazy(() => import('./pages/individual-pages/WalletPage'));
+const CreatorTokenPage = lazy(() => import('./pages/individual-pages/CreatorTokenPage'));
+const CreatorContract = lazy(() => import('./pages/individual-pages/CreatorContractPage'));
+const FrontPage = lazy(() => import('./pages/FrontPage'));
+const Validator = lazy(() => import('./pages/individual-pages/ValidatorPage'));
+const TopValidatorsPage = lazy(() => import('./pages/table-pages/TopValidatorsPage'));
+const TopCreatorPoolPage = lazy(() => import('./pages/table-pages/TopCreatorPoolPage'));
+const RecentBlueChipTransactionPage = lazy(() => import('./pages/table-pages/RecentBlueChipTransactionsPage'));
+const TransactionPage = lazy(() => import('./pages/individual-pages/TransactionPage'));
+const CreatorPoolPage = lazy(() => import('./pages/individual-pages/CreatorPoolPage'));
+const ComingSoonPage = lazy(() => import('./components/universal/ComingSoonPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const GovernancePage = lazy(() => import('./pages/GovernancePage'));
+const StakingPage = lazy(() => import('./pages/StakingPage'));
+const IBCTransfersPage = lazy(() => import('./pages/IBCTransfersPage'));
+const ContractVerificationPage = lazy(() => import('./pages/ContractVerificationPage'));
+const IntegrationGuidePage = lazy(() => import('./pages/IntegrationGuidePage'));
+const DefiPage = lazy(() => import('./defi/DefiPage'));
+const ChainPortfolioPage = lazy(() => import('./pages/ChainPortfolioPage'));
+const CreatorPortfolioPage = lazy(() => import('./pages/CreatorPortfolioPage'));
+
+const PageLoader = () => (
+    <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <CircularProgress />
+    </Box>
+);
 
 function App() {
     return (
         <ThemeContextProvider>
             <WalletContextProvider>
             <Router>
+                <Suspense fallback={<PageLoader />}>
                 <Routes>
                     <Route
                         path="/"
@@ -70,6 +80,7 @@ function App() {
                     <Route path="/portfolio/creator" element={<CreatorPortfolioPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
+                </Suspense>
             </Router>
             </WalletContextProvider>
         </ThemeContextProvider>

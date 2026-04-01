@@ -40,8 +40,6 @@ import PoolActionMenu from '../../components/actions/PoolActionMenu';
 import CopyableId from '../../components/universal/CopyableId';
 import { useWallet } from '../../context/WalletContext';
 
-// ─── Stat Card ──────────────────────────────────────────────────────────────
-
 const StatCard: React.FC<{ label: string; value: string | number; highlight?: boolean }> = ({ label, value, highlight }) => (
     <Card variant="outlined" sx={{ height: '100%', ...(highlight ? { borderColor: 'primary.main', borderWidth: 2 } : {}) }}>
         <CardContent sx={{ textAlign: 'center', py: 2, '&:last-child': { pb: 2 } }}>
@@ -54,8 +52,6 @@ const StatCard: React.FC<{ label: string; value: string | number; highlight?: bo
         </CardContent>
     </Card>
 );
-
-// ─── Computed metrics helpers ───────────────────────────────────────────────
 
 function computeTokenPrice(reserve0: string, reserve1: string): string {
     const r0 = parseInt(reserve0);
@@ -80,7 +76,6 @@ function computeMarketCap(reserve0: string, reserve1: string, totalSupply: strin
     const r1 = parseInt(reserve1);
     const supply = parseInt(totalSupply);
     if (!r0 || !r1 || !supply) return '-';
-    // price per token in BLUECHIP micro-units, then multiply by supply
     const pricePerToken = r0 / r1;
     const mcap = (pricePerToken * supply) / Math.pow(10, decimals);
     return formatMicroAmount(Math.floor(mcap).toString());
@@ -96,28 +91,20 @@ function computeFeeApr(
     const fees1 = parseInt(totalFeesCollected1);
     const liquidity = parseInt(totalLiquidity);
     if (!liquidity || (!fees0 && !fees1)) return '-';
-    // Use the BLUECHIP-side fees as the primary metric
-    // blockTimeLast is a unix seconds timestamp of last pool update
-    // Estimate pool age from block_time_last relative to a reasonable start
-    // We'll use total fees / liquidity as a simple ratio, annualized
     const totalFees = fees0 + fees1;
     const feeRatio = totalFees / liquidity;
 
-    // If we have a timestamp, try to annualize properly
     if (blockTimeLast > 0) {
         const now = Date.now() / 1000;
         const poolAgeDays = (now - blockTimeLast) > 0
-            ? Math.max((now - blockTimeLast) / 86400, 1) // at least 1 day to avoid infinity
+            ? Math.max((now - blockTimeLast) / 86400, 1)
             : 1;
-        // But blockTimeLast is the LAST update, not creation. Use a conservative annualization.
-        // fees earned over poolAge, extrapolate to 365 days
         const annualizedRatio = (feeRatio / poolAgeDays) * 365;
         const apr = annualizedRatio * 100;
         if (apr > 10000) return '>10,000%';
         return apr.toFixed(1) + '%';
     }
 
-    // Fallback: just show the raw ratio as if 30 days old
     const apr = (feeRatio / 30) * 365 * 100;
     if (apr > 10000) return '>10,000%';
     return apr.toFixed(1) + '%';
@@ -185,7 +172,6 @@ function getPoolTypeLabel(pair: { pool_type: { xyk?: Record<string, never>; stab
     return 'Unknown';
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
 
 const CreatorPoolPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -210,7 +196,6 @@ const CreatorPoolPage: React.FC = () => {
                 setCommitters(commits?.commiters || []);
                 setPoolTypeLabel(getPoolTypeLabel(pair));
 
-                // Check if connected wallet is the creator
                 if (address) {
                     const creator = await queryPoolCreator(id);
                     setIsCreator(creator === address);
@@ -232,7 +217,6 @@ const CreatorPoolPage: React.FC = () => {
         );
     }
 
-    // Derived values
     const tokenPrice = pool ? computeTokenPrice(pool.reserve0, pool.reserve1) : '-';
     const reserveRatio = pool ? computeReserveRatio(pool.reserve0, pool.reserve1) : '-';
     const avgCommit = computeAvgCommit(committers);
@@ -265,7 +249,6 @@ const CreatorPoolPage: React.FC = () => {
                     </Grid>
                 ) : (
                     <>
-                        {/* Pool Header */}
                         <Grid item xs={12} md={8}>
                             <Card>
                                 <CardContent>
@@ -304,7 +287,6 @@ const CreatorPoolPage: React.FC = () => {
                             </Card>
                         </Grid>
 
-                        {/* Token Price + Market Cap + Fee APR (shown for active pools) */}
                         {pool.thresholdReached && (
                             <Grid item xs={12} md={8}>
                                 <Card>
@@ -353,7 +335,6 @@ const CreatorPoolPage: React.FC = () => {
                             </Grid>
                         )}
 
-                        {/* Threshold Progress */}
                         {!pool.thresholdReached && (
                             <Grid item xs={12} md={8}>
                                 <Card>
@@ -394,7 +375,6 @@ const CreatorPoolPage: React.FC = () => {
                             </Grid>
                         )}
 
-                        {/* Stats Grid */}
                         <Grid item xs={12} md={8}>
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={3}>
@@ -421,7 +401,6 @@ const CreatorPoolPage: React.FC = () => {
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="Token Supply" value={formatMicroAmount(pool.totalSupply, pool.tokenDecimals)} />
                                 </Grid>
-                                {/* Commit analytics */}
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="Avg Commit Size" value={avgCommit} />
                                 </Grid>
@@ -446,7 +425,6 @@ const CreatorPoolPage: React.FC = () => {
                             </Grid>
                         </Grid>
 
-                        {/* Creator-Only Insights Panel */}
                         {isCreator && (
                             <Grid item xs={12} md={8}>
                                 <Card sx={{ border: '2px solid', borderColor: 'primary.main' }}>
@@ -521,7 +499,6 @@ const CreatorPoolPage: React.FC = () => {
                                             )}
                                         </Grid>
 
-                                        {/* Threshold payout breakdown for pre-launch */}
                                         {!pool.thresholdReached && (
                                             <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                                                 <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
@@ -547,7 +524,6 @@ const CreatorPoolPage: React.FC = () => {
                             </Grid>
                         )}
 
-                        {/* Committer Leaderboard */}
                         {committers.length > 0 && (
                             <Grid item xs={12} md={8}>
                                 <Typography variant="h6" sx={{ mb: 1 }}>Committer Leaderboard</Typography>

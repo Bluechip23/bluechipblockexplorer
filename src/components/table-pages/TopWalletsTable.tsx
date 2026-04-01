@@ -10,7 +10,7 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import CopyableId from '../universal/CopyableId';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint } from '../universal/IndividualPage.const';
 import { useEffect, useState } from 'react';
 import { Typography } from '@mui/material';
 
@@ -74,7 +74,6 @@ const TopWalletsTable: React.FC = () => {
 
                 setRows(walletRows);
             } catch (error) {
-                <Typography>There has been an error fetching wallet data</Typography>
                 console.error('Error fetching wallet data:', error);
             }
         };

@@ -44,8 +44,6 @@ import {
     ThresholdAnalytics,
 } from '../utils/contractQueries';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
 type TimePeriod = '1m' | '3m' | '1y';
 
 const PERIOD_LABELS: Record<TimePeriod, string> = {
@@ -59,8 +57,6 @@ const PERIOD_MS: Record<TimePeriod, number> = {
     '3m': 90 * 86400000,
     '1y': 365 * 86400000,
 };
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getActiveSubscribers(committers: CommiterInfo[], period: TimePeriod): number {
     const cutoff = Date.now() - PERIOD_MS[period];
@@ -96,8 +92,6 @@ function computeCirculatingSupply(pool: PoolSummary): {
     const circulating = Math.max(0, total - locked);
     return { circulating, locked, total };
 }
-
-// ─── Metric Row ─────────────────────────────────────────────────────────────
 
 const MetricRow: React.FC<{
     icon: React.ReactNode;
@@ -153,8 +147,6 @@ const MetricRow: React.FC<{
     </Box>
 );
 
-// ─── Section Header ─────────────────────────────────────────────────────────
-
 const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pt: 2, pb: 1 }}>
         {icon}
@@ -163,8 +155,6 @@ const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ ico
         </Typography>
     </Box>
 );
-
-// ─── Holder Distribution Bar ────────────────────────────────────────────────
 
 const HolderBar: React.FC<{ distribution: HolderDistribution }> = ({ distribution }) => {
     const { whales, mid, small, totalHolders } = distribution;
@@ -197,8 +187,6 @@ const HolderBar: React.FC<{ distribution: HolderDistribution }> = ({ distributio
         </Box>
     );
 };
-
-// ─── Threshold Progress Section ─────────────────────────────────────────────
 
 const ThresholdSection: React.FC<{
     pool: PoolSummary;
@@ -322,8 +310,6 @@ const ThresholdSection: React.FC<{
     );
 };
 
-// ─── Main Component ─────────────────────────────────────────────────────────
-
 interface TokenPerformanceMetricsProps {
     pool: PoolSummary;
 }
@@ -403,7 +389,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
     return (
         <Card variant="outlined">
             <CardContent sx={{ pb: '8px !important' }}>
-                {/* ── Header ── */}
+
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
                     <Typography variant="subtitle1" fontWeight="bold">
                         {pool.tokenSymbol} — Performance
@@ -416,7 +402,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     />
                 </Box>
 
-                {/* ── Pool Timeline ── */}
+
                 <SectionHeader icon={<ViewInArIcon fontSize="small" color="action" />} title="Pool Timeline" />
                 <MetricRow
                     icon={<ViewInArIcon color="action" />}
@@ -431,7 +417,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
-                {/* ── Price & Subscribers ── */}
+
                 <SectionHeader icon={<TrendingUpIcon fontSize="small" color="primary" />} title="Price & Activity" />
                 <MetricRow
                     icon={<TrendingUpIcon color="primary" />}
@@ -456,7 +442,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
-                {/* ── Holder Distribution ── */}
+
                 {holders && (
                     <>
                         <SectionHeader icon={<PieChartIcon fontSize="small" color="secondary" />} title="Holder Distribution" />
@@ -467,7 +453,6 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         />
                         <HolderBar distribution={holders} />
 
-                        {/* Top Holders Table */}
                         {holders.topHolders.length > 0 && (
                             <Box sx={{ px: 2, pb: 1.5 }}>
                                 <Typography variant="caption" fontWeight="bold" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
@@ -519,7 +504,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     </>
                 )}
 
-                {/* ── Supply Breakdown ── */}
+
                 <SectionHeader icon={<LockIcon fontSize="small" color="action" />} title="Supply" />
                 <Box sx={{ px: 2, pb: 1.5 }}>
                     <Grid container spacing={1}>
@@ -558,7 +543,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
-                {/* ── Fees & Revenue ── */}
+
                 <SectionHeader icon={<MonetizationOnIcon fontSize="small" color="success" />} title="Fees & Revenue" />
                 <MetricRow
                     icon={<AccountBalanceIcon color="success" />}
@@ -575,7 +560,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
-                {/* ── Pool Metrics ── */}
+
                 <SectionHeader icon={<WaterDropIcon fontSize="small" color="info" />} title="Pool Metrics" />
                 <MetricRow
                     icon={<MonetizationOnIcon color="action" />}
@@ -592,7 +577,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
-                {/* ── Threshold Section ── */}
+
                 <ThresholdSection
                     pool={pool}
                     analytics={thresholdAnalytics}

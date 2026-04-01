@@ -12,14 +12,12 @@ import { NATIVE_DENOM } from './types';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 import { useWallet } from '../context/WalletContext';
 
-// ----------- Tab Panel -----------
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
     <div role="tabpanel" hidden={value !== index}>
         {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
     </div>
 );
 
-// ----------- TxHash Display -----------
 const TxHashDisplay: React.FC<{ txHash: string }> = ({ txHash }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {

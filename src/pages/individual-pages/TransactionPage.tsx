@@ -7,7 +7,7 @@ import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import RecentTransactionsTable from '../../components/table-pages/RecentTransactionsTable';
-import { apiEndpoint, rpcEndpoint } from '../../components/universal/IndividualPage.const';
+import { apiEndpoint } from '../../components/universal/IndividualPage.const';
 import { decodeMessageType, formatAmount, formatDenom } from '../../utils/txDecoder';
 import { CardSkeleton } from '../../components/universal/LoadingSkeleton';
 import CopyableId from '../../components/universal/CopyableId';

@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import CopyableId from '../universal/CopyableId';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { apiEndpoint } from '../universal/IndividualPage.const';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
 
@@ -51,17 +51,17 @@ const RecentTransactionsTable: React.FC = () => {
             try {
                 const response = await axios.get(`${apiEndpoint}/tx_search`, {
                     params: {
-                        query: 'tx.height>0', //all transactions since origin
-                        page: page + 1, 
+                        query: 'tx.height>0',
+                        page: page + 1,
                         per_page: rowsPerPage,
-                        order_by: 'desc', 
+                        order_by: 'desc',
                     },
                 });
                 const transactions = response.data.result.txs; 
 
                 const blockRows = transactions.map((tx: any) => ({
                     hash: tx.txhash,
-                    method: tx.tx.body.messages[0].type, //not sure if our transactions have multiple versions? but [0] should grab the right thing anyways
+                    method: tx.tx.body.messages[0].type,
                     block: tx.height,
                     sender: tx.tx.body.messages[0].sender,
                     recipient: tx.tx.body.messages[0].recipient,

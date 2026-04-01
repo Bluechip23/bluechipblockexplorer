@@ -2,12 +2,11 @@ import { Button, Paper, Stack, TextField, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import { fetchTransaction, fetchWallet, fetchBlock } from './SearchBarLogic';
 import { useNavigate } from 'react-router-dom';
-import { denom, rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
+import { rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
 import axios from 'axios';
 
 const GeneralStats: React.FC = () => {
     const [searchValue, setSearchValue] = useState('');
-    const [searchResult, setSearchResult] = useState<any>(null); // Store results
     const [recentBlock, setRecentBlock] = useState(0);
     const [totalSupply, setTotalSupply] = useState(0);
     const [totalStaked, setTotalStaked] = useState(0);
@@ -15,73 +14,51 @@ const GeneralStats: React.FC = () => {
     const [error, setError] = useState('');
     const navigateTo = useNavigate();
 
-    const latestBlockData = async () => {
-        try {
-            const response = await axios.get(`${rpcEndpoint}/status`);
-            const latestHeight = response.data.result.sync_info.latest_block_height;
-            const blockResponse = await axios.get(`${rpcEndpoint}/block?height=${latestHeight}`);
-            const numTxs = blockResponse.data.result.block.data.txs.length;
-            setTransactionsInblock(numTxs);
-            setRecentBlock(latestHeight);
-            console.log(response.data)
-        } catch (error) {
-            console.error('Error fetching latest block:', error);
-
-        }
-    };
-    const fetchStakedTokens = async () => {
-        try {
-            const response = await axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`);
-            const bondedTokens = response.data.pool.bonded_tokens;
-            setTotalStaked(bondedTokens);
-            console.log(response.data)
-        } catch (error) {
-            console.error('Error fetching staked tokens:', error);
-        }
-    };
-    const fetchTotalSupply = async () => {
-        try {
-            const response = await axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`);
-            const supply = response.data.amount;
-            setTotalSupply(supply);
-            console.log(response.data)
-        } catch (error) {
-            console.error('Error fetching total supply:', error);
-        }
-    };
-
     useEffect(() => {
-        const fetchData = async () => {
-            await latestBlockData();
-            await fetchStakedTokens();
-            await fetchTotalSupply();
+        const fetchAllStats = async () => {
+            const [statusResult, stakingResult, supplyResult] = await Promise.allSettled([
+                axios.get(`${rpcEndpoint}/status`),
+                axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`),
+                axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`),
+            ]);
+
+            if (statusResult.status === 'fulfilled') {
+                const latestHeight = statusResult.value.data.result.sync_info.latest_block_height;
+                setRecentBlock(latestHeight);
+                try {
+                    const blockResponse = await axios.get(`${rpcEndpoint}/block?height=${latestHeight}`);
+                    setTransactionsInblock(blockResponse.data.result.block.data.txs.length);
+                } catch {}
+            }
+
+            if (stakingResult.status === 'fulfilled') {
+                setTotalStaked(stakingResult.value.data.pool.bonded_tokens);
+            }
+
+            if (supplyResult.status === 'fulfilled') {
+                setTotalSupply(supplyResult.value.data.amount);
+            }
         };
-        fetchData();
+        fetchAllStats();
     }, []);
 
     const handleSearch = async () => {
         setError('');
-        setSearchResult(null);
         try {
-            let result;
             if (isNaN(Number(searchValue))) {
                 if (searchValue.length === 64) {
-                    result = await fetchTransaction(searchValue);
-                    setSearchResult(result);
-                    navigateTo(`/transaction/${searchResult?.hash}`)
+                    const result = await fetchTransaction(searchValue);
+                    navigateTo(`/transactionpage/${result?.hash}`);
                 } else {
-                    result = await fetchWallet(searchValue);
-                    setSearchResult(result);
-                    navigateTo(`/wallet/${searchResult?.address}`)
+                    const result = await fetchWallet(searchValue);
+                    navigateTo(`/wallet/${result?.address}`);
                 }
             } else {
-                result = await fetchBlock(Number(searchValue));
-                setSearchResult(result);
-                navigateTo(`/block/${searchResult?.id}`)
+                const result = await fetchBlock(Number(searchValue));
+                navigateTo(`/blockpage/${result?.id}`);
             }
         } catch (err) {
             setError('Error fetching data. Please ensure the input is valid.');
-            console.log(error)
         }
     };
     return (

@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import { Typography } from '@mui/material';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { apiEndpoint, rpcEndpoint } from '../universal/IndividualPage.const';
+import { rpcEndpoint } from '../universal/IndividualPage.const';
 import { useEffect, useState } from 'react';
 
 interface Column {
@@ -96,13 +96,13 @@ const RecentBlocksTable: React.FC = () => {
 
     useEffect(() => {
         fetchLatestBlock();
-    }, []); 
+    }, []);
 
     useEffect(() => {
         if (latestBlock > 0) {
             loadBlocks();
         }
-    }, []);
+    }, [latestBlock]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
