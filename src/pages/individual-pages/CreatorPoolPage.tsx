@@ -23,10 +23,12 @@ import {
     queryPoolCommits,
     queryPoolCreator,
     queryPoolPair,
+    queryPoolAnalytics,
     formatMicroAmount,
     abbreviateAddress,
     PoolSummary,
     CommiterInfo,
+    PoolAnalyticsResponse,
 } from '../../utils/contractQueries';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -36,6 +38,7 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import LockIcon from '@mui/icons-material/Lock';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import PoolActionMenu from '../../components/actions/PoolActionMenu';
 import CopyableId from '../../components/universal/CopyableId';
 import { useWallet } from '../../context/WalletContext';
@@ -178,6 +181,7 @@ const CreatorPoolPage: React.FC = () => {
     const { address } = useWallet();
     const [pool, setPool] = useState<PoolSummary | null>(null);
     const [committers, setCommitters] = useState<CommiterInfo[]>([]);
+    const [analytics, setAnalytics] = useState<PoolAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [isCreator, setIsCreator] = useState(false);
     const [poolTypeLabel, setPoolTypeLabel] = useState('-');
@@ -187,14 +191,16 @@ const CreatorPoolPage: React.FC = () => {
             if (!id) return;
             setLoading(true);
             try {
-                const [summary, commits, pair] = await Promise.all([
+                const [summary, commits, pair, analyticsData] = await Promise.all([
                     fetchPoolSummary(id),
                     queryPoolCommits(id),
                     queryPoolPair(id),
+                    queryPoolAnalytics(id),
                 ]);
                 setPool(summary);
                 setCommitters(commits?.commiters || []);
                 setPoolTypeLabel(getPoolTypeLabel(pair));
+                setAnalytics(analyticsData);
 
                 if (address) {
                     const creator = await queryPoolCreator(id);
@@ -217,7 +223,9 @@ const CreatorPoolPage: React.FC = () => {
         );
     }
 
-    const tokenPrice = pool ? computeTokenPrice(pool.reserve0, pool.reserve1) : '-';
+    const tokenPrice = analytics && analytics.current_price_1_to_0 !== '0'
+        ? parseFloat(analytics.current_price_1_to_0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })
+        : pool ? computeTokenPrice(pool.reserve0, pool.reserve1) : '-';
     const reserveRatio = pool ? computeReserveRatio(pool.reserve0, pool.reserve1) : '-';
     const avgCommit = computeAvgCommit(committers);
     const largestCommit = computeLargestCommit(committers);
@@ -423,6 +431,142 @@ const CreatorPoolPage: React.FC = () => {
                                     </Grid>
                                 )}
                             </Grid>
+                        </Grid>
+
+                        {/* On-Chain Analytics from Analytics query */}
+                        {analytics && (
+                            <Grid item xs={12} md={8}>
+                                <Card>
+                                    <CardContent>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                                            <BarChartIcon color="primary" fontSize="small" />
+                                            <Typography variant="h6">On-Chain Analytics</Typography>
+                                        </Box>
+                                        <Grid container spacing={2}>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="Total Swaps" value={analytics.analytics.total_swap_count} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="Total Commits" value={analytics.analytics.total_commit_count} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="Volume (BLUECHIP)" value={formatMicroAmount(analytics.analytics.total_volume_0)} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label={`Volume (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.analytics.total_volume_1)} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="LP Deposits" value={analytics.analytics.total_lp_deposit_count} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="LP Withdrawals" value={analytics.analytics.total_lp_withdrawal_count} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="Unclaimed Fees (BLC)" value={formatMicroAmount(analytics.fee_reserve_0)} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label={`Unclaimed Fees (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.fee_reserve_1)} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="USD Raised" value={'$' + formatMicroAmount(analytics.total_usd_raised)} />
+                                            </Grid>
+                                            <Grid item xs={6} sm={3}>
+                                                <StatCard label="BLUECHIP Raised" value={formatMicroAmount(analytics.total_bluechip_raised)} />
+                                            </Grid>
+                                            {analytics.analytics.last_trade_timestamp > 0 && (
+                                                <Grid item xs={6} sm={3}>
+                                                    <StatCard
+                                                        label="Last Trade"
+                                                        value={(() => {
+                                                            const secondsAgo = Math.floor(Date.now() / 1000) - analytics.analytics.last_trade_timestamp;
+                                                            if (secondsAgo < 60) return `${secondsAgo}s ago`;
+                                                            if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+                                                            if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+                                                            return `${Math.floor(secondsAgo / 86400)}d ago`;
+                                                        })()}
+                                                    />
+                                                </Grid>
+                                            )}
+                                            {analytics.analytics.last_trade_block > 0 && (
+                                                <Grid item xs={6} sm={3}>
+                                                    <StatCard label="Last Trade Block" value={`#${analytics.analytics.last_trade_block.toLocaleString()}`} />
+                                                </Grid>
+                                            )}
+                                        </Grid>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        )}
+
+                        {/* Indexer Placeholder: Historical Data (requires indexer) */}
+                        <Grid item xs={12} md={8}>
+                            <Card sx={{ border: '1px dashed', borderColor: 'divider', opacity: 0.7 }}>
+                                <CardContent>
+                                    <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                                        Historical Data
+                                    </Typography>
+                                    <Alert severity="info" sx={{ mb: 2 }}>
+                                        The following sections require an indexer to track historical state changes over time.
+                                        On-chain queries only provide current state — time-series data needs event indexing.
+                                    </Alert>
+                                    <Grid container spacing={2}>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Price History Chart</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from swap events</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Volume Over Time</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from swap events</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Trade History Table</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from swap events (price, amount, sender, block)</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Commit History Timeline</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from commit events</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Liquidity Add/Remove History</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from LP events</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6}>
+                                            <Card variant="outlined" sx={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'action.hover' }}>
+                                                <Box sx={{ textAlign: 'center' }}>
+                                                    <BarChartIcon sx={{ fontSize: 40, color: 'text.disabled' }} />
+                                                    <Typography variant="body2" color="text.disabled">Fee Accrual Over Time</Typography>
+                                                    <Typography variant="caption" color="text.disabled">Indexed from fee collection events</Typography>
+                                                </Box>
+                                            </Card>
+                                        </Grid>
+                                    </Grid>
+                                </CardContent>
+                            </Card>
                         </Grid>
 
                         {isCreator && (
