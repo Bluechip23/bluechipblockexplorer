@@ -85,8 +85,8 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
 
             do {
                 try {
-                    const url = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
-                    const txQuery = await axios.get(url);
+                    const url: string = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
+                    const txQuery: any = await axios.get(url);
                     const transactions = txQuery.data.txs || [];
                     if (transactions.length === 0 && !nextKey) break;
 
