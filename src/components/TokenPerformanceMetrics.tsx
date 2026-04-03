@@ -65,7 +65,7 @@ function getActiveSubscribers(committers: CommiterInfo[], period: TimePeriod): n
     ).length;
 }
 
-function computeCurrentPrice(pool: PoolSummary): string {
+export function computeCurrentPrice(pool: PoolSummary): string {
     const r0 = parseInt(pool.reserve0);
     const r1 = parseInt(pool.reserve1);
     if (!r0 || !r1) return '-';
@@ -101,7 +101,8 @@ const MetricRow: React.FC<{
     period?: TimePeriod;
     onPeriodChange?: (p: TimePeriod) => void;
     showDropdown?: boolean;
-}> = ({ icon, label, value, subtext, period, onPeriodChange, showDropdown = false }) => (
+    valueColor?: string;
+}> = ({ icon, label, value, subtext, period, onPeriodChange, showDropdown = false, valueColor }) => (
     <Box
         sx={{
             display: 'flex',
@@ -128,7 +129,7 @@ const MetricRow: React.FC<{
             </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="h6" fontWeight="bold">
+            <Typography variant="h6" fontWeight="bold" sx={valueColor ? { color: valueColor } : undefined}>
                 {typeof value === 'number' ? value.toLocaleString() : value}
             </Typography>
             {showDropdown && period && onPeriodChange && (
