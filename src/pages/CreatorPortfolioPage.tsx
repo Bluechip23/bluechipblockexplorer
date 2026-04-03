@@ -4,19 +4,23 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
     CircularProgress,
+    Collapse,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    Divider,
     Grid,
+    IconButton,
     Stack,
     Typography,
 } from '@mui/material';
-import Paper from '@mui/material/Paper';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import CloseIcon from '@mui/icons-material/Close';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
@@ -36,6 +40,191 @@ import {
     PoolSummary,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
+
+/* ── Pool Selector Dropdown ────────────────────────────────────────── */
+
+const PoolSelectorDropdown: React.FC<{
+    pools: PoolSummary[];
+    selectedPool: PoolSummary | null;
+    onSelectPool: (pool: PoolSummary) => void;
+    comparedPools: Set<string>;
+    onToggleCompare: (poolAddress: string) => void;
+    onCompare: () => void;
+}> = ({ pools, selectedPool, onSelectPool, comparedPools, onToggleCompare, onCompare }) => {
+    const [open, setOpen] = useState(false);
+
+    return (
+        <Card>
+            <CardContent sx={{ pb: '8px !important' }}>
+                <Box
+                    onClick={() => setOpen(!open)}
+                    sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                    }}
+                >
+                    <Box>
+                        <Typography variant="h6" fontWeight="bold">
+                            Your Pools
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            {selectedPool
+                                ? `Viewing: ${selectedPool.tokenSymbol} — ${selectedPool.tokenName}`
+                                : 'Select a pool to view its details'}
+                        </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        {comparedPools.size > 0 && (
+                            <Chip
+                                label={`${comparedPools.size} selected`}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                            />
+                        )}
+                        {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+                    </Box>
+                </Box>
+
+                <Collapse in={open}>
+                    <Divider sx={{ my: 1 }} />
+                    <Stack spacing={0}>
+                        {pools.map((pool) => (
+                            <Box
+                                key={pool.poolAddress}
+                                sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    py: 0.75,
+                                    px: 1,
+                                    borderRadius: 1,
+                                    bgcolor:
+                                        selectedPool?.poolAddress === pool.poolAddress
+                                            ? 'action.selected'
+                                            : 'transparent',
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                }}
+                            >
+                                {/* Left: checkbox for compare */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
+                                    <Checkbox
+                                        size="small"
+                                        checked={comparedPools.has(pool.poolAddress)}
+                                        onChange={() => onToggleCompare(pool.poolAddress)}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                    <Box sx={{ minWidth: 0 }}>
+                                        <Typography variant="body2" fontWeight="bold" noWrap>
+                                            {pool.tokenSymbol}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" noWrap>
+                                            {pool.tokenName}
+                                        </Typography>
+                                    </Box>
+                                    <Chip
+                                        label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                        color={pool.thresholdReached ? 'success' : 'warning'}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{ ml: 1 }}
+                                    />
+                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                        TVL: {formatMicroAmount(pool.totalLiquidity)}
+                                    </Typography>
+                                </Box>
+
+                                {/* Right: select button + action menu */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+                                    <Button
+                                        size="small"
+                                        variant={
+                                            selectedPool?.poolAddress === pool.poolAddress
+                                                ? 'contained'
+                                                : 'outlined'
+                                        }
+                                        onClick={() => {
+                                            onSelectPool(pool);
+                                            setOpen(false);
+                                        }}
+                                    >
+                                        {selectedPool?.poolAddress === pool.poolAddress ? 'Viewing' : 'Select'}
+                                    </Button>
+                                    <PoolActionMenu
+                                        poolAddress={pool.poolAddress}
+                                        tokenSymbol={pool.tokenSymbol}
+                                        creatorTokenAddress={pool.creatorTokenAddress}
+                                        thresholdReached={pool.thresholdReached}
+                                    />
+                                </Box>
+                            </Box>
+                        ))}
+                    </Stack>
+
+                    {/* Compare button */}
+                    <Divider sx={{ mt: 1 }} />
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
+                        <Button
+                            variant="contained"
+                            startIcon={<CompareArrowsIcon />}
+                            disabled={comparedPools.size < 2}
+                            onClick={() => {
+                                onCompare();
+                                setOpen(false);
+                            }}
+                        >
+                            Compare {comparedPools.size > 0 ? `(${comparedPools.size})` : ''}
+                        </Button>
+                    </Box>
+                </Collapse>
+            </CardContent>
+        </Card>
+    );
+};
+
+/* ── Compare Pools Modal ───────────────────────────────────────────── */
+
+const ComparePoolsModal: React.FC<{
+    open: boolean;
+    onClose: () => void;
+    pools: PoolSummary[];
+}> = ({ open, onClose, pools }) => (
+    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight="bold">
+                Compare Pools ({pools.length})
+            </Typography>
+            <IconButton onClick={onClose} size="small">
+                <CloseIcon />
+            </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+            <Grid container spacing={2}>
+                {pools.map((pool) => (
+                    <Grid item xs={12} md={Math.max(4, Math.floor(12 / pools.length))} key={pool.poolAddress}>
+                        <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 2, p: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, px: 1, pt: 1 }}>
+                                <Typography variant="subtitle1" fontWeight="bold">
+                                    {pool.tokenSymbol}
+                                </Typography>
+                                <Chip
+                                    label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                    color={pool.thresholdReached ? 'success' : 'warning'}
+                                    size="small"
+                                    variant="outlined"
+                                />
+                            </Box>
+                            <TokenPerformanceMetrics pool={pool} />
+                        </Box>
+                    </Grid>
+                ))}
+            </Grid>
+        </DialogContent>
+    </Dialog>
+);
 
 const NoPoolsView: React.FC<{ onCreatePool: () => void }> = ({ onCreatePool }) => (
     <Card>
@@ -61,6 +250,9 @@ const CreatorPortfolioPage: React.FC = () => {
     const [createdPools, setCreatedPools] = useState<PoolSummary[]>([]);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loadKey, setLoadKey] = useState(0);
+    const [selectedPool, setSelectedPool] = useState<PoolSummary | null>(null);
+    const [comparedAddresses, setComparedAddresses] = useState<Set<string>>(new Set());
+    const [showCompare, setShowCompare] = useState(false);
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -72,7 +264,10 @@ const CreatorPortfolioPage: React.FC = () => {
                 const pools = await fetchAllPoolSummaries(factoryAddress);
                 if (cancelled) return;
                 const myPools = await findPoolsByCreator(pools, address);
-                if (!cancelled) setCreatedPools(myPools);
+                if (!cancelled) {
+                    setCreatedPools(myPools);
+                    if (myPools.length > 0 && !selectedPool) setSelectedPool(myPools[0]);
+                }
             } catch (err) { console.error('Error loading creator portfolio:', err); }
             finally { if (!cancelled) setLoading(false); }
         }
@@ -135,64 +330,53 @@ const CreatorPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={4}><StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} /></Grid>
                             </Grid>
 
-                            <Card>
-                                <CardContent sx={{ pb: 1 }}>
-                                    <Typography variant="h6" fontWeight="bold">Token Performance</Typography>
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                        Activity and pricing metrics for each of your tokens.
-                                    </Typography>
-                                </CardContent>
-                                <CardContent sx={{ pt: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                    {createdPools.map((pool) => (
-                                        <TokenPerformanceMetrics key={pool.poolAddress} pool={pool} />
-                                    ))}
-                                </CardContent>
-                            </Card>
+                            <PoolSelectorDropdown
+                                pools={createdPools}
+                                selectedPool={selectedPool}
+                                onSelectPool={setSelectedPool}
+                                comparedPools={comparedAddresses}
+                                onToggleCompare={(addr) => {
+                                    setComparedAddresses((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(addr)) next.delete(addr);
+                                        else next.add(addr);
+                                        return next;
+                                    });
+                                }}
+                                onCompare={() => setShowCompare(true)}
+                            />
 
-                            <Card>
-                                <CardContent sx={{ pb: 1 }}>
-                                    <Typography variant="h6" fontWeight="bold">Your Pools</Typography>
-                                </CardContent>
-                                <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                                    <TableContainer>
-                                        <Table stickyHeader size="small">
-                                            <TableHead>
-                                                <TableRow>
-                                                    <TableCell>Pool</TableCell>
-                                                    <TableCell>Status</TableCell>
-                                                    <TableCell>TVL</TableCell>
-                                                    <TableCell>Fees (BLUECHIP)</TableCell>
-                                                    <TableCell>Fees (Token)</TableCell>
-                                                    <TableCell>Subscribers</TableCell>
-                                                    <TableCell>LP Positions</TableCell>
-                                                    <TableCell>Token Supply</TableCell>
-                                                    <TableCell align="right">Actions</TableCell>
-                                                </TableRow>
-                                            </TableHead>
-                                            <TableBody>
-                                                {createdPools.map((pool) => (
-                                                    <TableRow key={pool.poolAddress} hover>
-                                                        <TableCell>
-                                                            <Link to={`/creatorpool/${pool.poolAddress}`} style={{ textDecoration: 'none' }}>
-                                                                <Typography fontWeight="bold" variant="body2" color="primary">{pool.tokenSymbol}</Typography>
-                                                                <Typography variant="caption" color="text.secondary">{pool.tokenName}</Typography>
-                                                            </Link>
-                                                        </TableCell>
-                                                        <TableCell><Chip label={pool.thresholdReached ? 'Active' : 'Pre-launch'} color={pool.thresholdReached ? 'success' : 'warning'} size="small" variant="outlined" /></TableCell>
-                                                        <TableCell>{formatMicroAmount(pool.totalLiquidity)}</TableCell>
-                                                        <TableCell>{formatMicroAmount(pool.totalFeesCollected0)}</TableCell>
-                                                        <TableCell>{formatMicroAmount(pool.totalFeesCollected1)}</TableCell>
-                                                        <TableCell>{pool.totalCommitters}</TableCell>
-                                                        <TableCell>{pool.totalPositions}</TableCell>
-                                                        <TableCell>{formatMicroAmount(pool.totalSupply, pool.tokenDecimals)}</TableCell>
-                                                        <TableCell align="right"><PoolActionMenu poolAddress={pool.poolAddress} tokenSymbol={pool.tokenSymbol} creatorTokenAddress={pool.creatorTokenAddress} thresholdReached={pool.thresholdReached} /></TableCell>
-                                                    </TableRow>
-                                                ))}
-                                            </TableBody>
-                                        </Table>
-                                    </TableContainer>
-                                </Paper>
-                            </Card>
+                            {selectedPool && (
+                                <Card>
+                                    <CardContent sx={{ pb: 1 }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Typography variant="h6" fontWeight="bold">
+                                                {selectedPool.tokenSymbol}
+                                            </Typography>
+                                            <Chip
+                                                label={selectedPool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                color={selectedPool.thresholdReached ? 'success' : 'warning'}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
+                                                <Link to={`/creatorpool/${selectedPool.poolAddress}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                                                    View full details →
+                                                </Link>
+                                            </Typography>
+                                        </Box>
+                                    </CardContent>
+                                    <CardContent sx={{ pt: 0 }}>
+                                        <TokenPerformanceMetrics key={selectedPool.poolAddress} pool={selectedPool} />
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            <ComparePoolsModal
+                                open={showCompare}
+                                onClose={() => setShowCompare(false)}
+                                pools={createdPools.filter((p) => comparedAddresses.has(p.poolAddress))}
+                            />
 
                             <CreatePoolModal
                                 open={showCreateModal}
