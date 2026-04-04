@@ -252,7 +252,7 @@ const ComparePoolsModal: React.FC<{
                                             {pool.tokenName}
                                         </Typography>
                                         <Chip
-                                            label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                             color={pool.thresholdReached ? 'success' : 'warning'}
                                             size="small"
                                             variant="outlined"
@@ -413,7 +413,7 @@ const CreatorPoolTable: React.FC = () => {
                                         </TableCell>
                                         <TableCell>
                                             <Chip
-                                                label={row.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={row.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={row.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"

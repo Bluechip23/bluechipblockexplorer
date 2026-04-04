@@ -83,7 +83,7 @@ const MyPoolsTab: React.FC<{ commitments: MyCommitment[]; loading: boolean }> = 
                                         <Typography variant="caption" color="text.secondary">{c.pool.tokenName}</Typography>
                                     </Link>
                                 </TableCell>
-                                <TableCell><Chip label={c.pool.thresholdReached ? 'Active' : 'Pre-launch'} color={c.pool.thresholdReached ? 'success' : 'warning'} size="small" variant="outlined" /></TableCell>
+                                <TableCell><Chip label={c.pool.thresholdReached ? 'Active' : 'Pre-threshold'} color={c.pool.thresholdReached ? 'success' : 'warning'} size="small" variant="outlined" /></TableCell>
                                 <TableCell>${formatMicroAmount(c.commit.total_paid_usd)}</TableCell>
                                 <TableCell>{formatMicroAmount(c.commit.total_paid_bluechip)}</TableCell>
                                 <TableCell>${formatMicroAmount(c.commit.last_payment_usd)}</TableCell>

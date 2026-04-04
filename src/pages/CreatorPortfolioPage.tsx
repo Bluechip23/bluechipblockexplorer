@@ -239,7 +239,7 @@ const PoolSelectorDropdown: React.FC<{
                                         </Typography>
                                     </Box>
                                     <Chip
-                                        label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                        label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                         color={pool.thresholdReached ? 'success' : 'warning'}
                                         size="small"
                                         variant="outlined"
@@ -464,7 +464,7 @@ const ComparePoolsModal: React.FC<{
                                                 {pool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={pool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"
@@ -501,7 +501,7 @@ const ComparePoolsModal: React.FC<{
                                                 {pool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={pool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"
@@ -677,7 +677,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                                 {selectedPool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={selectedPool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={selectedPool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={selectedPool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"
