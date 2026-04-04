@@ -114,7 +114,16 @@ const PoolSelectorDropdown: React.FC<{
     const [open, setOpen] = useState(false);
 
     return (
-        <Card>
+        <Card
+            sx={(theme) => ({
+                ...(theme.palette.mode === 'light'
+                    ? {
+                          bgcolor: theme.palette.primary.main,
+                          color: theme.palette.primary.contrastText,
+                      }
+                    : {}),
+            })}
+        >
             <CardContent sx={{ pb: '8px !important' }}>
                 <Box
                     onClick={() => setOpen(!open)}
@@ -127,10 +136,26 @@ const PoolSelectorDropdown: React.FC<{
                     }}
                 >
                     <Box>
-                        <Typography variant="h6" fontWeight="bold">
+                        <Typography
+                            variant="h6"
+                            fontWeight="bold"
+                            sx={(theme) => ({
+                                ...(theme.palette.mode === 'dark'
+                                    ? { color: '#f5a623' }
+                                    : { color: 'inherit' }),
+                            })}
+                        >
                             Your Pools
                         </Typography>
-                        <Typography variant="body2" color="text.secondary">
+                        <Typography
+                            variant="body2"
+                            sx={(theme) => ({
+                                color:
+                                    theme.palette.mode === 'light'
+                                        ? 'rgba(255,255,255,0.7)'
+                                        : theme.palette.text.secondary,
+                            })}
+                        >
                             {selectedPool
                                 ? `Viewing: ${selectedPool.tokenSymbol} — ${selectedPool.tokenName}`
                                 : 'Select a pool to view its details'}
@@ -150,12 +175,19 @@ const PoolSelectorDropdown: React.FC<{
                 </Box>
 
                 <Collapse in={open}>
-                    <Divider sx={{ my: 1 }} />
+                    <Divider
+                        sx={(theme) => ({
+                            my: 1,
+                            ...(theme.palette.mode === 'light'
+                                ? { borderColor: 'rgba(255,255,255,0.3)' }
+                                : {}),
+                        })}
+                    />
                     <Stack spacing={0}>
                         {pools.map((pool) => (
                             <Box
                                 key={pool.poolAddress}
-                                sx={{
+                                sx={(theme) => ({
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
@@ -164,10 +196,17 @@ const PoolSelectorDropdown: React.FC<{
                                     borderRadius: 1,
                                     bgcolor:
                                         selectedPool?.poolAddress === pool.poolAddress
-                                            ? 'action.selected'
+                                            ? theme.palette.mode === 'light'
+                                                ? 'rgba(255,255,255,0.15)'
+                                                : 'action.selected'
                                             : 'transparent',
-                                    '&:hover': { bgcolor: 'action.hover' },
-                                }}
+                                    '&:hover': {
+                                        bgcolor:
+                                            theme.palette.mode === 'light'
+                                                ? 'rgba(255,255,255,0.1)'
+                                                : theme.palette.action.hover,
+                                    },
+                                })}
                             >
                                 {/* Left: checkbox for compare */}
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1, minWidth: 0 }}>
@@ -176,23 +215,51 @@ const PoolSelectorDropdown: React.FC<{
                                         checked={comparedPools.has(pool.poolAddress)}
                                         onChange={() => onToggleCompare(pool.poolAddress)}
                                         onClick={(e) => e.stopPropagation()}
+                                        sx={(theme) => ({
+                                            ...(theme.palette.mode === 'light'
+                                                ? { color: 'rgba(255,255,255,0.7)', '&.Mui-checked': { color: '#fff' } }
+                                                : {}),
+                                        })}
                                     />
                                     <Box sx={{ minWidth: 0 }}>
                                         <Typography variant="body2" fontWeight="bold" noWrap>
                                             {pool.tokenSymbol}
                                         </Typography>
-                                        <Typography variant="caption" color="text.secondary" noWrap>
+                                        <Typography
+                                            variant="caption"
+                                            noWrap
+                                            sx={(theme) => ({
+                                                color:
+                                                    theme.palette.mode === 'light'
+                                                        ? 'rgba(255,255,255,0.7)'
+                                                        : theme.palette.text.secondary,
+                                            })}
+                                        >
                                             {pool.tokenName}
                                         </Typography>
                                     </Box>
                                     <Chip
-                                        label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                        label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                         color={pool.thresholdReached ? 'success' : 'warning'}
                                         size="small"
                                         variant="outlined"
-                                        sx={{ ml: 1 }}
+                                        sx={(theme) => ({
+                                            ml: 1,
+                                            ...(theme.palette.mode === 'light'
+                                                ? { borderColor: 'rgba(255,255,255,0.5)', color: '#fff' }
+                                                : {}),
+                                        })}
                                     />
-                                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                    <Typography
+                                        variant="caption"
+                                        sx={(theme) => ({
+                                            ml: 1,
+                                            color:
+                                                theme.palette.mode === 'light'
+                                                    ? 'rgba(255,255,255,0.7)'
+                                                    : theme.palette.text.secondary,
+                                        })}
+                                    >
                                         TVL: {formatMicroAmount(pool.totalLiquidity)}
                                     </Typography>
                                 </Box>
@@ -210,6 +277,13 @@ const PoolSelectorDropdown: React.FC<{
                                             onSelectPool(pool);
                                             setOpen(false);
                                         }}
+                                        sx={(theme) => ({
+                                            ...(theme.palette.mode === 'light'
+                                                ? selectedPool?.poolAddress === pool.poolAddress
+                                                    ? { bgcolor: '#fff', color: theme.palette.primary.main, '&:hover': { bgcolor: 'rgba(255,255,255,0.85)' } }
+                                                    : { borderColor: 'rgba(255,255,255,0.5)', color: '#fff', '&:hover': { borderColor: '#fff', bgcolor: 'rgba(255,255,255,0.1)' } }
+                                                : {}),
+                                        })}
                                     >
                                         {selectedPool?.poolAddress === pool.poolAddress ? 'Viewing' : 'Select'}
                                     </Button>
@@ -225,7 +299,14 @@ const PoolSelectorDropdown: React.FC<{
                     </Stack>
 
                     {/* Compare button */}
-                    <Divider sx={{ mt: 1 }} />
+                    <Divider
+                        sx={(theme) => ({
+                            mt: 1,
+                            ...(theme.palette.mode === 'light'
+                                ? { borderColor: 'rgba(255,255,255,0.3)' }
+                                : {}),
+                        })}
+                    />
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
                         <Button
                             variant="contained"
@@ -235,6 +316,11 @@ const PoolSelectorDropdown: React.FC<{
                                 onCompare();
                                 setOpen(false);
                             }}
+                            sx={(theme) => ({
+                                ...(theme.palette.mode === 'light'
+                                    ? { bgcolor: '#fff', color: theme.palette.primary.main, '&:hover': { bgcolor: 'rgba(255,255,255,0.85)' } }
+                                    : {}),
+                            })}
                         >
                             Compare {comparedPools.size > 0 ? `(${comparedPools.size})` : ''}
                         </Button>
@@ -378,7 +464,7 @@ const ComparePoolsModal: React.FC<{
                                                 {pool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={pool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"
@@ -415,7 +501,7 @@ const ComparePoolsModal: React.FC<{
                                                 {pool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={pool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"
@@ -591,7 +677,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                                 {selectedPool.tokenSymbol}
                                             </Typography>
                                             <Chip
-                                                label={selectedPool.thresholdReached ? 'Active' : 'Pre-launch'}
+                                                label={selectedPool.thresholdReached ? 'Active' : 'Pre-threshold'}
                                                 color={selectedPool.thresholdReached ? 'success' : 'warning'}
                                                 size="small"
                                                 variant="outlined"

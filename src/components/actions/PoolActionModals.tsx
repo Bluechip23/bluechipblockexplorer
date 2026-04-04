@@ -367,7 +367,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Alert severity="info" sx={{ mb: 1 }}>
-                            Subscribe to this pool's pre-launch phase. Your BLUECHIP will be committed toward the funding threshold.
+                            Subscribe to this pool's pre-threshold phase. Your BLUECHIP will be committed toward the funding threshold.
                         </Alert>
                         <TextField
                             label="Amount (BLUECHIP)"

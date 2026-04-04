@@ -396,7 +396,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         {pool.tokenSymbol} — Performance
                     </Typography>
                     <Chip
-                        label={pool.thresholdReached ? 'Active' : 'Pre-launch'}
+                        label={pool.thresholdReached ? 'Active' : 'Pre-threshold'}
                         color={pool.thresholdReached ? 'success' : 'warning'}
                         size="small"
                         variant="outlined"
@@ -423,7 +423,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 <MetricRow
                     icon={<TrendingUpIcon color="primary" />}
                     label="Token Price"
-                    value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-launch'}
+                    value={pool.thresholdReached ? `${currentPrice} BLC` : 'Pre-threshold'}
                 />
                 <MetricRow
                     icon={<PersonAddIcon color="success" />}

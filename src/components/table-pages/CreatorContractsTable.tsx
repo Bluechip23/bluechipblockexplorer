@@ -117,7 +117,7 @@ const CreatorContractTable: React.FC = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Chip
-                                            label={row.thresholdReached ? 'Active' : 'Pre-launch'}
+                                            label={row.thresholdReached ? 'Active' : 'Pre-threshold'}
                                             color={row.thresholdReached ? 'success' : 'warning'}
                                             size="small"
                                             variant="outlined"
