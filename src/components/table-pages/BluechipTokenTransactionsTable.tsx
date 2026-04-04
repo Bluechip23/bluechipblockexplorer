@@ -73,12 +73,13 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
     };
 
     useEffect(() => {
-        const MAX_PAGES = 10;
+        const MAX_PAGES = 3;
         const MAX_RETRIES = 3;
         const RETRY_DELAY = 2000;
+        const controller = new AbortController();
 
         const fetchTokenTransactions = async () => {
-            let allTransactions: Data[] = [];
+            const allTransactions: Data[] = [];
             let nextKey: string | null = null;
             let pageCount = 0;
             let retries = MAX_RETRIES;
@@ -86,25 +87,27 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
             do {
                 try {
                     const url: string = `${apiEndpoint}/cosmos/tx/v1beta1/txs?events=transfer.amount.contains('${denom}')${nextKey ? `&pagination.key=${nextKey}` : ''}`;
-                    const txQuery: any = await axios.get(url);
+                    const txQuery: any = await axios.get(url, { signal: controller.signal });
                     const transactions = txQuery.data.txs || [];
                     if (transactions.length === 0 && !nextKey) break;
 
-                    const formattedRows: Data[] = transactions.map((tx: any) => ({
-                        bluechip: 'YourToken',
-                        hash: tx.txhash,
-                        method: 'Transfer',
-                        block: tx.height.toString(),
-                        sender: tx.body.messages[0].from_address,
-                        recipient: tx.body.messages[0].to_address,
-                        value: Number(tx.body.messages[0].amount[0].amount),
-                        fee: Number(tx.auth_info.fee.amount[0]?.amount || 0),
-                    }));
+                    for (const tx of transactions) {
+                        allTransactions.push({
+                            bluechip: 'YourToken',
+                            hash: tx.txhash,
+                            method: 'Transfer',
+                            block: tx.height.toString(),
+                            sender: tx.body.messages[0].from_address,
+                            recipient: tx.body.messages[0].to_address,
+                            value: Number(tx.body.messages[0].amount[0].amount),
+                            fee: Number(tx.auth_info.fee.amount[0]?.amount || 0),
+                        });
+                    }
 
-                    allTransactions = [...allTransactions, ...formattedRows];
                     nextKey = txQuery.data.pagination?.next_key;
                     pageCount++;
                 } catch (error) {
+                    if (controller.signal.aborted) return;
                     if (retries > 0) {
                         retries--;
                         await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -114,10 +117,13 @@ const BlueChipTokenTransactionsTable: React.FC = () => {
                 }
             } while (nextKey && pageCount < MAX_PAGES);
 
-            setRows(allTransactions);
+            if (!controller.signal.aborted) {
+                setRows(allTransactions);
+            }
         };
 
         fetchTokenTransactions();
+        return () => controller.abort();
     }, []);
 
     return (

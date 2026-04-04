@@ -47,6 +47,8 @@ const RecentTransactionsTable: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        const controller = new AbortController();
+
         async function loadTx() {
             try {
                 const response = await axios.get(`${apiEndpoint}/tx_search`, {
@@ -56,8 +58,9 @@ const RecentTransactionsTable: React.FC = () => {
                         per_page: rowsPerPage,
                         order_by: 'desc',
                     },
+                    signal: controller.signal,
                 });
-                const transactions = response.data.result.txs; 
+                const transactions = response.data.result.txs;
 
                 const blockRows = transactions.map((tx: any) => ({
                     hash: tx.txhash,
@@ -65,18 +68,23 @@ const RecentTransactionsTable: React.FC = () => {
                     block: tx.height,
                     sender: tx.tx.body.messages[0].sender,
                     recipient: tx.tx.body.messages[0].recipient,
-                    value: tx.tx.body.messages[0].amount[0].amount, 
-                    fee: tx.tx.auth_info.fee.amount[0].amount, 
+                    value: tx.tx.body.messages[0].amount[0].amount,
+                    fee: tx.tx.auth_info.fee.amount[0].amount,
                 }));
                 setRows(blockRows);
             } catch (error) {
-                console.error('Error loading transactions:', error);
+                if (!controller.signal.aborted) {
+                    console.error('Error loading transactions:', error);
+                }
             } finally {
-                setLoading(false);
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
             }
         }
 
         loadTx();
+        return () => controller.abort();
     }, [page, rowsPerPage]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
@@ -114,9 +122,7 @@ const RecentTransactionsTable: React.FC = () => {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {rows
-                            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                            .map((row) => (
+                        {rows.map((row) => (
                                 <TableRow key={row.hash}>
                                     <TableCell>
                                         <CopyableId value={row.hash}><Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link></CopyableId>

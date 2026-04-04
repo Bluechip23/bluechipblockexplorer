@@ -190,21 +190,27 @@ const ChainPortfolioPage: React.FC = () => {
                 const myCommitments: MyCommitment[] = [];
                 const myPositions: MyPosition[] = [];
 
-                await Promise.all(pools.map(async (pool) => {
-                    const commits = await queryPoolCommits(pool.poolAddress);
-                    if (commits?.commiters) {
-                        const myCommit = commits.commiters.find((c) => c.wallet === address);
-                        if (myCommit) myCommitments.push({ pool, commit: myCommit });
-                    }
-                    if (pool.thresholdReached) {
-                        const positionsResp = await queryPositions(pool.poolAddress);
-                        if (positionsResp?.positions) {
-                            positionsResp.positions
-                                .filter((p) => p.owner === address)
-                                .forEach((p) => myPositions.push({ pool, position: p }));
+                // Process pools in batches of 3 to limit concurrent requests
+                const BATCH_SIZE = 3;
+                for (let i = 0; i < pools.length; i += BATCH_SIZE) {
+                    if (cancelled) return;
+                    const batch = pools.slice(i, i + BATCH_SIZE);
+                    await Promise.all(batch.map(async (pool) => {
+                        const commits = await queryPoolCommits(pool.poolAddress);
+                        if (commits?.commiters) {
+                            const myCommit = commits.commiters.find((c) => c.wallet === address);
+                            if (myCommit) myCommitments.push({ pool, commit: myCommit });
                         }
-                    }
-                }));
+                        if (pool.thresholdReached) {
+                            const positionsResp = await queryPositions(pool.poolAddress);
+                            if (positionsResp?.positions) {
+                                positionsResp.positions
+                                    .filter((p) => p.owner === address)
+                                    .forEach((p) => myPositions.push({ pool, position: p }));
+                            }
+                        }
+                    }));
+                }
 
                 if (!cancelled) { setCommitments(myCommitments); setPositions(myPositions); }
             } catch (err) { console.error('Error loading portfolio:', err); }

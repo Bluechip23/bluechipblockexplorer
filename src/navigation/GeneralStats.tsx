@@ -15,19 +15,25 @@ const GeneralStats: React.FC = () => {
     const navigateTo = useNavigate();
 
     useEffect(() => {
+        const controller = new AbortController();
+
         const fetchAllStats = async () => {
             const [statusResult, stakingResult, supplyResult] = await Promise.allSettled([
-                axios.get(`${rpcEndpoint}/status`),
-                axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`),
-                axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`),
+                axios.get(`${rpcEndpoint}/status`, { signal: controller.signal }),
+                axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`, { signal: controller.signal }),
+                axios.get(`${apiEndpoint}/cosmos/mint/v1beta1/annual_provisions`, { signal: controller.signal }),
             ]);
+
+            if (controller.signal.aborted) return;
 
             if (statusResult.status === 'fulfilled') {
                 const latestHeight = statusResult.value.data.result.sync_info.latest_block_height;
                 setRecentBlock(latestHeight);
                 try {
-                    const blockResponse = await axios.get(`${rpcEndpoint}/block?height=${latestHeight}`);
-                    setTransactionsInblock(blockResponse.data.result.block.data.txs.length);
+                    const blockResponse = await axios.get(`${rpcEndpoint}/block?height=${latestHeight}`, { signal: controller.signal });
+                    if (!controller.signal.aborted) {
+                        setTransactionsInblock(blockResponse.data.result.block.data.txs.length);
+                    }
                 } catch {}
             }
 
@@ -39,7 +45,9 @@ const GeneralStats: React.FC = () => {
                 setTotalSupply(supplyResult.value.data.amount);
             }
         };
+
         fetchAllStats();
+        return () => controller.abort();
     }, []);
 
     const handleSearch = async () => {

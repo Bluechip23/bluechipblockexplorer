@@ -27,34 +27,38 @@ const Wallet: React.FC = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!id) return;
+        const controller = new AbortController();
+
         const fetchSpecificWallet = async () => {
-            if (!id) return;
             setLoading(true);
             try {
-                const accountResponse = await axios.get(`${apiEndpoint}/bluechip/auth/v1beta1/accounts/${id}`);
-                const accountInfo = accountResponse.data.account;
+                const [accountResponse, balanceResponse, transactionsResponse] = await Promise.all([
+                    axios.get(`${apiEndpoint}/bluechip/auth/v1beta1/accounts/${id}`, { signal: controller.signal }),
+                    axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${id}`, { signal: controller.signal }),
+                    axios.get(`${apiEndpoint}/bluechip/transactions/${id}`, { signal: controller.signal }),
+                ]);
 
-                const balanceResponse = await axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${id}`);
+                if (controller.signal.aborted) return;
+
                 const balancesData = balanceResponse.data.balances;
-
                 const primaryBalance = balancesData[0]?.amount || '0';
-                setWallet({
-                    address: id,
-                    balance: primaryBalance
-                });
-
+                setWallet({ address: id, balance: primaryBalance });
                 setBalances(balancesData || []);
-
-                const transactionsResponse = await axios.get(`${apiEndpoint}/bluechip/transactions/${id}`);
                 setTransactions(transactionsResponse.data.transactions || []);
-
             } catch (error) {
-                console.error('Error fetching wallet data:', error);
+                if (!controller.signal.aborted) {
+                    console.error('Error fetching wallet data:', error);
+                }
             } finally {
-                setLoading(false);
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
             }
         };
+
         fetchSpecificWallet();
+        return () => controller.abort();
     }, [id]);
 
     if (!id) {
