@@ -54,55 +54,54 @@ interface RecentBlocksTableProps {
     reward: number;
 }
 
+const MAX_BLOCKS = 100;
+
 const RecentBlocksTable: React.FC = () => {
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [rows, setRows] = useState<RecentBlocksTableProps[]>([]);
     const [loading, setLoading] = useState(true);
-    const [latestBlock, setLatestBlock] = useState(0);
-
-    const fetchLatestBlock = async () => {
-        try {
-            const rpc = await axios.get(`${rpcEndpoint}/status`);
-            const latestHeight = rpc.data.result.sync_info.latest_block_height;
-            setLatestBlock(latestHeight);
-        } catch (error) {
-            console.error('Error fetching latest block:', error);
-        }
-    };
-
-    const loadBlocks = async () => {
-        if (latestBlock === 0) return; 
-
-        try {
-            const response = await axios.get(`${rpcEndpoint}/blockchain?minHeight=1&maxHeight=${latestBlock}`);
-            const blocks = response.data.result.block_metas;
-            const blockRows = blocks.map((block: any) => ({
-                block: block.header.height,
-                age: block.header.time,
-                txn: block.header.num_txs || 0,
-                feeRecipient: block.block_id.hash, 
-                gasUsed: block.header.gas_used || 0,
-                reward: block.header.total_reward || 0,
-            }));
-
-            setRows(blockRows);
-        } catch (error) {
-            console.error('Error loading blocks:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [totalBlocks, setTotalBlocks] = useState(0);
 
     useEffect(() => {
-        fetchLatestBlock();
+        const controller = new AbortController();
+
+        async function loadBlocks() {
+            try {
+                const rpc = await axios.get(`${rpcEndpoint}/status`, { signal: controller.signal });
+                const latestHeight = Number(rpc.data.result.sync_info.latest_block_height);
+                setTotalBlocks(latestHeight);
+
+                const minHeight = Math.max(1, latestHeight - MAX_BLOCKS + 1);
+                const response = await axios.get(
+                    `${rpcEndpoint}/blockchain?minHeight=${minHeight}&maxHeight=${latestHeight}`,
+                    { signal: controller.signal }
+                );
+                const blocks = response.data.result.block_metas;
+                const blockRows = blocks.map((block: any) => ({
+                    block: block.header.height,
+                    age: block.header.time,
+                    txn: block.header.num_txs || 0,
+                    feeRecipient: block.block_id.hash,
+                    gasUsed: block.header.gas_used || 0,
+                    reward: block.header.total_reward || 0,
+                }));
+
+                setRows(blockRows);
+            } catch (error) {
+                if (!controller.signal.aborted) {
+                    console.error('Error loading blocks:', error);
+                }
+            } finally {
+                if (!controller.signal.aborted) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadBlocks();
+        return () => controller.abort();
     }, []);
-
-    useEffect(() => {
-        if (latestBlock > 0) {
-            loadBlocks();
-        }
-    }, [latestBlock]);
 
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
@@ -159,7 +158,7 @@ const RecentBlocksTable: React.FC = () => {
             <TablePagination
                 rowsPerPageOptions={[10, 25, 100]}
                 component="div"
-                count={rows.length}
+                count={totalBlocks || rows.length}
                 rowsPerPage={rowsPerPage}
                 page={page}
                 onPageChange={handleChangePage}

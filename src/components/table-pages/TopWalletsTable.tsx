@@ -48,19 +48,33 @@ const TopWalletsTable: React.FC = () => {
     const [rows, setRows] = useState<TopWalletsTableProps[]>([]);
 
     useEffect(() => {
+        const BATCH_SIZE = 10;
+        const controller = new AbortController();
+
         const fetchTopWallets = async () => {
             try {
-                const response = await axios.get(`${apiEndpoint}/bluehcip/auth/v1beta1/accounts`);
+                const response = await axios.get(`${apiEndpoint}/bluehcip/auth/v1beta1/accounts`, { signal: controller.signal });
                 const accounts = response.data.accounts;
-                const balancePromises = accounts.map((account: any) =>
-                    axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${account.address}`)
-                );
-                const balanceResponses = await Promise.all(balancePromises);
+
+                // Fetch balances in batches to avoid overwhelming the server
+                const balanceResponses: any[] = [];
+                for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+                    if (controller.signal.aborted) return;
+                    const batch = accounts.slice(i, i + BATCH_SIZE);
+                    const batchResults = await Promise.all(
+                        batch.map((account: any) =>
+                            axios.get(`${apiEndpoint}/bluechip/bank/v1beta1/balances/${account.address}`, { signal: controller.signal })
+                        )
+                    );
+                    balanceResponses.push(...batchResults);
+                }
+
+                if (controller.signal.aborted) return;
 
                 let walletsData = accounts.map((account: any, index: number) => ({
                     address: account.address,
                     balance: balanceResponses[index].data.balances[0]?.amount || '0',
-                    totalTransactions: 0, 
+                    totalTransactions: 0,
                 }));
 
                 walletsData.sort((a: any, b: any) => Number(b.balance) - Number(a.balance));
@@ -74,11 +88,14 @@ const TopWalletsTable: React.FC = () => {
 
                 setRows(walletRows);
             } catch (error) {
-                console.error('Error fetching wallet data:', error);
+                if (!controller.signal.aborted) {
+                    console.error('Error fetching wallet data:', error);
+                }
             }
         };
 
         fetchTopWallets();
+        return () => controller.abort();
     }, []);
     const handleChangePage = (event: unknown, newPage: number) => {
         setPage(newPage);
