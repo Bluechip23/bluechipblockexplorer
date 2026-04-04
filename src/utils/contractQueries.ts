@@ -144,6 +144,31 @@ export interface ThresholdAnalytics {
     };
 }
 
+export interface PoolAnalytics {
+    total_swap_count: number;
+    total_commit_count: number;
+    total_volume_0: string;
+    total_volume_1: string;
+    total_lp_deposit_count: number;
+    total_lp_withdrawal_count: number;
+    last_trade_block: number;
+    last_trade_timestamp: number;
+}
+
+export interface PoolAnalyticsResponse {
+    analytics: PoolAnalytics;
+    current_price_0_to_1: string;
+    current_price_1_to_0: string;
+    total_value_locked_0: string;
+    total_value_locked_1: string;
+    fee_reserve_0: string;
+    fee_reserve_1: string;
+    threshold_status: CommitStatus;
+    total_usd_raised: string;
+    total_bluechip_raised: string;
+    total_positions: number;
+}
+
 export interface PoolSummary {
     poolAddress: string;
     creatorTokenAddress: string | null;
@@ -164,6 +189,21 @@ export interface PoolSummary {
     blockTimeLast: number;
     createdAtBlock: number;
     thresholdCrossedAtBlock: number | null;
+    // New fields from Analytics query
+    totalSwapCount: number;
+    totalCommitCount: number;
+    totalVolume0: string;
+    totalVolume1: string;
+    totalLpDepositCount: number;
+    totalLpWithdrawalCount: number;
+    lastTradeBlock: number;
+    lastTradeTimestamp: number;
+    currentPrice0to1: string;
+    currentPrice1to0: string;
+    feeReserve0: string;
+    feeReserve1: string;
+    totalUsdRaised: string;
+    totalBluechipRaised: string;
 }
 
 
@@ -258,6 +298,20 @@ const MOCK_POOLS: PoolSummary[] = [
         blockTimeLast: Math.floor(now / 1000) - 86400 * 45,
         createdAtBlock: 1_024_300,
         thresholdCrossedAtBlock: 1_187_650,
+        totalSwapCount: 1_247,
+        totalCommitCount: 42,
+        totalVolume0: '89500000000000',
+        totalVolume1: '178200000000000',
+        totalLpDepositCount: 18,
+        totalLpWithdrawalCount: 4,
+        lastTradeBlock: 1_650_200,
+        lastTradeTimestamp: Math.floor(now / 1000) - 3600,
+        currentPrice0to1: '2.0',
+        currentPrice1to0: '0.5',
+        feeReserve0: '1200000000',
+        feeReserve1: '800000000',
+        totalUsdRaised: '25000000000',
+        totalBluechipRaised: '200000000000',
     },
     {
         poolAddress: 'bluechip1pool_beta_4m2n7xp8wk5dv3qt6rj0yfscalh9z',
@@ -279,6 +333,20 @@ const MOCK_POOLS: PoolSummary[] = [
         blockTimeLast: Math.floor(now / 1000) - 86400 * 30,
         createdAtBlock: 1_310_800,
         thresholdCrossedAtBlock: 1_425_100,
+        totalSwapCount: 583,
+        totalCommitCount: 28,
+        totalVolume0: '32100000000000',
+        totalVolume1: '51800000000000',
+        totalLpDepositCount: 9,
+        totalLpWithdrawalCount: 2,
+        lastTradeBlock: 1_648_900,
+        lastTradeTimestamp: Math.floor(now / 1000) - 7200,
+        currentPrice0to1: '1.611111',
+        currentPrice1to0: '0.620689',
+        feeReserve0: '650000000',
+        feeReserve1: '420000000',
+        totalUsdRaised: '25000000000',
+        totalBluechipRaised: '200000000000',
     },
     {
         poolAddress: 'bluechip1pool_gamma_9p4r6t2n7xm3k5wqv8jf0ychlsa',
@@ -300,6 +368,20 @@ const MOCK_POOLS: PoolSummary[] = [
         blockTimeLast: Math.floor(now / 1000) - 86400 * 60,
         createdAtBlock: 892_150,
         thresholdCrossedAtBlock: 1_053_400,
+        totalSwapCount: 312,
+        totalCommitCount: 15,
+        totalVolume0: '18700000000000',
+        totalVolume1: '121500000000000',
+        totalLpDepositCount: 5,
+        totalLpWithdrawalCount: 1,
+        lastTradeBlock: 1_640_100,
+        lastTradeTimestamp: Math.floor(now / 1000) - 86400 * 3,
+        currentPrice0to1: '6.526315',
+        currentPrice1to0: '0.153225',
+        feeReserve0: '300000000',
+        feeReserve1: '580000000',
+        totalUsdRaised: '25000000000',
+        totalBluechipRaised: '200000000000',
     },
     {
         poolAddress: 'bluechip1pool_delta_2k8f5n3m7wp4xr6qt9jv0ydclhga',
@@ -321,6 +403,20 @@ const MOCK_POOLS: PoolSummary[] = [
         blockTimeLast: 0,
         createdAtBlock: 1_502_900,
         thresholdCrossedAtBlock: null,
+        totalSwapCount: 0,
+        totalCommitCount: 12,
+        totalVolume0: '0',
+        totalVolume1: '0',
+        totalLpDepositCount: 0,
+        totalLpWithdrawalCount: 0,
+        lastTradeBlock: 0,
+        lastTradeTimestamp: 0,
+        currentPrice0to1: '0',
+        currentPrice1to0: '0',
+        feeReserve0: '0',
+        feeReserve1: '0',
+        totalUsdRaised: '16800000000',
+        totalBluechipRaised: '134400000000',
     },
     {
         poolAddress: 'bluechip1pool_epsilon_6n3m8k2f5wp4xr7qt0jv9ydclhs',
@@ -342,6 +438,20 @@ const MOCK_POOLS: PoolSummary[] = [
         blockTimeLast: 0,
         createdAtBlock: 1_580_200,
         thresholdCrossedAtBlock: null,
+        totalSwapCount: 0,
+        totalCommitCount: 5,
+        totalVolume0: '0',
+        totalVolume1: '0',
+        totalLpDepositCount: 0,
+        totalLpWithdrawalCount: 0,
+        lastTradeBlock: 0,
+        lastTradeTimestamp: 0,
+        currentPrice0to1: '0',
+        currentPrice1to0: '0',
+        feeReserve0: '0',
+        feeReserve1: '0',
+        totalUsdRaised: '3200000000',
+        totalBluechipRaised: '25600000000',
     },
 ];
 
@@ -606,6 +716,36 @@ export async function queryThresholdAnalytics(
             }).length,
             smallCommitters: committers.filter(c => parseInt(c.total_paid_usd) < MID_USD).length,
         },
+    };
+}
+
+export async function queryPoolAnalytics(poolAddress: string): Promise<PoolAnalyticsResponse | null> {
+    await delay(250);
+    const pool = findPool(poolAddress);
+    if (!pool) return null;
+    return {
+        analytics: {
+            total_swap_count: pool.totalSwapCount,
+            total_commit_count: pool.totalCommitCount,
+            total_volume_0: pool.totalVolume0,
+            total_volume_1: pool.totalVolume1,
+            total_lp_deposit_count: pool.totalLpDepositCount,
+            total_lp_withdrawal_count: pool.totalLpWithdrawalCount,
+            last_trade_block: pool.lastTradeBlock,
+            last_trade_timestamp: pool.lastTradeTimestamp,
+        },
+        current_price_0_to_1: pool.currentPrice0to1,
+        current_price_1_to_0: pool.currentPrice1to0,
+        total_value_locked_0: pool.reserve0,
+        total_value_locked_1: pool.reserve1,
+        fee_reserve_0: pool.feeReserve0,
+        fee_reserve_1: pool.feeReserve1,
+        threshold_status: pool.thresholdReached
+            ? { fully_committed: {} }
+            : { in_progress: { raised: pool.raised, target: pool.target } },
+        total_usd_raised: pool.totalUsdRaised,
+        total_bluechip_raised: pool.totalBluechipRaised,
+        total_positions: pool.totalPositions,
     };
 }
 

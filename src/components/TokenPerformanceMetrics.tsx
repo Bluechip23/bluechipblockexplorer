@@ -32,13 +32,16 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import LockIcon from '@mui/icons-material/Lock';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import BarChartIcon from '@mui/icons-material/BarChart';
 import {
     abbreviateAddress,
     CommiterInfo,
     formatMicroAmount,
     HolderDistribution,
+    PoolAnalyticsResponse,
     PoolSummary,
     queryHolderDistribution,
+    queryPoolAnalytics,
     queryPoolCommits,
     queryThresholdAnalytics,
     ThresholdAnalytics,
@@ -321,6 +324,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
     const [totalCommitCount, setTotalCommitCount] = useState<number>(0);
     const [holders, setHolders] = useState<HolderDistribution | null>(null);
     const [thresholdAnalytics, setThresholdAnalytics] = useState<ThresholdAnalytics | null>(null);
+    const [onChainAnalytics, setOnChainAnalytics] = useState<PoolAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -328,11 +332,12 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
         async function load() {
             setLoading(true);
             try {
-                const [commitData, holderData] = await Promise.all([
+                const [commitData, holderData, analyticsData] = await Promise.all([
                     queryPoolCommits(pool.poolAddress),
                     pool.creatorTokenAddress
                         ? queryHolderDistribution(pool.creatorTokenAddress)
                         : Promise.resolve(null),
+                    queryPoolAnalytics(pool.poolAddress),
                 ]);
 
                 if (cancelled) return;
@@ -340,6 +345,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 setCommitters(fetchedCommitters);
                 setTotalCommitCount(commitData?.total_count || 0);
                 setHolders(holderData);
+                setOnChainAnalytics(analyticsData);
 
                 const threshold = await queryThresholdAnalytics(pool.poolAddress, fetchedCommitters);
                 if (!cancelled) setThresholdAnalytics(threshold);
@@ -354,7 +360,9 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
     }, [pool.poolAddress, pool.creatorTokenAddress]);
 
     // ── Computed values ──
-    const currentPrice = computeCurrentPrice(pool);
+    const currentPrice = onChainAnalytics && onChainAnalytics.current_price_1_to_0 !== '0'
+        ? parseFloat(onChainAnalytics.current_price_1_to_0).toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })
+        : computeCurrentPrice(pool);
     const activeSubscribers = getActiveSubscribers(committers, period);
     const totalSubscribers = pool.totalCommitters;
     const creatorFeeRevenue = computeCreatorFeeRevenue(pool);
@@ -578,6 +586,87 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <Divider sx={{ my: 1 }} />
 
+                {/* On-chain trading activity from Analytics query */}
+                {onChainAnalytics && (
+                    <>
+                        <SectionHeader icon={<SyncAltIcon fontSize="small" color="primary" />} title="Trading Activity (On-Chain)" />
+                        <MetricRow
+                            icon={<SyncAltIcon color="primary" />}
+                            label="Total Swaps"
+                            value={onChainAnalytics.analytics.total_swap_count.toLocaleString()}
+                            subtext="All-time swap transactions"
+                        />
+                        <MetricRow
+                            icon={<TrendingUpIcon color="action" />}
+                            label="Volume (BLUECHIP)"
+                            value={formatMicroAmount(onChainAnalytics.analytics.total_volume_0)}
+                            subtext="Cumulative BLUECHIP volume through swaps"
+                        />
+                        <MetricRow
+                            icon={<TrendingUpIcon color="action" />}
+                            label={`Volume (${pool.tokenSymbol})`}
+                            value={formatMicroAmount(onChainAnalytics.analytics.total_volume_1)}
+                            subtext="Cumulative creator token volume through swaps"
+                        />
+                        <MetricRow
+                            icon={<WaterDropIcon color="info" />}
+                            label="LP Deposits / Withdrawals"
+                            value={`${onChainAnalytics.analytics.total_lp_deposit_count} / ${onChainAnalytics.analytics.total_lp_withdrawal_count}`}
+                            subtext="Total liquidity add vs remove operations"
+                        />
+                        <MetricRow
+                            icon={<MonetizationOnIcon color="warning" />}
+                            label="Unclaimed Fee Reserves"
+                            value={`${formatMicroAmount(onChainAnalytics.fee_reserve_0)} BLC / ${formatMicroAmount(onChainAnalytics.fee_reserve_1)} ${pool.tokenSymbol}`}
+                            subtext="Fees accrued but not yet collected by LPs"
+                        />
+                        {onChainAnalytics.analytics.last_trade_timestamp > 0 && (
+                            <MetricRow
+                                icon={<ViewInArIcon color="action" />}
+                                label="Last Trade"
+                                value={(() => {
+                                    const secondsAgo = Math.floor(Date.now() / 1000) - onChainAnalytics.analytics.last_trade_timestamp;
+                                    if (secondsAgo < 60) return `${secondsAgo}s ago`;
+                                    if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+                                    if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+                                    return `${Math.floor(secondsAgo / 86400)}d ago`;
+                                })()}
+                                subtext={`Block #${onChainAnalytics.analytics.last_trade_block.toLocaleString()}`}
+                            />
+                        )}
+
+                        <Divider sx={{ my: 1 }} />
+                    </>
+                )}
+
+                {/* Indexer Placeholder: Historical Charts */}
+                <SectionHeader icon={<BarChartIcon fontSize="small" color="disabled" />} title="Historical Charts (Requires Indexer)" />
+                <Box sx={{ px: 2, pb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {[
+                            'Price History',
+                            'Volume Over Time',
+                            'TVL Over Time',
+                            'Fee Revenue Over Time',
+                        ].map((label) => (
+                            <Chip
+                                key={label}
+                                label={label}
+                                size="small"
+                                variant="outlined"
+                                disabled
+                                sx={{ borderStyle: 'dashed' }}
+                            />
+                        ))}
+                    </Box>
+                    <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+                        Time-series data will be available once event indexing is enabled.
+                        The contracts now emit enriched events (swap, commit, LP, fee) with block height,
+                        timestamp, prices, and reserves — ready to be captured by an indexer.
+                    </Typography>
+                </Box>
+
+                <Divider sx={{ my: 1 }} />
 
                 <ThresholdSection
                     pool={pool}
