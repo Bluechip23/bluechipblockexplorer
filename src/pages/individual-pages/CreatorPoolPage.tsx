@@ -208,14 +208,19 @@ const PoolPieChart: React.FC<{
     ];
 
     const renderSliceLabel = (props: {
-        cx: number;
-        cy: number;
-        midAngle: number;
-        innerRadius: number;
-        outerRadius: number;
-        index: number;
+        cx?: number;
+        cy?: number;
+        midAngle?: number;
+        innerRadius?: number;
+        outerRadius?: number;
+        index?: number;
     }) => {
-        const { cx, cy, midAngle, innerRadius, outerRadius, index } = props;
+        const cx = props.cx ?? 0;
+        const cy = props.cy ?? 0;
+        const midAngle = props.midAngle ?? 0;
+        const innerRadius = props.innerRadius ?? 0;
+        const outerRadius = props.outerRadius ?? 0;
+        const index = props.index ?? 0;
         const RADIAN = Math.PI / 180;
         const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
         const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -271,10 +276,10 @@ const PoolPieChart: React.FC<{
                         ))}
                     </Pie>
                     <RechartsTooltip
-                        formatter={(_value: number, name: string, item: { payload: { displayValue: string } }) => [
-                            item.payload.displayValue,
-                            name,
-                        ]}
+                        formatter={(_value, name, item) => {
+                            const payload = (item as { payload?: { displayValue?: string } } | undefined)?.payload;
+                            return [payload?.displayValue ?? '', name];
+                        }}
                     />
                     <Legend verticalAlign="bottom" height={24} />
                 </PieChart>
