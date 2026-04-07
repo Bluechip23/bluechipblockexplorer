@@ -31,10 +31,12 @@ import {
     fetchAllPoolSummaries,
     queryPoolCommits,
     queryPositions,
+    queryWalletHoldings,
     formatMicroAmount,
     PoolSummary,
     CommiterInfo,
     PositionResponse,
+    WalletHolding,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 
@@ -170,12 +172,68 @@ const MyTransactionsTab: React.FC<{ commitments: MyCommitment[]; positions: MyPo
 };
 
 
+const MyHoldingsTab: React.FC<{ holdings: WalletHolding[]; nativeBalance: string | null; loading: boolean }> = ({ holdings, nativeBalance, loading }) => {
+    if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning your token holdings...</Typography></Box>;
+
+    const hasNative = nativeBalance && parseInt(nativeBalance) > 0;
+    if (!hasNative && holdings.length === 0) return <Card><CardContent sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No token holdings found.</Typography></CardContent></Card>;
+
+    return (
+        <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+            <TableContainer>
+                <Table stickyHeader size="small">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell>Token</TableCell>
+                            <TableCell>Type</TableCell>
+                            <TableCell>Balance</TableCell>
+                            <TableCell>Pool</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {hasNative && (
+                            <TableRow hover>
+                                <TableCell>
+                                    <Typography fontWeight="bold" variant="body2">BLUECHIP</Typography>
+                                    <Typography variant="caption" color="text.secondary">Native Token</Typography>
+                                </TableCell>
+                                <TableCell><Chip label="Native" color="primary" size="small" variant="outlined" /></TableCell>
+                                <TableCell>{formatMicroAmount(nativeBalance!)} BLUECHIP</TableCell>
+                                <TableCell><Typography variant="body2" color="text.secondary">-</Typography></TableCell>
+                            </TableRow>
+                        )}
+                        {holdings.map((h) => (
+                            <TableRow key={h.tokenAddress} hover>
+                                <TableCell>
+                                    <Link to={`/creatorpool/${h.poolAddress}`} style={{ textDecoration: 'none' }}>
+                                        <Typography fontWeight="bold" variant="body2" color="primary">{h.tokenSymbol}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{h.tokenName}</Typography>
+                                    </Link>
+                                </TableCell>
+                                <TableCell><Chip label="Creator Token" color="secondary" size="small" variant="outlined" /></TableCell>
+                                <TableCell>{formatMicroAmount(h.balance, h.tokenDecimals)} {h.tokenSymbol}</TableCell>
+                                <TableCell>
+                                    <Link to={`/creatorpool/${h.poolAddress}`} style={{ textDecoration: 'none' }}>
+                                        <Typography variant="body2" color="primary">{h.tokenSymbol} Pool</Typography>
+                                    </Link>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        </Paper>
+    );
+};
+
+
 const ChainPortfolioPage: React.FC = () => {
     const { address, balance } = useWallet();
     const [tab, setTab] = useState(0);
     const [loading, setLoading] = useState(false);
     const [commitments, setCommitments] = useState<MyCommitment[]>([]);
     const [positions, setPositions] = useState<MyPosition[]>([]);
+    const [holdings, setHoldings] = useState<WalletHolding[]>([]);
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -212,7 +270,8 @@ const ChainPortfolioPage: React.FC = () => {
                     }));
                 }
 
-                if (!cancelled) { setCommitments(myCommitments); setPositions(myPositions); }
+                const myHoldings = await queryWalletHoldings(address, pools);
+                if (!cancelled) { setCommitments(myCommitments); setPositions(myPositions); setHoldings(myHoldings); }
             } catch (err) { console.error('Error loading portfolio:', err); }
             finally { if (!cancelled) setLoading(false); }
         }
@@ -246,6 +305,7 @@ const ChainPortfolioPage: React.FC = () => {
                             </Card>
 
                             <Grid container spacing={2}>
+                                <Grid item xs={6} sm={3}><StatCard label="Tokens Held" value={holdings.length + (balance && parseInt(balance.amount) > 0 ? 1 : 0)} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Pools Committed" value={commitments.length} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (BLUECHIP)" value={formatMicroAmount(totalCommittedBluechip.toString())} /></Grid>
@@ -259,15 +319,17 @@ const ChainPortfolioPage: React.FC = () => {
                             <Card>
                                 <CardContent sx={{ pb: 0 }}>
                                     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                                        <Tab label={`My Holdings (${holdings.length + (balance && parseInt(balance.amount) > 0 ? 1 : 0)})`} />
                                         <Tab label={`Pools I Committed To (${commitments.length})`} />
                                         <Tab label={`My LP Positions (${positions.length})`} />
                                         <Tab label="My Transactions" />
                                     </Tabs>
                                 </CardContent>
                                 <CardContent>
-                                    <TabPanel value={tab} index={0}><MyPoolsTab commitments={commitments} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={1}><MyPositionsTab positions={positions} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={2}><MyTransactionsTab commitments={commitments} positions={positions} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={0}><MyHoldingsTab holdings={holdings} nativeBalance={balance?.amount || null} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={1}><MyPoolsTab commitments={commitments} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={2}><MyPositionsTab positions={positions} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={3}><MyTransactionsTab commitments={commitments} positions={positions} loading={loading} /></TabPanel>
                                 </CardContent>
                             </Card>
                         </Stack>

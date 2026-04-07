@@ -749,6 +749,48 @@ export async function queryPoolAnalytics(poolAddress: string): Promise<PoolAnaly
     };
 }
 
+export interface WalletHolding {
+    tokenAddress: string;
+    tokenSymbol: string;
+    tokenName: string;
+    tokenDecimals: number;
+    balance: string;
+    poolAddress: string;
+}
+
+export async function queryWalletHoldings(
+    walletAddress: string,
+    pools: PoolSummary[]
+): Promise<WalletHolding[]> {
+    await delay(400);
+    if (walletAddress !== MOCK_WALLET) return [];
+    const holdings: WalletHolding[] = [];
+    for (const pool of pools) {
+        if (!pool.creatorTokenAddress || !pool.thresholdReached) continue;
+        // Mock: the user holds tokens in ALPHA and BETA pools
+        if (pool.tokenSymbol === 'ALPHA') {
+            holdings.push({
+                tokenAddress: pool.creatorTokenAddress,
+                tokenSymbol: pool.tokenSymbol,
+                tokenName: pool.tokenName,
+                tokenDecimals: pool.tokenDecimals,
+                balance: '15000000000', // 15,000 tokens
+                poolAddress: pool.poolAddress,
+            });
+        } else if (pool.tokenSymbol === 'BETA') {
+            holdings.push({
+                tokenAddress: pool.creatorTokenAddress,
+                tokenSymbol: pool.tokenSymbol,
+                tokenName: pool.tokenName,
+                tokenDecimals: pool.tokenDecimals,
+                balance: '8500000000', // 8,500 tokens
+                poolAddress: pool.poolAddress,
+            });
+        }
+    }
+    return holdings;
+}
+
 export async function queryPoolState(_: string): Promise<PoolStateResponse | null> { return null; }
 export async function queryPoolInfo(_: string): Promise<PoolInfoResponse | null> { return null; }
 export async function queryFeeState(_: string): Promise<PoolFeeStateResponse | null> { return null; }
