@@ -11,17 +11,6 @@ export const TabPanel: React.FC<{ children: React.ReactNode; value: number; inde
     </div>
 );
 
-export const StatCard: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-        <CardContent sx={{ textAlign: 'center', py: 2, '&:last-child': { pb: 2 } }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>{label}</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                {typeof value === 'number' ? value.toLocaleString() : value}
-            </Typography>
-        </CardContent>
-    </Card>
-);
-
 export const NotConnectedView: React.FC<{ description?: string }> = ({
     description = 'Connect your Keplr wallet to view your portfolio, committed pools, positions, and transaction history.',
 }) => {

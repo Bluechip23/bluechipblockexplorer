@@ -1,231 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import {
-    Box,
     Card,
     CardContent,
-    Chip,
-    CircularProgress,
     Grid,
     Stack,
     Tab,
     Tabs,
     Typography,
 } from '@mui/material';
-import Paper from '@mui/material/Paper';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
 import BlockExpSideBar from '../navigation/BlockExpSideBar';
 import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import { useWallet } from '../context/WalletContext';
-import PoolActionMenu from '../components/actions/PoolActionMenu';
-import { TabPanel, StatCard, NotConnectedView } from '../components/universal/PortfolioShared';
+import { TabPanel, NotConnectedView } from '../components/universal/PortfolioShared';
+import StatCard from '../components/universal/StatCard';
+import PortfolioCommitmentsTable from '../components/portfolio/PortfolioCommitmentsTable';
+import PortfolioPositionsTable from '../components/portfolio/PortfolioPositionsTable';
+import PortfolioTransactionsTable from '../components/portfolio/PortfolioTransactionsTable';
+import PortfolioHoldingsTable from '../components/portfolio/PortfolioHoldingsTable';
+import { MyCommitment, MyPosition } from '../components/portfolio/types';
 import {
     fetchAllPoolSummaries,
     queryPoolCommits,
     queryPositions,
     queryWalletHoldings,
     formatMicroAmount,
-    PoolSummary,
-    CommiterInfo,
-    PositionResponse,
     WalletHolding,
 } from '../utils/contractQueries';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
-
-interface MyCommitment {
-    pool: PoolSummary;
-    commit: CommiterInfo;
-}
-
-interface MyPosition {
-    pool: PoolSummary;
-    position: PositionResponse;
-}
-
-interface TxRecord {
-    pool: PoolSummary;
-    type: 'commit' | 'position';
-    amount: string;
-    timestamp: string;
-}
-
-
-const MyPoolsTab: React.FC<{ commitments: MyCommitment[]; loading: boolean }> = ({ commitments, loading }) => {
-    if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning pools for your commitments...</Typography></Box>;
-    if (commitments.length === 0) return <Card><CardContent sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">You haven't committed to any pools yet.</Typography></CardContent></Card>;
-
-    return (
-        <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-                <Table stickyHeader size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Pool</TableCell>
-                            <TableCell>Status</TableCell>
-                            <TableCell>My Total (USD)</TableCell>
-                            <TableCell>My Total (BLUECHIP)</TableCell>
-                            <TableCell>Last Payment</TableCell>
-                            <TableCell align="right">Actions</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {commitments.map((c) => (
-                            <TableRow key={c.pool.poolAddress} hover>
-                                <TableCell>
-                                    <Link to={`/creatorpool/${c.pool.poolAddress}`} style={{ textDecoration: 'none' }}>
-                                        <Typography fontWeight="bold" variant="body2" color="primary">{c.pool.tokenSymbol}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{c.pool.tokenName}</Typography>
-                                    </Link>
-                                </TableCell>
-                                <TableCell><Chip label={c.pool.thresholdReached ? 'Active' : 'Pre-threshold'} color={c.pool.thresholdReached ? 'success' : 'warning'} size="small" variant="outlined" /></TableCell>
-                                <TableCell>${formatMicroAmount(c.commit.total_paid_usd)}</TableCell>
-                                <TableCell>{formatMicroAmount(c.commit.total_paid_bluechip)}</TableCell>
-                                <TableCell>${formatMicroAmount(c.commit.last_payment_usd)}</TableCell>
-                                <TableCell align="right"><PoolActionMenu poolAddress={c.pool.poolAddress} tokenSymbol={c.pool.tokenSymbol} creatorTokenAddress={c.pool.creatorTokenAddress} thresholdReached={c.pool.thresholdReached} /></TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        </Paper>
-    );
-};
-
-
-const MyPositionsTab: React.FC<{ positions: MyPosition[]; loading: boolean }> = ({ positions, loading }) => {
-    if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning pools for your positions...</Typography></Box>;
-    if (positions.length === 0) return <Card><CardContent sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">You don't have any LP positions yet.</Typography></CardContent></Card>;
-
-    return (
-        <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-                <Table stickyHeader size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Pool</TableCell>
-                            <TableCell>Position ID</TableCell>
-                            <TableCell>Liquidity</TableCell>
-                            <TableCell>Unclaimed Fees (BLUECHIP)</TableCell>
-                            <TableCell>Unclaimed Fees (Token)</TableCell>
-                            <TableCell>Last Fee Collection</TableCell>
-                            <TableCell>Created</TableCell>
-                            <TableCell align="right">Actions</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {positions.map((p) => (
-                            <TableRow key={`${p.pool.poolAddress}-${p.position.position_id}`} hover>
-                                <TableCell><Link to={`/creatorpool/${p.pool.poolAddress}`} style={{ textDecoration: 'none' }}><Typography fontWeight="bold" variant="body2" color="primary">{p.pool.tokenSymbol}</Typography></Link></TableCell>
-                                <TableCell>{p.position.position_id}</TableCell>
-                                <TableCell>{formatMicroAmount(p.position.liquidity)}</TableCell>
-                                <TableCell>{formatMicroAmount(p.position.unclaimed_fees_0)}</TableCell>
-                                <TableCell>{formatMicroAmount(p.position.unclaimed_fees_1)}</TableCell>
-                                <TableCell>{p.position.last_fee_collection ? new Date(p.position.last_fee_collection / 1_000_000).toLocaleDateString() : 'Never'}</TableCell>
-                                <TableCell>{p.position.created_at ? new Date(p.position.created_at / 1_000_000).toLocaleDateString() : '-'}</TableCell>
-                                <TableCell align="right"><PoolActionMenu poolAddress={p.pool.poolAddress} tokenSymbol={p.pool.tokenSymbol} creatorTokenAddress={p.pool.creatorTokenAddress} thresholdReached={p.pool.thresholdReached} /></TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        </Paper>
-    );
-};
-
-
-const MyTransactionsTab: React.FC<{ commitments: MyCommitment[]; positions: MyPosition[]; loading: boolean }> = ({ commitments, positions, loading }) => {
-    if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Loading transactions...</Typography></Box>;
-
-    const txs: TxRecord[] = [];
-    commitments.forEach((c) => { txs.push({ pool: c.pool, type: 'commit', amount: `$${formatMicroAmount(c.commit.total_paid_usd)}`, timestamp: c.commit.last_commited ? new Date(parseInt(c.commit.last_commited) / 1_000_000).toLocaleString() : '-' }); });
-    positions.forEach((p) => { txs.push({ pool: p.pool, type: 'position', amount: formatMicroAmount(p.position.liquidity), timestamp: p.position.created_at ? new Date(p.position.created_at / 1_000_000).toLocaleString() : '-' }); });
-
-    if (txs.length === 0) return <Card><CardContent sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No transaction history found.</Typography></CardContent></Card>;
-
-    return (
-        <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-                <Table stickyHeader size="small">
-                    <TableHead><TableRow><TableCell>Pool</TableCell><TableCell>Type</TableCell><TableCell>Amount</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
-                    <TableBody>
-                        {txs.map((tx, i) => (
-                            <TableRow key={i} hover>
-                                <TableCell><Link to={`/creatorpool/${tx.pool.poolAddress}`} style={{ textDecoration: 'none' }}><Typography variant="body2" color="primary" fontWeight="bold">{tx.pool.tokenSymbol}</Typography></Link></TableCell>
-                                <TableCell><Chip label={tx.type === 'commit' ? 'Commitment' : 'LP Position'} color={tx.type === 'commit' ? 'info' : 'secondary'} size="small" variant="outlined" /></TableCell>
-                                <TableCell>{tx.amount}</TableCell>
-                                <TableCell>{tx.timestamp}</TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        </Paper>
-    );
-};
-
-
-const MyHoldingsTab: React.FC<{ holdings: WalletHolding[]; nativeBalance: string | null; loading: boolean }> = ({ holdings, nativeBalance, loading }) => {
-    if (loading) return <Box sx={{ textAlign: 'center', py: 4 }}><CircularProgress size={28} /><Typography variant="body2" sx={{ mt: 1 }}>Scanning your token holdings...</Typography></Box>;
-
-    const hasNative = nativeBalance && parseInt(nativeBalance) > 0;
-    if (!hasNative && holdings.length === 0) return <Card><CardContent sx={{ textAlign: 'center', py: 4 }}><Typography color="text.secondary">No token holdings found.</Typography></CardContent></Card>;
-
-    return (
-        <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-                <Table stickyHeader size="small">
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Token</TableCell>
-                            <TableCell>Type</TableCell>
-                            <TableCell>Balance</TableCell>
-                            <TableCell>Pool</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {hasNative && (
-                            <TableRow hover>
-                                <TableCell>
-                                    <Typography fontWeight="bold" variant="body2">BLUECHIP</Typography>
-                                    <Typography variant="caption" color="text.secondary">Native Token</Typography>
-                                </TableCell>
-                                <TableCell><Chip label="Native" color="primary" size="small" variant="outlined" /></TableCell>
-                                <TableCell>{formatMicroAmount(nativeBalance!)} BLUECHIP</TableCell>
-                                <TableCell><Typography variant="body2" color="text.secondary">-</Typography></TableCell>
-                            </TableRow>
-                        )}
-                        {holdings.map((h) => (
-                            <TableRow key={h.tokenAddress} hover>
-                                <TableCell>
-                                    <Link to={`/creatorpool/${h.poolAddress}`} style={{ textDecoration: 'none' }}>
-                                        <Typography fontWeight="bold" variant="body2" color="primary">{h.tokenSymbol}</Typography>
-                                        <Typography variant="caption" color="text.secondary">{h.tokenName}</Typography>
-                                    </Link>
-                                </TableCell>
-                                <TableCell><Chip label="Creator Token" color="secondary" size="small" variant="outlined" /></TableCell>
-                                <TableCell>{formatMicroAmount(h.balance, h.tokenDecimals)} {h.tokenSymbol}</TableCell>
-                                <TableCell>
-                                    <Link to={`/creatorpool/${h.poolAddress}`} style={{ textDecoration: 'none' }}>
-                                        <Typography variant="body2" color="primary">{h.tokenSymbol} Pool</Typography>
-                                    </Link>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-        </Paper>
-    );
-};
-
 
 const ChainPortfolioPage: React.FC = () => {
     const { address, balance } = useWallet();
@@ -326,10 +130,10 @@ const ChainPortfolioPage: React.FC = () => {
                                     </Tabs>
                                 </CardContent>
                                 <CardContent>
-                                    <TabPanel value={tab} index={0}><MyHoldingsTab holdings={holdings} nativeBalance={balance?.amount || null} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={1}><MyPoolsTab commitments={commitments} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={2}><MyPositionsTab positions={positions} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={3}><MyTransactionsTab commitments={commitments} positions={positions} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={0}><PortfolioHoldingsTable holdings={holdings} nativeBalance={balance?.amount || null} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={1}><PortfolioCommitmentsTable commitments={commitments} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={2}><PortfolioPositionsTable positions={positions} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={3}><PortfolioTransactionsTable commitments={commitments} positions={positions} loading={loading} /></TabPanel>
                                 </CardContent>
                             </Card>
                         </Stack>
