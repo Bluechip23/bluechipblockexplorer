@@ -277,7 +277,7 @@ const CreatorPoolPage: React.FC = () => {
                                     </Typography>
                                     {pool.creatorTokenAddress && (
                                         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                                            Token Contract: <CopyableId value={pool.creatorTokenAddress}><Link to={`/creatorcontract/${pool.creatorTokenAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.creatorTokenAddress)}</Link></CopyableId>
+                                            Token Contract: <CopyableId value={pool.creatorTokenAddress}><Link to={`/creatortoken/${pool.creatorTokenAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.creatorTokenAddress)}</Link></CopyableId>
                                         </Typography>
                                     )}
                                 </CardContent>
