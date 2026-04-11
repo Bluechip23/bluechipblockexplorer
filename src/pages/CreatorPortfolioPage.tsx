@@ -105,7 +105,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                             Create Another Pool
                                         </Button>
                                     </Box>
-                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP</strong></Typography>}
+                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip</strong></Typography>}
                                 </CardContent>
                             </Card>
 
@@ -114,7 +114,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={4}><StatCard label="Total Subscribers" value={totalSubscribers} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total LP Positions" value={totalLpPositions} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total TVL" value={formatMicroAmount(totalPoolLiquidity.toString())} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Fees Earned (BLUECHIP)" value={formatMicroAmount(totalFeesEarned0.toString())} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Fees Earned (bluechip)" value={formatMicroAmount(totalFeesEarned0.toString())} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} /></Grid>
                             </Grid>
 

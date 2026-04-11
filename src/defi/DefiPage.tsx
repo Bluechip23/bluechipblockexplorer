@@ -202,7 +202,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             {subTab === 0 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <TextField label="Pool Contract Address" value={poolAddress} onChange={(e) => setPoolAddress(e.target.value)} placeholder="bluechip1..." />
-                    <TextField label="Amount (BLUECHIP)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
+                    <TextField label="Amount (bluechip)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
                     <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5%" />
                     <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
                     <Button variant="contained" onClick={handleSubscribe} disabled={!client}>Subscribe</Button>
@@ -377,7 +377,7 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
             </Tabs>
             {subTab === 0 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField label="Amount 0 (BLUECHIP)" value={amount0} onChange={(e) => setAmount0(e.target.value)} type="number" />
+                    <TextField label="Amount 0 (bluechip)" value={amount0} onChange={(e) => setAmount0(e.target.value)} type="number" />
                     <TextField label="Amount 1 (Creator Token)" value={amount1} onChange={(e) => setAmount1(e.target.value)} type="number" />
                     <TextField label="Slippage (%)" value={slippage} onChange={(e) => setSlippage(e.target.value)} type="number" />
                     <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
@@ -464,7 +464,7 @@ const DefiPage: React.FC = () => {
                                 <Typography variant="h5" fontWeight="bold">Creator Economy</Typography>
                                 {balance && (
                                     <Typography variant="body2">
-                                        {(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP
+                                        {(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip
                                     </Typography>
                                 )}
                             </Stack>

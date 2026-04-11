@@ -120,7 +120,7 @@ const StakingPage: React.FC = () => {
                                     Total Bonded
                                 </Typography>
                                 <Typography variant="h6">
-                                    {formatAmount(stakingPool.bonded, 'ubluechip')} BLUECHIP
+                                    {formatAmount(stakingPool.bonded, 'ubluechip')} bluechip
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -130,7 +130,7 @@ const StakingPage: React.FC = () => {
                                     Total Unbonded
                                 </Typography>
                                 <Typography variant="h6">
-                                    {formatAmount(stakingPool.notBonded, 'ubluechip')} BLUECHIP
+                                    {formatAmount(stakingPool.notBonded, 'ubluechip')} bluechip
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -244,7 +244,7 @@ const StakingPage: React.FC = () => {
                             disabled
                         />
                         <TextField
-                            label="Amount (BLUECHIP)"
+                            label="Amount (bluechip)"
                             fullWidth
                             type="number"
                             value={delegateAmount}

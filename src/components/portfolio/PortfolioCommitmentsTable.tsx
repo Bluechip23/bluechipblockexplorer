@@ -53,7 +53,7 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                             <TableCell>Pool</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>My Total (USD)</TableCell>
-                            <TableCell>My Total (BLUECHIP)</TableCell>
+                            <TableCell>My Total (bluechip)</TableCell>
                             <TableCell>Last Payment</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>

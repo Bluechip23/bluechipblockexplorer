@@ -8,7 +8,7 @@ import { Coin } from '@cosmjs/stargate';
 // ============================================================
 
 const MOCK_ADDRESS = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
-const MOCK_BALANCE: Coin = { denom: 'ubluechip', amount: '84720000000' }; // 84,720 BLUECHIP
+const MOCK_BALANCE: Coin = { denom: 'ubluechip', amount: '84720000000' }; // 84,720 bluechip
 
 interface WalletContextType {
     client: SigningCosmWasmClient | null;

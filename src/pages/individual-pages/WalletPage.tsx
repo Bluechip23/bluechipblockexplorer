@@ -81,7 +81,7 @@ const Wallet: React.FC = () => {
                             <CardContent>
                                 <Typography variant='h5' sx={{ wordBreak: 'break-all' }}>Wallet: <CopyableId value={wallet.address}>{wallet.address.toString()}</CopyableId></Typography>
                                 <Divider />
-                                <Typography>Balance: {formatAmount(wallet.balance, 'ubluechip')} BLUECHIP</Typography>
+                                <Typography>Balance: {formatAmount(wallet.balance, 'ubluechip')} bluechip</Typography>
                             </CardContent>
                         </Card>
                     )}

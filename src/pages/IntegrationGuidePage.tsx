@@ -35,9 +35,9 @@ const scriptTagsCode = `<!-- CosmJS — Required for all BlueChip interactions -
 
 const configCode = `<script>
 // ============================================================
-//  BLUECHIP CONFIGURATION — EDIT THESE VALUES
+//  bluechip CONFIGURATION — EDIT THESE VALUES
 // ============================================================
-const BLUECHIP_CONFIG = {
+const bluechip_CONFIG = {
     // Chain settings
     chainId:        "bluechip-1",
     chainName:      "Bluechip Mainnet",
@@ -61,20 +61,20 @@ const BLUECHIP_CONFIG = {
         bech32PrefixConsPub:  "bluechipvalconspub",
     },
     currencies: [{
-        coinDenom:        "BLUECHIP",
+        coinDenom:        "bluechip",
         coinMinimalDenom: "ubluechip",
         coinDecimals:     6,
         coinGeckoId:      "bluechip",
     }],
     feeCurrencies: [{
-        coinDenom:        "BLUECHIP",
+        coinDenom:        "bluechip",
         coinMinimalDenom: "ubluechip",
         coinDecimals:     6,
         coinGeckoId:      "bluechip",
         gasPriceStep:     { low: 0.01, average: 0.025, high: 0.04 },
     }],
     stakeCurrency: {
-        coinDenom:        "BLUECHIP",
+        coinDenom:        "bluechip",
         coinMinimalDenom: "ubluechip",
         coinDecimals:     6,
         coinGeckoId:      "bluechip",
@@ -112,28 +112,28 @@ async function connectKeplrWallet() {
     try {
         // Register the BlueChip chain with Keplr
         await window.keplr.experimentalSuggestChain({
-            chainId:        BLUECHIP_CONFIG.chainId,
-            chainName:      BLUECHIP_CONFIG.chainName,
-            rpc:            BLUECHIP_CONFIG.rpc,
-            rest:           BLUECHIP_CONFIG.rest,
-            bip44:          BLUECHIP_CONFIG.bip44,
-            bech32Config:   BLUECHIP_CONFIG.bech32Config,
-            currencies:     BLUECHIP_CONFIG.currencies,
-            feeCurrencies:  BLUECHIP_CONFIG.feeCurrencies,
-            stakeCurrency:  BLUECHIP_CONFIG.stakeCurrency,
+            chainId:        bluechip_CONFIG.chainId,
+            chainName:      bluechip_CONFIG.chainName,
+            rpc:            bluechip_CONFIG.rpc,
+            rest:           bluechip_CONFIG.rest,
+            bip44:          bluechip_CONFIG.bip44,
+            bech32Config:   bluechip_CONFIG.bech32Config,
+            currencies:     bluechip_CONFIG.currencies,
+            feeCurrencies:  bluechip_CONFIG.feeCurrencies,
+            stakeCurrency:  bluechip_CONFIG.stakeCurrency,
         });
 
         // Enable the chain
-        await window.keplr.enable(BLUECHIP_CONFIG.chainId);
+        await window.keplr.enable(bluechip_CONFIG.chainId);
 
         // Get signer and address
-        var offlineSigner = window.getOfflineSigner(BLUECHIP_CONFIG.chainId);
+        var offlineSigner = window.getOfflineSigner(bluechip_CONFIG.chainId);
         var accounts      = await offlineSigner.getAccounts();
         var address       = accounts[0].address;
 
         // Connect the signing client
         var client = await CosmWasmClient.SigningCosmWasmClient.connectWithSigner(
-            BLUECHIP_CONFIG.rpc,
+            bluechip_CONFIG.rpc,
             offlineSigner
         );
 
@@ -151,11 +151,11 @@ async function connectKeplrWallet() {
         }
 
         // Fetch balance
-        var balance = await client.getBalance(address, BLUECHIP_CONFIG.nativeDenom);
+        var balance = await client.getBalance(address, bluechip_CONFIG.nativeDenom);
         var balanceEl = document.getElementById("bluechip-balance");
         if (balanceEl) {
-            var human = (parseInt(balance.amount) / Math.pow(10, BLUECHIP_CONFIG.coinDecimals)).toFixed(6);
-            balanceEl.textContent = human + " BLUECHIP";
+            var human = (parseInt(balance.amount) / Math.pow(10, bluechip_CONFIG.coinDecimals)).toFixed(6);
+            balanceEl.textContent = human + " bluechip";
         }
 
         return true;
@@ -207,12 +207,12 @@ async function handleSubscribe() {
     statusEl.innerHTML = '<div style="color:#1565c0;">Subscribing...</div>';
 
     try {
-        // Convert to micro-units (1 BLUECHIP = 1,000,000 ubluechip)
+        // Convert to micro-units (1 bluechip = 1,000,000 ubluechip)
         var microAmount = Math.floor(amount * 1000000).toString();
 
         // Check pool threshold status
         var thresholdStatus = await window.bluechipClient.queryContractSmart(
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             { is_fully_commited: {} }
         );
         var isThresholdCrossed = (thresholdStatus === "fully_committed");
@@ -224,7 +224,7 @@ async function handleSubscribe() {
         var msg = {
             commit: {
                 asset: {
-                    info:   { bluechip: { denom: BLUECHIP_CONFIG.nativeDenom } },
+                    info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
                     amount: microAmount
                 },
                 amount:               microAmount,
@@ -235,11 +235,11 @@ async function handleSubscribe() {
         };
 
         // Attach native tokens as funds
-        var funds = [{ denom: BLUECHIP_CONFIG.nativeDenom, amount: microAmount }];
+        var funds = [{ denom: bluechip_CONFIG.nativeDenom, amount: microAmount }];
 
         var result = await window.bluechipClient.execute(
             window.bluechipAddress,
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             msg,
             { amount: [], gas: "600000" },
             "Commit",
@@ -287,7 +287,7 @@ async function handleBuy() {
         var msg = {
             simple_swap: {
                 offer_asset: {
-                    info:   { bluechip: { denom: BLUECHIP_CONFIG.nativeDenom } },
+                    info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
                     amount: microAmount
                 },
                 belief_price:         null,
@@ -297,11 +297,11 @@ async function handleBuy() {
             }
         };
 
-        var funds = [{ denom: BLUECHIP_CONFIG.nativeDenom, amount: microAmount }];
+        var funds = [{ denom: bluechip_CONFIG.nativeDenom, amount: microAmount }];
 
         var result = await window.bluechipClient.execute(
             window.bluechipAddress,
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             msg,
             { amount: [], gas: "500000" },
             "Buy Token",
@@ -368,7 +368,7 @@ async function handleSell() {
         // CW20 Send: send creator tokens to the pool with the swap instruction
         var msg = {
             send: {
-                contract: BLUECHIP_CONFIG.poolAddress,
+                contract: bluechip_CONFIG.poolAddress,
                 amount:   microAmount,
                 msg:      encodedMsg
             }
@@ -426,11 +426,11 @@ async function handleAddLiquidity() {
 
         // Step 1: Get the creator token address from the pool
         var pairInfo = await window.bluechipClient.queryContractSmart(
-            BLUECHIP_CONFIG.poolAddress, { pair: {} }
+            bluechip_CONFIG.poolAddress, { pair: {} }
         );
 
         var tokenAddress   = null;
-        var bluechipDenom  = BLUECHIP_CONFIG.nativeDenom;
+        var bluechipDenom  = bluechip_CONFIG.nativeDenom;
         for (var i = 0; i < pairInfo.asset_infos.length; i++) {
             if (pairInfo.asset_infos[i].creator_token) {
                 tokenAddress = pairInfo.asset_infos[i].creator_token.contract_addr;
@@ -449,7 +449,7 @@ async function handleAddLiquidity() {
         statusEl.innerHTML = '<div style="color:#1565c0;">Step 2: Checking token allowance...</div>';
 
         var allowanceInfo = await window.bluechipClient.queryContractSmart(tokenAddress, {
-            allowance: { owner: window.bluechipAddress, spender: BLUECHIP_CONFIG.poolAddress }
+            allowance: { owner: window.bluechipAddress, spender: bluechip_CONFIG.poolAddress }
         });
 
         if (parseInt(allowanceInfo.allowance) < parseInt(amount1Micro)) {
@@ -457,7 +457,7 @@ async function handleAddLiquidity() {
             await window.bluechipClient.execute(
                 window.bluechipAddress,
                 tokenAddress,
-                { increase_allowance: { spender: BLUECHIP_CONFIG.poolAddress, amount: amount1Micro } },
+                { increase_allowance: { spender: bluechip_CONFIG.poolAddress, amount: amount1Micro } },
                 { amount: [], gas: "200000" },
                 "Approve Pool",
                 []
@@ -484,7 +484,7 @@ async function handleAddLiquidity() {
 
         var result = await window.bluechipClient.execute(
             window.bluechipAddress,
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             msg,
             { amount: [], gas: "500000" },
             "Deposit Liquidity",
@@ -533,7 +533,7 @@ async function handleRemoveLiquidity() {
     try {
         // Verify ownership
         var positionInfo = await window.bluechipClient.queryContractSmart(
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             { position: { position_id: positionId } }
         );
         if (positionInfo.owner !== window.bluechipAddress) {
@@ -567,7 +567,7 @@ async function handleRemoveLiquidity() {
         }
 
         var result = await window.bluechipClient.execute(
-            window.bluechipAddress, BLUECHIP_CONFIG.poolAddress, msg,
+            window.bluechipAddress, bluechip_CONFIG.poolAddress, msg,
             { amount: [], gas: "500000" }, "Remove Liquidity"
         );
 
@@ -604,7 +604,7 @@ async function handleCollectFees() {
 
     try {
         var positionInfo = await window.bluechipClient.queryContractSmart(
-            BLUECHIP_CONFIG.poolAddress,
+            bluechip_CONFIG.poolAddress,
             { position: { position_id: positionId } }
         );
         if (positionInfo.owner !== window.bluechipAddress) {
@@ -616,12 +616,12 @@ async function handleCollectFees() {
         var unclaimed1 = (parseInt(positionInfo.unclaimed_fees_1) / 1000000).toFixed(6);
         statusEl.innerHTML =
             '<div style="color:#1565c0;">Collecting fees...<br>' +
-            'Unclaimed: ' + unclaimed0 + ' BLUECHIP + ' + unclaimed1 + ' Creator Tokens</div>';
+            'Unclaimed: ' + unclaimed0 + ' bluechip + ' + unclaimed1 + ' Creator Tokens</div>';
 
         var msg = { collect_fees: { position_id: positionId } };
 
         var result = await window.bluechipClient.execute(
-            window.bluechipAddress, BLUECHIP_CONFIG.poolAddress, msg,
+            window.bluechipAddress, bluechip_CONFIG.poolAddress, msg,
             { amount: [], gas: "400000" }, "Collect Fees"
         );
 
@@ -674,11 +674,11 @@ async function handleCreatePool() {
             create: {
                 pool_msg: {
                     pool_token_info: [
-                        { bluechip: { denom: BLUECHIP_CONFIG.nativeDenom } },
+                        { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
                         { creator_token: { contract_addr: "WILL_BE_CREATED_BY_FACTORY" } }
                     ],
                     cw20_token_contract_id:                1,
-                    factory_to_create_pool_addr:           BLUECHIP_CONFIG.factoryAddress,
+                    factory_to_create_pool_addr:           bluechip_CONFIG.factoryAddress,
                     threshold_payout:                      thresholdPayoutB64,
                     commit_fee_info: {
                         bluechip_wallet_address: window.bluechipAddress,
@@ -704,7 +704,7 @@ async function handleCreatePool() {
         };
 
         var result = await window.bluechipClient.execute(
-            window.bluechipAddress, BLUECHIP_CONFIG.factoryAddress, createMsg,
+            window.bluechipAddress, bluechip_CONFIG.factoryAddress, createMsg,
             { amount: [], gas: "2000000" }, "Create Pool"
         );
 
@@ -724,7 +724,7 @@ async function handleCreatePool() {
 </script>`;
 
 const queryPoolStatusCode = `async function checkPoolStatus(poolAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(BLUECHIP_CONFIG.rpc);
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var status = await client.queryContractSmart(poolAddress, {
         is_fully_commited: {}
@@ -742,7 +742,7 @@ const queryPoolStatusCode = `async function checkPoolStatus(poolAddress) {
 }`;
 
 const queryPoolStateCode = `async function getPoolState(poolAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(BLUECHIP_CONFIG.rpc);
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var state = await client.queryContractSmart(poolAddress, { pool_state: {} });
 
@@ -754,7 +754,7 @@ const queryPoolStateCode = `async function getPoolState(poolAddress) {
 }`;
 
 const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, walletAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(BLUECHIP_CONFIG.rpc);
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var info = await client.queryContractSmart(poolAddress, {
         commiting_info: { wallet: walletAddress }
@@ -762,7 +762,7 @@ const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, w
 
     if (info) {
         console.log("Total paid (USD):", parseInt(info.total_paid_usd) / 1000000);
-        console.log("Total paid (BLUECHIP):", parseInt(info.total_paid_bluechip) / 1000000);
+        console.log("Total paid (bluechip):", parseInt(info.total_paid_bluechip) / 1000000);
     } else {
         console.log("User has not subscribed yet.");
     }
@@ -771,7 +771,7 @@ const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, w
 }`;
 
 const queryPositionsCode = `async function getMyPositions(poolAddress, walletAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(BLUECHIP_CONFIG.rpc);
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var result = await client.queryContractSmart(poolAddress, {
         positions_by_owner: { owner: walletAddress }
@@ -788,7 +788,7 @@ const queryPositionsCode = `async function getMyPositions(poolAddress, walletAdd
 }`;
 
 const queryTokenAddressCode = `async function getCreatorTokenAddress(poolAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(BLUECHIP_CONFIG.rpc);
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
 
@@ -867,7 +867,7 @@ const fullExampleCode = `<!DOCTYPE html>
     <!-- Subscribe -->
     <div class="card">
         <h3>Subscribe</h3>
-        <input id="subscribe-amount" type="number" placeholder="Amount (BLUECHIP)" />
+        <input id="subscribe-amount" type="number" placeholder="Amount (bluechip)" />
         <input id="subscribe-spread" type="text" value="0.005" placeholder="Max spread" />
         <button class="btn btn-green" onclick="handleSubscribe()">Subscribe</button>
         <div id="subscribe-status"></div>
@@ -877,7 +877,7 @@ const fullExampleCode = `<!DOCTYPE html>
     <!-- Buy -->
     <div class="card">
         <h3>Buy Creator Tokens</h3>
-        <input id="buy-amount" type="number" placeholder="Amount (BLUECHIP)" />
+        <input id="buy-amount" type="number" placeholder="Amount (bluechip)" />
         <input id="buy-spread" type="text" value="0.005" placeholder="Max spread" />
         <button class="btn btn-blue" onclick="handleBuy()">Buy</button>
         <div id="buy-status"></div>
@@ -905,7 +905,7 @@ const fullExampleCode = `<!DOCTYPE html>
     </div>
 
     <!--
-        IMPORTANT: Paste the BLUECHIP_CONFIG block, wallet connection script,
+        IMPORTANT: Paste the bluechip_CONFIG block, wallet connection script,
         and all handler functions from this guide here.
     -->
 </body>
@@ -1231,7 +1231,7 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['"Please install Keplr extension"', 'Install Keplr from keplr.app/get and refresh the page'],
                                             ['"Failed to connect"', 'Make sure you\'ve approved the BlueChip chain in Keplr. Try disconnecting and reconnecting'],
                                             ['"out of gas"', 'Increase the gas limit in the execute() call (e.g., change "500000" to "800000")'],
-                                            ['"insufficient funds"', 'You need more BLUECHIP tokens. Check your balance in Keplr'],
+                                            ['"insufficient funds"', 'You need more bluechip tokens. Check your balance in Keplr'],
                                             ['"rate limited"', 'Commits have a 13-second cooldown per wallet. Wait and try again'],
                                             ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the $25,000 threshold. Use Subscribe instead'],
                                             ['"You do not own this position"', 'Double-check your Position ID. Query positions_by_owner to find your positions'],

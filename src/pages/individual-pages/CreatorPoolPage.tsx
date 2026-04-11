@@ -246,7 +246,7 @@ const CreatorPoolPage: React.FC = () => {
                     </Grid>
                 ) : (
                     <>
-                        <Grid item xs={12} md={8}>
+                        <Grid item xs={12} md={9}>
                             <Card>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
@@ -285,7 +285,7 @@ const CreatorPoolPage: React.FC = () => {
                         </Grid>
 
                         {pool.thresholdReached && (
-                            <Grid item xs={12} md={8}>
+                            <Grid item xs={12} md={5}>
                                 <Card>
                                     <CardContent>
                                         <Grid container spacing={3}>
@@ -295,7 +295,7 @@ const CreatorPoolPage: React.FC = () => {
                                                     {tokenPrice}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    BLUECHIP per 1 {pool.tokenSymbol}
+                                                    bluechip per 1 {pool.tokenSymbol}
                                                 </Typography>
                                             </Grid>
                                             <Grid item xs={6} sm={4}>
@@ -304,15 +304,15 @@ const CreatorPoolPage: React.FC = () => {
                                                     {marketCap}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    BLUECHIP
+                                                    bluechip
                                                 </Typography>
                                             </Grid>
                                             <Grid item xs={6} sm={4}>
                                                 <Typography variant="body2" color="text.secondary">Fee APR</Typography>
                                                 <Typography variant="h5" fontWeight="bold" color={
                                                     feeApr !== '-' && parseFloat(feeApr) > 50 ? 'success.main'
-                                                    : feeApr !== '-' && parseFloat(feeApr) > 10 ? 'warning.main'
-                                                    : 'text.primary'
+                                                        : feeApr !== '-' && parseFloat(feeApr) > 10 ? 'warning.main'
+                                                            : 'text.primary'
                                                 }>
                                                     {feeApr}
                                                 </Typography>
@@ -324,7 +324,7 @@ const CreatorPoolPage: React.FC = () => {
                                         <Divider sx={{ my: 1.5 }} />
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                             <Typography variant="body2" color="text.secondary">
-                                                Reserve Ratio: <strong>{reserveRatio}</strong> (BLUECHIP / {pool.tokenSymbol})
+                                                Reserve Ratio: <strong>{reserveRatio}</strong> (bluechip / {pool.tokenSymbol})
                                             </Typography>
                                         </Box>
                                     </CardContent>
@@ -333,8 +333,8 @@ const CreatorPoolPage: React.FC = () => {
                         )}
 
                         {!pool.thresholdReached && (
-                            <Grid item xs={12} md={8}>
-                                <Card>
+                            <Grid item xs={12} md={5}>
+                                <Card sx={{ height: '100%' }}>
                                     <CardContent>
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                                             <Typography variant='h6'>Commit Progress</Typography>
@@ -379,7 +379,7 @@ const CreatorPoolPage: React.FC = () => {
                                         <Typography variant="h6">Pool Composition</Typography>
                                     </Box>
                                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                                        BLUECHIP vs {pool.tokenSymbol} reserves
+                                        bluechip vs {pool.tokenSymbol} reserves
                                     </Typography>
                                     <PoolPieChart
                                         reserve0={pool.reserve0}
@@ -397,7 +397,7 @@ const CreatorPoolPage: React.FC = () => {
                                     <StatCard label="Total Liquidity" value={formatMicroAmount(pool.totalLiquidity)} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
-                                    <StatCard label="Reserve (BLUECHIP)" value={formatMicroAmount(pool.reserve0)} />
+                                    <StatCard label="Reserve (bluechip)" value={formatMicroAmount(pool.reserve0)} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label={`Reserve (${pool.tokenSymbol})`} value={formatMicroAmount(pool.reserve1)} />
@@ -406,7 +406,7 @@ const CreatorPoolPage: React.FC = () => {
                                     <StatCard label="LP Positions" value={pool.totalPositions} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
-                                    <StatCard label="Fees Collected (BLUECHIP)" value={formatMicroAmount(pool.totalFeesCollected0)} />
+                                    <StatCard label="Fees Collected (bluechip)" value={formatMicroAmount(pool.totalFeesCollected0)} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label={`Fees Collected (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} />
@@ -458,7 +458,7 @@ const CreatorPoolPage: React.FC = () => {
                                                 <StatCard label="Total Commits" value={analytics.analytics.total_commit_count} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
-                                                <StatCard label="Volume (BLUECHIP)" value={formatMicroAmount(analytics.analytics.total_volume_0)} />
+                                                <StatCard label="Volume (bluechip)" value={formatMicroAmount(analytics.analytics.total_volume_0)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
                                                 <StatCard label={`Volume (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.analytics.total_volume_1)} />
@@ -479,7 +479,7 @@ const CreatorPoolPage: React.FC = () => {
                                                 <StatCard label="USD Raised" value={'$' + formatMicroAmount(analytics.total_usd_raised)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
-                                                <StatCard label="BLUECHIP Raised" value={formatMicroAmount(analytics.total_bluechip_raised)} />
+                                                <StatCard label="bluechip Raised" value={formatMicroAmount(analytics.total_bluechip_raised)} />
                                             </Grid>
                                             {analytics.analytics.last_trade_timestamp > 0 && (
                                                 <Grid item xs={6} sm={3}>
@@ -639,7 +639,7 @@ const CreatorPoolPage: React.FC = () => {
                                                         <StatCard label="Active LP Positions" value={pool.totalPositions} />
                                                     </Grid>
                                                     <Grid item xs={6} sm={4}>
-                                                        <StatCard label="Trading Fees (BLUECHIP)" value={formatMicroAmount(pool.totalFeesCollected0)} />
+                                                        <StatCard label="Trading Fees (bluechip)" value={formatMicroAmount(pool.totalFeesCollected0)} />
                                                     </Grid>
                                                     <Grid item xs={6} sm={4}>
                                                         <StatCard label={`Trading Fees (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} />
@@ -712,9 +712,9 @@ const CreatorPoolPage: React.FC = () => {
                                                                         fontWeight="bold"
                                                                         color={
                                                                             idx === 0 ? 'warning.main'
-                                                                            : idx === 1 ? 'text.secondary'
-                                                                            : idx === 2 ? '#cd7f32'
-                                                                            : 'text.primary'
+                                                                                : idx === 1 ? 'text.secondary'
+                                                                                    : idx === 2 ? '#cd7f32'
+                                                                                        : 'text.primary'
                                                                         }
                                                                     >
                                                                         #{idx + 1}

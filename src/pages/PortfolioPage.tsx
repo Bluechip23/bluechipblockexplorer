@@ -151,7 +151,7 @@ const PortfolioPage: React.FC = () => {
                                     </Typography>
                                     {balance && (
                                         <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                            Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP</strong>
+                                            Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip</strong>
                                         </Typography>
                                     )}
                                 </CardContent>
@@ -165,7 +165,7 @@ const PortfolioPage: React.FC = () => {
                                     <StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
-                                    <StatCard label="Total Committed (BLUECHIP)" value={formatMicroAmount(totalCommittedBluechip.toString())} />
+                                    <StatCard label="Total Committed (bluechip)" value={formatMicroAmount(totalCommittedBluechip.toString())} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="LP Positions" value={positions.length} />
@@ -174,7 +174,7 @@ const PortfolioPage: React.FC = () => {
                                     <StatCard label="Total Liquidity Provided" value={formatMicroAmount(totalLiquidity.toString())} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
-                                    <StatCard label="Unclaimed Fees (BLUECHIP)" value={formatMicroAmount(totalUnclaimedFees0.toString())} />
+                                    <StatCard label="Unclaimed Fees (bluechip)" value={formatMicroAmount(totalUnclaimedFees0.toString())} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="Unclaimed Fees (Token)" value={formatMicroAmount(totalUnclaimedFees1.toString())} />

@@ -52,6 +52,6 @@ export const POOL_FOCUS_METRICS = [
     { key: 'totalSupply', label: 'Total Supply' },
     { key: 'tokenPrice', label: 'Token Price' },
     { key: 'marketCap', label: 'Market Cap' },
-    { key: 'reserve0', label: 'BLUECHIP Reserve' },
+    { key: 'reserve0', label: 'bluechip Reserve' },
     { key: 'reserve1', label: 'Creator Token Reserve' },
 ];

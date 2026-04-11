@@ -134,7 +134,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Create your own creator token and liquidity pool. Subscribers will commit BLUECHIP
+                            Create your own creator token and liquidity pool. Subscribers will commit bluechip
                             to fund your pool. Once the $25,000 threshold is reached, trading goes live.
                         </Typography>
                         <TextField

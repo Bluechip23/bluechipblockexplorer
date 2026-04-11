@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatMicroAmount } from '../../utils/contractQueries';
 
-const BLUECHIP_COLOR = '#1976d2';
+const bluechip_COLOR = '#1976d2';
 const CREATOR_COLOR = '#9932CC';
 
 interface PoolPieChartProps {
@@ -30,10 +30,10 @@ const PoolPieChart: React.FC<PoolPieChartProps> = ({ reserve0, reserve1, tokenSy
 
     const data = [
         {
-            name: 'BLUECHIP',
+            name: 'bluechip',
             value: r0,
             displayValue: formatMicroAmount(reserve0),
-            color: BLUECHIP_COLOR,
+            color: bluechip_COLOR,
         },
         {
             name: tokenSymbol || 'Creator Token',

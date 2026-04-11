@@ -148,12 +148,12 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
-                            label="Amount (BLUECHIP)"
+                            label="Amount (bluechip)"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             type="number"
                             fullWidth
-                            helperText="Amount of BLUECHIP to spend"
+                            helperText="Amount of bluechip to spend"
                         />
                         <TextField
                             label="Max Slippage (%)"
@@ -177,7 +177,7 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
                     <ConfirmationView
                         title={`Buy ${tokenSymbol || 'Token'}`}
                         details={[
-                            { label: 'You Pay', value: `${amount} BLUECHIP` },
+                            { label: 'You Pay', value: `${amount} bluechip` },
                             { label: 'Max Slippage', value: `${maxSpread}%` },
                             { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
                         ]}
@@ -367,10 +367,10 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Alert severity="info" sx={{ mb: 1 }}>
-                            Subscribe to this pool's pre-threshold phase. Your BLUECHIP will be committed toward the funding threshold.
+                            Subscribe to this pool's pre-threshold phase. Your bluechip will be committed toward the funding threshold.
                         </Alert>
                         <TextField
-                            label="Amount (BLUECHIP)"
+                            label="Amount (bluechip)"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             type="number"
@@ -391,7 +391,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                     <ConfirmationView
                         title="Confirm Commitment"
                         details={[
-                            { label: 'You Commit', value: `${amount} BLUECHIP` },
+                            { label: 'You Commit', value: `${amount} bluechip` },
                             { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
                         ]}
                         onConfirm={handleConfirm}
@@ -492,7 +492,7 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
-                            label="Amount BLUECHIP"
+                            label="Amount bluechip"
                             value={amount0}
                             onChange={(e) => setAmount0(e.target.value)}
                             type="number"
@@ -527,7 +527,7 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                     <ConfirmationView
                         title="Confirm Liquidity Deposit"
                         details={[
-                            { label: 'BLUECHIP', value: amount0 },
+                            { label: 'bluechip', value: amount0 },
                             { label: tokenSymbol || 'Creator Token', value: amount1 },
                             { label: 'Slippage', value: `${slippage}%` },
                         ]}

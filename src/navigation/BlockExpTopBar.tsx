@@ -45,7 +45,7 @@ const BlockExpTopBar: React.FC = () => {
                     <>
                         {balance && (
                             <Typography variant="body2" sx={{ mr: 1 }}>
-                                {(parseInt(balance.amount) / 1_000_000).toFixed(2)} BLUECHIP
+                                {(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip
                             </Typography>
                         )}
                         <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>

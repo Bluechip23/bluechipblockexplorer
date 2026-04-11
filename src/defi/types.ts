@@ -59,20 +59,20 @@ export const MAINNET_CONFIG: ChainConfig = {
         bech32PrefixConsPub: 'bluechipvalconspub',
     },
     currencies: [{
-        coinDenom: 'BLUECHIP',
+        coinDenom: 'bluechip',
         coinMinimalDenom: 'ubluechip',
         coinDecimals: 6,
         coinGeckoId: 'bluechip',
     }],
     feeCurrencies: [{
-        coinDenom: 'BLUECHIP',
+        coinDenom: 'bluechip',
         coinMinimalDenom: 'ubluechip',
         coinDecimals: 6,
         coinGeckoId: 'bluechip',
         gasPriceStep: { low: 0.01, average: 0.025, high: 0.04 },
     }],
     stakeCurrency: {
-        coinDenom: 'BLUECHIP',
+        coinDenom: 'bluechip',
         coinMinimalDenom: 'ubluechip',
         coinDecimals: 6,
         coinGeckoId: 'bluechip',

@@ -558,7 +558,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     icon={<AccountBalanceIcon color="success" />}
                     label="Total Fees Produced"
                     value={formatMicroAmount(totalFeesProduced)}
-                    subtext={`BLUECHIP: ${formatMicroAmount(pool.totalFeesCollected0)} | Token: ${formatMicroAmount(pool.totalFeesCollected1)}`}
+                    subtext={`bluechip: ${formatMicroAmount(pool.totalFeesCollected0)} | Token: ${formatMicroAmount(pool.totalFeesCollected1)}`}
                 />
                 <MetricRow
                     icon={<MonetizationOnIcon sx={{ color: '#ffd700' }} />}
@@ -598,9 +598,9 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         />
                         <MetricRow
                             icon={<TrendingUpIcon color="action" />}
-                            label="Volume (BLUECHIP)"
+                            label="Volume (bluechip)"
                             value={formatMicroAmount(onChainAnalytics.analytics.total_volume_0)}
-                            subtext="Cumulative BLUECHIP volume through swaps"
+                            subtext="Cumulative bluechip volume through swaps"
                         />
                         <MetricRow
                             icon={<TrendingUpIcon color="action" />}
