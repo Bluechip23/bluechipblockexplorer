@@ -12,12 +12,10 @@ import { CircularProgress, Box } from '@mui/material';
 const BlockPage = lazy(() => import('./pages/individual-pages/BlockPage'));
 const RecentTransactionsPage = lazy(() => import('./pages/table-pages/RecentTransactionsPage'));
 const RecentBlocksPage = lazy(() => import('./pages/table-pages/RecentBlocksPage'));
-const TopCreatorContractPage = lazy(() => import('./pages/table-pages/TopCreatorContractPage'));
 const TopWalletsPage = lazy(() => import('./pages/table-pages/TopWalletsPage'));
 const TopCreatorTokensPage = lazy(() => import('./pages/table-pages/TopCreatorTokenPage'));
 const Wallet = lazy(() => import('./pages/individual-pages/WalletPage'));
 const CreatorTokenPage = lazy(() => import('./pages/individual-pages/CreatorTokenPage'));
-const CreatorContract = lazy(() => import('./pages/individual-pages/CreatorContractPage'));
 const FrontPage = lazy(() => import('./pages/FrontPage'));
 const Validator = lazy(() => import('./pages/individual-pages/ValidatorPage'));
 const TopValidatorsPage = lazy(() => import('./pages/table-pages/TopValidatorsPage'));
@@ -58,7 +56,6 @@ function App() {
                     <Route path="/recentblocks" element={<RecentBlocksPage />} />
                     <Route path="/topwallets" element={<TopWalletsPage />} />
                     <Route path="/toptokens" element={<TopCreatorTokensPage />} />
-                    <Route path="/topcreatorcontracts" element={<TopCreatorContractPage />} />
                     <Route path="/topvalidators" element={<TopValidatorsPage />} />
                     <Route path="/bluechiptransactions" element={<RecentBlueChipTransactionPage/>} />
                     <Route path="/topcreatorpools" element={<TopCreatorPoolPage />} />
@@ -69,7 +66,6 @@ function App() {
                     <Route path="/blockpage/:id" element={<BlockPage />} />
                     <Route path="/wallet/:id" element={<Wallet />} />
                     <Route path="/creatortoken/:id" element={<CreatorTokenPage />} />
-                    <Route path="/creatorcontract/:id" element={<CreatorContract />} />
                     <Route path="/governance" element={<GovernancePage />} />
                     <Route path="/staking" element={<StakingPage />} />
                     <Route path="/ibc" element={<IBCTransfersPage />} />

@@ -8,7 +8,6 @@ import {
     Tooltip,
     Popover,
 } from '@mui/material';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import HomeIcon from '@mui/icons-material/Home';
 import GavelIcon from '@mui/icons-material/Gavel';
 import HotTubIcon from '@mui/icons-material/HotTub';
@@ -24,7 +23,7 @@ import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import AccountBoxIcon from '@mui/icons-material/AccountBox';
 import LinkIcon from '@mui/icons-material/Link';
 import BrushIcon from '@mui/icons-material/Brush';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 
 type Item = {
@@ -37,7 +36,6 @@ const sidebarItems: Item[] = [
     { title: 'Home', icon: <HomeIcon />, link: '/frontpage' },
     { title: 'Transactions', icon: <ReceiptIcon />, link: '/recenttransactions' },
     { title: 'Blocks', icon: <TokenIcon />, link: '/recentblocks' },
-    { title: 'Creator Contracts', icon: <ReceiptLongIcon />, link: '/topcreatorcontracts' },
     { title: 'Creator Pools', icon: <HotTubIcon />, link: '/topcreatorpools' },
     { title: 'Validators', icon: <GavelIcon />, link: '/topvalidators' },
     { title: 'Creator Tokens', icon: <MonetizationOnIcon />, link: '/toptokens' },
@@ -66,6 +64,8 @@ const SidebarLink: React.FC<{ item: Item }> = ({ item }) => (
 const BlockExpSideBar: React.FC = () => {
     const { address } = useWallet();
     const navigate = useNavigate();
+    const location = useLocation();
+    const isPortfolioActive = location.pathname.startsWith('/portfolio');
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
     const handlePortfolioClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -93,7 +93,7 @@ const BlockExpSideBar: React.FC = () => {
                     <ListItem
                         onClick={handlePortfolioClick}
                         sx={{
-                            bgcolor: 'action.selected',
+                            bgcolor: isPortfolioActive ? 'action.selected' : 'transparent',
                             borderRadius: 1,
                             cursor: 'pointer',
                             '&:hover': { bgcolor: 'action.hover' },
