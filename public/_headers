@@ -1,0 +1,35 @@
+# SECURITY: Cloudflare Pages response headers.
+# These headers apply to every page served by the static site.
+
+/*
+  # SECURITY: Content Security Policy — restricts where the browser can load
+  # resources from. This blocks inline scripts (except the SPA redirect in
+  # index.html via 'unsafe-inline'), external script/style sources not on our
+  # allowlist, and any attempt to frame the site (clickjacking).
+  #
+  # 'self'          — same-origin only
+  # unpkg.com       — CosmJS CDN bundles used by the integration guide page
+  # *.bluechip.link — RPC/LCD endpoints for chain queries
+  # 'unsafe-inline' — required for the SPA redirect script in index.html
+  #                    and MUI's runtime style injection (emotion)
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.bluechip.link https://bluechip.rpc.bluechip.link https://bluechip.api.bluechip.link; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+
+  # SECURITY: Prevent the site from being embedded in an iframe (clickjacking).
+  X-Frame-Options: DENY
+
+  # SECURITY: Prevent MIME-type sniffing which could turn a non-executable
+  # response into an executable one (e.g. script injection via .txt).
+  X-Content-Type-Options: nosniff
+
+  # SECURITY: Control the Referer header to avoid leaking full URLs
+  # (which may contain pool addresses or wallet info) to third parties.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # SECURITY: Restrict browser features the site does not need.
+  # Wallet extensions inject their own permissions; this blocks everything
+  # else (camera, mic, geolocation, payment, etc.) by default.
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+
+  # SECURITY: Enforce HTTPS for all future visits for 1 year.
+  # includeSubDomains ensures subdomains also get HTTPS-only treatment.
+  Strict-Transport-Security: max-age=31536000; includeSubDomains

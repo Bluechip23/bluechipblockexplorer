@@ -8,6 +8,7 @@ import AddCircleIcon from '@mui/icons-material/AddCircle';
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useWallet } from '../../context/WalletContext';
 import { BuyModal, SellModal, CommitModal, DepositLiquidityModal, RemoveLiquidityModal } from './PoolActionModals';
+import { sanitizeOnChainString } from '../../utils/security';
 
 interface PoolActionMenuProps {
     poolAddress: string;
@@ -51,13 +52,15 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                 {thresholdReached && (
                     <MenuItem onClick={() => openAction('buy')}>
                         <ListItemIcon><ShoppingCartIcon fontSize="small" /></ListItemIcon>
-                        <ListItemText>Buy {tokenSymbol || 'Token'}</ListItemText>
+                        {/* SECURITY: Sanitize on-chain token symbol before rendering */}
+                        <ListItemText>Buy {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}</ListItemText>
                     </MenuItem>
                 )}
                 {thresholdReached && (
                     <MenuItem onClick={() => openAction('sell')}>
                         <ListItemIcon><SellIcon fontSize="small" /></ListItemIcon>
-                        <ListItemText>Sell {tokenSymbol || 'Token'}</ListItemText>
+                        {/* SECURITY: Sanitize on-chain token symbol before rendering */}
+                        <ListItemText>Sell {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}</ListItemText>
                     </MenuItem>
                 )}
                 {!thresholdReached && (

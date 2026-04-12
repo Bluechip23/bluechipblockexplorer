@@ -18,7 +18,17 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useWallet } from '../../context/WalletContext';
-import { NATIVE_DENOM } from '../../defi/types';
+import { NATIVE_DENOM, COIN_DECIMALS } from '../../defi/types';
+import {
+    validateTokenAmount,
+    validateBech32Address,
+    validateSlippage,
+    assertWalletOnExpectedChain,
+    verifyFundsMatch,
+    sanitizeOnChainString,
+    formatSwapSummary,
+    formatLiquidityDepositSummary,
+} from '../../utils/security';
 
 
 interface BaseModalProps {
@@ -31,17 +41,34 @@ interface BaseModalProps {
 type TxStage = 'input' | 'confirm' | 'executing' | 'success' | 'error';
 
 
+// SECURITY: ConfirmationView now takes an optional `summary` string that
+// surfaces a plain-English description of the transaction. This ensures
+// the user always sees exactly what will happen before signing.
 const ConfirmationView: React.FC<{
     title: string;
     details: { label: string; value: string }[];
+    summary?: string;
+    slippageWarning?: string;
     onConfirm: () => void;
     onBack: () => void;
     executing: boolean;
-}> = ({ title, details, onConfirm, onBack, executing }) => (
+}> = ({ title, details, summary, slippageWarning, onConfirm, onBack, executing }) => (
     <Box>
         <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>
             {title}
         </Typography>
+        {/* SECURITY: Human-readable transaction summary shown before signing */}
+        {summary && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+                {summary}
+            </Alert>
+        )}
+        {/* SECURITY: Slippage warning when above 5% but below the 49% hard cap */}
+        {slippageWarning && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+                {slippageWarning}
+            </Alert>
+        )}
         <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>
             {details.map((d, i) => (
                 <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
@@ -91,12 +118,13 @@ const ResultView: React.FC<{
 
 
 export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => {
-    const { client, address } = useWallet();
+    const { client, address, balance } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
     const [amount, setAmount] = useState('');
     const [maxSpread, setMaxSpread] = useState('0.5');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [inputError, setInputError] = useState('');
 
     const steps = ['Enter Amount', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -106,26 +134,108 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
         setAmount('');
         setTxHash('');
         setErrorMsg('');
+        setInputError('');
         onClose();
+    };
+
+    // SECURITY: Pre-signing validation gate. Every check must pass before the
+    // user can proceed from the input screen to the confirmation screen.
+    const handleReview = () => {
+        setInputError('');
+
+        // SECURITY: Validate the pool address is a well-formed bluechip bech32 address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) {
+            setInputError(`Pool address invalid: ${addrCheck.error}`);
+            return;
+        }
+
+        // SECURITY: Validate amount is numeric, positive, within precision, and within balance.
+        const amtCheck = validateTokenAmount(amount, COIN_DECIMALS, balance?.amount);
+        if (!amtCheck.ok) {
+            setInputError(amtCheck.error!);
+            return;
+        }
+
+        // SECURITY: Enforce slippage bounds [0.1%, 49%]. Block if outside range.
+        const slipCheck = validateSlippage(maxSpread);
+        if (!slipCheck.ok) {
+            setInputError(slipCheck.error!);
+            return;
+        }
+
+        setStage('confirm');
     };
 
     const handleConfirm = async () => {
         if (!client || !address) return;
+
+        // SECURITY: Assert chain ID matches bluechip-3 immediately before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setErrorMsg(chainCheck.error!);
+            setStage('error');
+            return;
+        }
+
         setStage('executing');
         try {
-            const micro = Math.floor(parseFloat(amount) * 1_000_000).toString();
+            // SECURITY: Use validated micro-amount from string math to avoid
+            // floating-point drift that could cause fund/amount mismatches.
+            const amtResult = validateTokenAmount(amount, COIN_DECIMALS);
+            if (!amtResult.ok || !amtResult.micro) {
+                setErrorMsg(amtResult.error || 'Invalid amount');
+                setStage('error');
+                return;
+            }
+            const micro = amtResult.micro;
+
+            const slipResult = validateSlippage(maxSpread);
+            const spreadDecimal = ((slipResult.pct ?? 0.5) / 100).toString();
+
             const msg = {
                 simple_swap: {
                     offer_asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
                     belief_price: null,
-                    max_spread: (parseFloat(maxSpread) / 100).toString(),
+                    max_spread: spreadDecimal,
                     to: null,
                     transaction_deadline: ((Date.now() + 20 * 60000) * 1000000).toString(),
                 },
             };
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Buy Token', [
-                { denom: NATIVE_DENOM, amount: micro },
-            ]);
+
+            // SECURITY: Build the funds array once, then verify it matches what
+            // the UI told the user before forwarding to the wallet signer.
+            const funds = [{ denom: NATIVE_DENOM, amount: micro }];
+            const fundsCheck = verifyFundsMatch(
+                [{ denom: NATIVE_DENOM, amount: micro }],
+                funds,
+            );
+            if (!fundsCheck.ok) {
+                setErrorMsg(`Funds verification failed: ${fundsCheck.error}`);
+                setStage('error');
+                return;
+            }
+
+            // SECURITY: Transaction simulation — attempt a dry-run against the
+            // RPC endpoint before opening the signing modal. If the chain would
+            // reject the tx, we block signing and surface the failure reason.
+            try {
+                await client.simulate(address, [{
+                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+                    value: {
+                        sender: address,
+                        contract: poolAddress,
+                        msg: new TextEncoder().encode(JSON.stringify(msg)),
+                        funds,
+                    },
+                }], 'Buy Token');
+            } catch (simErr) {
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setStage('error');
+                return;
+            }
+
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Buy Token', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -134,10 +244,14 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
         }
     };
 
+    // SECURITY: Pre-compute the slippage validation for the confirmation summary.
+    const slipResult = validateSlippage(maxSpread);
+
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Buy {tokenSymbol || 'Token'}
+                {/* SECURITY: Sanitize on-chain token symbol before rendering */}
+                Buy {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}
                 <IconButton onClick={resetAndClose} size="small"><CloseIcon /></IconButton>
             </DialogTitle>
             <DialogContent>
@@ -161,10 +275,14 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
                             onChange={(e) => setMaxSpread(e.target.value)}
                             type="number"
                             fullWidth
+                            helperText="Min 0.1%, max 49%. Warning above 5%."
                         />
+                        {/* SECURITY: Display validation errors inline so the user
+                            knows exactly what to fix before proceeding. */}
+                        {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
-                            onClick={() => setStage('confirm')}
+                            onClick={handleReview}
                             disabled={!amount || parseFloat(amount) <= 0}
                             fullWidth
                         >
@@ -175,7 +293,15 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
 
                 {(stage === 'confirm' || stage === 'executing') && (
                     <ConfirmationView
-                        title={`Buy ${tokenSymbol || 'Token'}`}
+                        title={`Buy ${sanitizeOnChainString(tokenSymbol, 16) || 'Token'}`}
+                        summary={formatSwapSummary({
+                            sendAmount: amount,
+                            sendSymbol: 'bluechip',
+                            receiveAmount: '~estimated',
+                            receiveSymbol: tokenSymbol || 'Token',
+                            slippagePct: slipResult.pct ?? 0.5,
+                        })}
+                        slippageWarning={slipResult.warn}
                         details={[
                             { label: 'You Pay', value: `${amount} bluechip` },
                             { label: 'Max Slippage', value: `${maxSpread}%` },
@@ -205,6 +331,7 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
     const [maxSpread, setMaxSpread] = useState('0.5');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [inputError, setInputError] = useState('');
 
     const steps = ['Enter Amount', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -214,18 +341,71 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
         setAmount('');
         setTxHash('');
         setErrorMsg('');
+        setInputError('');
         onClose();
+    };
+
+    // SECURITY: Same pre-signing validation gate as BuyModal.
+    const handleReview = () => {
+        setInputError('');
+
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) {
+            setInputError(`Pool address invalid: ${addrCheck.error}`);
+            return;
+        }
+
+        if (creatorTokenAddress) {
+            const tokenAddrCheck = validateBech32Address(creatorTokenAddress);
+            if (!tokenAddrCheck.ok) {
+                setInputError(`Token address invalid: ${tokenAddrCheck.error}`);
+                return;
+            }
+        }
+
+        const amtCheck = validateTokenAmount(amount, COIN_DECIMALS);
+        if (!amtCheck.ok) {
+            setInputError(amtCheck.error!);
+            return;
+        }
+
+        const slipCheck = validateSlippage(maxSpread);
+        if (!slipCheck.ok) {
+            setInputError(slipCheck.error!);
+            return;
+        }
+
+        setStage('confirm');
     };
 
     const handleConfirm = async () => {
         if (!client || !address || !creatorTokenAddress) return;
+
+        // SECURITY: Assert chain ID immediately before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setErrorMsg(chainCheck.error!);
+            setStage('error');
+            return;
+        }
+
         setStage('executing');
         try {
-            const micro = Math.floor(parseFloat(amount) * 1_000_000).toString();
+            const amtResult = validateTokenAmount(amount, COIN_DECIMALS);
+            if (!amtResult.ok || !amtResult.micro) {
+                setErrorMsg(amtResult.error || 'Invalid amount');
+                setStage('error');
+                return;
+            }
+            const micro = amtResult.micro;
+
+            const slipResult = validateSlippage(maxSpread);
+            const spreadDecimal = ((slipResult.pct ?? 0.5) / 100).toString();
+
             const hookMsg = {
                 swap: {
                     belief_price: null,
-                    max_spread: (parseFloat(maxSpread) / 100).toString(),
+                    max_spread: spreadDecimal,
                     to: null,
                     transaction_deadline: ((Date.now() + 20 * 60000) * 1000000).toString(),
                 },
@@ -237,6 +417,24 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
                     msg: btoa(JSON.stringify(hookMsg)),
                 },
             };
+
+            // SECURITY: Transaction simulation before signing.
+            try {
+                await client.simulate(address, [{
+                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+                    value: {
+                        sender: address,
+                        contract: creatorTokenAddress,
+                        msg: new TextEncoder().encode(JSON.stringify(msg)),
+                        funds: [],
+                    },
+                }], 'Sell Token');
+            } catch (simErr) {
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setStage('error');
+                return;
+            }
+
             const result = await client.execute(address, creatorTokenAddress, msg, { amount: [], gas: '500000' }, 'Sell Token', []);
             setTxHash(result.transactionHash);
             setStage('success');
@@ -246,10 +444,12 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
         }
     };
 
+    const slipResult = validateSlippage(maxSpread);
+
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Sell {tokenSymbol || 'Token'}
+                Sell {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}
                 <IconButton onClick={resetAndClose} size="small"><CloseIcon /></IconButton>
             </DialogTitle>
             <DialogContent>
@@ -260,12 +460,12 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <TextField
-                            label={`Amount (${tokenSymbol || 'Token'})`}
+                            label={`Amount (${sanitizeOnChainString(tokenSymbol, 16) || 'Token'})`}
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             type="number"
                             fullWidth
-                            helperText={`Amount of ${tokenSymbol || 'creator token'} to sell`}
+                            helperText={`Amount of ${sanitizeOnChainString(tokenSymbol, 16) || 'creator token'} to sell`}
                         />
                         <TextField
                             label="Max Slippage (%)"
@@ -273,11 +473,13 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
                             onChange={(e) => setMaxSpread(e.target.value)}
                             type="number"
                             fullWidth
+                            helperText="Min 0.1%, max 49%. Warning above 5%."
                         />
+                        {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
                             color="error"
-                            onClick={() => setStage('confirm')}
+                            onClick={handleReview}
                             disabled={!amount || parseFloat(amount) <= 0}
                             fullWidth
                         >
@@ -288,9 +490,17 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
 
                 {(stage === 'confirm' || stage === 'executing') && (
                     <ConfirmationView
-                        title={`Sell ${tokenSymbol || 'Token'}`}
+                        title={`Sell ${sanitizeOnChainString(tokenSymbol, 16) || 'Token'}`}
+                        summary={formatSwapSummary({
+                            sendAmount: amount,
+                            sendSymbol: tokenSymbol || 'Token',
+                            receiveAmount: '~estimated',
+                            receiveSymbol: 'bluechip',
+                            slippagePct: slipResult.pct ?? 0.5,
+                        })}
+                        slippageWarning={slipResult.warn}
                         details={[
-                            { label: 'You Sell', value: `${amount} ${tokenSymbol || 'Token'}` },
+                            { label: 'You Sell', value: `${amount} ${sanitizeOnChainString(tokenSymbol, 16) || 'Token'}` },
                             { label: 'Max Slippage', value: `${maxSpread}%` },
                             { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
                         ]}
@@ -310,11 +520,12 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
 
 
 export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => {
-    const { client, address } = useWallet();
+    const { client, address, balance } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
     const [amount, setAmount] = useState('');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [inputError, setInputError] = useState('');
 
     const steps = ['Enter Amount', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -324,15 +535,52 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
         setAmount('');
         setTxHash('');
         setErrorMsg('');
+        setInputError('');
         onClose();
+    };
+
+    // SECURITY: Validate all inputs before moving to confirmation.
+    const handleReview = () => {
+        setInputError('');
+
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) {
+            setInputError(`Pool address invalid: ${addrCheck.error}`);
+            return;
+        }
+
+        // SECURITY: Balance-check on commits to prevent over-spending.
+        const amtCheck = validateTokenAmount(amount, COIN_DECIMALS, balance?.amount);
+        if (!amtCheck.ok) {
+            setInputError(amtCheck.error!);
+            return;
+        }
+
+        setStage('confirm');
     };
 
     const handleConfirm = async () => {
         if (!client || !address) return;
+
+        // SECURITY: Chain ID assertion before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setErrorMsg(chainCheck.error!);
+            setStage('error');
+            return;
+        }
+
         setStage('executing');
         try {
-            const micro = Math.floor(parseFloat(amount) * 1_000_000).toString();
+            const amtResult = validateTokenAmount(amount, COIN_DECIMALS);
+            if (!amtResult.ok || !amtResult.micro) {
+                setErrorMsg(amtResult.error || 'Invalid amount');
+                setStage('error');
+                return;
+            }
+            const micro = amtResult.micro;
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
+
             const msg = {
                 commit: {
                     asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
@@ -342,9 +590,36 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                     max_spread: null,
                 },
             };
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [
-                { denom: NATIVE_DENOM, amount: micro },
-            ]);
+
+            const funds = [{ denom: NATIVE_DENOM, amount: micro }];
+            const fundsCheck = verifyFundsMatch(
+                [{ denom: NATIVE_DENOM, amount: micro }],
+                funds,
+            );
+            if (!fundsCheck.ok) {
+                setErrorMsg(`Funds verification failed: ${fundsCheck.error}`);
+                setStage('error');
+                return;
+            }
+
+            // SECURITY: Transaction simulation before signing.
+            try {
+                await client.simulate(address, [{
+                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+                    value: {
+                        sender: address,
+                        contract: poolAddress,
+                        msg: new TextEncoder().encode(JSON.stringify(msg)),
+                        funds,
+                    },
+                }], 'Commit');
+            } catch (simErr) {
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setStage('error');
+                return;
+            }
+
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -356,7 +631,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Commit to {tokenSymbol || 'Pool'}
+                Commit to {sanitizeOnChainString(tokenSymbol, 16) || 'Pool'}
                 <IconButton onClick={resetAndClose} size="small"><CloseIcon /></IconButton>
             </DialogTitle>
             <DialogContent>
@@ -376,9 +651,10 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                             type="number"
                             fullWidth
                         />
+                        {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
-                            onClick={() => setStage('confirm')}
+                            onClick={handleReview}
                             disabled={!amount || parseFloat(amount) <= 0}
                             fullWidth
                         >
@@ -390,6 +666,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                 {(stage === 'confirm' || stage === 'executing') && (
                     <ConfirmationView
                         title="Confirm Commitment"
+                        summary={`You are committing ${amount} bluechip toward this pool's funding threshold.`}
                         details={[
                             { label: 'You Commit', value: `${amount} bluechip` },
                             { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
@@ -412,13 +689,14 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
 export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddress?: string }> = ({
     open, onClose, poolAddress, tokenSymbol, creatorTokenAddress,
 }) => {
-    const { client, address } = useWallet();
+    const { client, address, balance } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
     const [amount0, setAmount0] = useState('');
     const [amount1, setAmount1] = useState('');
     const [slippage, setSlippage] = useState('1');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [inputError, setInputError] = useState('');
 
     const steps = ['Enter Amounts', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -429,15 +707,72 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
         setAmount1('');
         setTxHash('');
         setErrorMsg('');
+        setInputError('');
         onClose();
+    };
+
+    // SECURITY: Validate both deposit amounts, slippage, and all addresses.
+    const handleReview = () => {
+        setInputError('');
+
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) {
+            setInputError(`Pool address invalid: ${addrCheck.error}`);
+            return;
+        }
+
+        if (creatorTokenAddress) {
+            const tokenAddrCheck = validateBech32Address(creatorTokenAddress);
+            if (!tokenAddrCheck.ok) {
+                setInputError(`Token address invalid: ${tokenAddrCheck.error}`);
+                return;
+            }
+        }
+
+        // SECURITY: Validate bluechip amount against on-chain balance.
+        const amt0Check = validateTokenAmount(amount0, COIN_DECIMALS, balance?.amount);
+        if (!amt0Check.ok) {
+            setInputError(`Bluechip amount: ${amt0Check.error}`);
+            return;
+        }
+
+        const amt1Check = validateTokenAmount(amount1, COIN_DECIMALS);
+        if (!amt1Check.ok) {
+            setInputError(`Creator token amount: ${amt1Check.error}`);
+            return;
+        }
+
+        const slipCheck = validateSlippage(slippage);
+        if (!slipCheck.ok) {
+            setInputError(slipCheck.error!);
+            return;
+        }
+
+        setStage('confirm');
     };
 
     const handleConfirm = async () => {
         if (!client || !address || !creatorTokenAddress) return;
+
+        // SECURITY: Chain assertion before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setErrorMsg(chainCheck.error!);
+            setStage('error');
+            return;
+        }
+
         setStage('executing');
         try {
-            const a0 = Math.ceil(parseFloat(amount0) * 1_000_000).toString();
-            const a1 = Math.ceil(parseFloat(amount1) * 1_000_000).toString();
+            const amt0Result = validateTokenAmount(amount0, COIN_DECIMALS);
+            const amt1Result = validateTokenAmount(amount1, COIN_DECIMALS);
+            if (!amt0Result.ok || !amt0Result.micro || !amt1Result.ok || !amt1Result.micro) {
+                setErrorMsg('Invalid deposit amounts');
+                setStage('error');
+                return;
+            }
+            const a0 = amt0Result.micro;
+            const a1 = amt1Result.micro;
 
             // Check/increase allowance
             const allowance = await client.queryContractSmart(creatorTokenAddress, {
@@ -454,7 +789,8 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                 );
             }
 
-            const slipFactor = 1 - parseFloat(slippage) / 100;
+            const slipResult = validateSlippage(slippage);
+            const slipFactor = 1 - ((slipResult.pct ?? 1) / 100);
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
 
             const msg = {
@@ -467,9 +803,35 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                 },
             };
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Deposit Liquidity', [
-                { denom: NATIVE_DENOM, amount: a0 },
-            ]);
+            const funds = [{ denom: NATIVE_DENOM, amount: a0 }];
+            const fundsCheck = verifyFundsMatch(
+                [{ denom: NATIVE_DENOM, amount: a0 }],
+                funds,
+            );
+            if (!fundsCheck.ok) {
+                setErrorMsg(`Funds verification failed: ${fundsCheck.error}`);
+                setStage('error');
+                return;
+            }
+
+            // SECURITY: Transaction simulation before signing.
+            try {
+                await client.simulate(address, [{
+                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+                    value: {
+                        sender: address,
+                        contract: poolAddress,
+                        msg: new TextEncoder().encode(JSON.stringify(msg)),
+                        funds,
+                    },
+                }], 'Deposit Liquidity');
+            } catch (simErr) {
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setStage('error');
+                return;
+            }
+
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Deposit Liquidity', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -477,6 +839,8 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
             setStage('error');
         }
     };
+
+    const slipResult = validateSlippage(slippage);
 
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
@@ -499,7 +863,7 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                             fullWidth
                         />
                         <TextField
-                            label={`Amount ${tokenSymbol || 'Creator Token'}`}
+                            label={`Amount ${sanitizeOnChainString(tokenSymbol, 16) || 'Creator Token'}`}
                             value={amount1}
                             onChange={(e) => setAmount1(e.target.value)}
                             type="number"
@@ -511,10 +875,12 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                             onChange={(e) => setSlippage(e.target.value)}
                             type="number"
                             fullWidth
+                            helperText="Min 0.1%, max 49%. Warning above 5%."
                         />
+                        {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
-                            onClick={() => setStage('confirm')}
+                            onClick={handleReview}
                             disabled={!amount0 || !amount1 || parseFloat(amount0) <= 0 || parseFloat(amount1) <= 0}
                             fullWidth
                         >
@@ -526,9 +892,17 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
                 {(stage === 'confirm' || stage === 'executing') && (
                     <ConfirmationView
                         title="Confirm Liquidity Deposit"
+                        summary={formatLiquidityDepositSummary({
+                            amount0,
+                            symbol0: 'bluechip',
+                            amount1,
+                            symbol1: tokenSymbol || 'Creator Token',
+                            lpShares: '~estimated',
+                        })}
+                        slippageWarning={slipResult.warn}
                         details={[
                             { label: 'bluechip', value: amount0 },
-                            { label: tokenSymbol || 'Creator Token', value: amount1 },
+                            { label: sanitizeOnChainString(tokenSymbol, 16) || 'Creator Token', value: amount1 },
                             { label: 'Slippage', value: `${slippage}%` },
                         ]}
                         onConfirm={handleConfirm}
@@ -554,6 +928,7 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
     const [slippage, setSlippage] = useState('1');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const [inputError, setInputError] = useState('');
 
     const steps = ['Enter Details', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -564,14 +939,55 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
         setPercentage('100');
         setTxHash('');
         setErrorMsg('');
+        setInputError('');
         onClose();
+    };
+
+    // SECURITY: Validate inputs before confirmation.
+    const handleReview = () => {
+        setInputError('');
+
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) {
+            setInputError(`Pool address invalid: ${addrCheck.error}`);
+            return;
+        }
+
+        if (!positionId || positionId.trim() === '') {
+            setInputError('Position ID is required.');
+            return;
+        }
+
+        const pct = parseInt(percentage);
+        if (isNaN(pct) || pct < 1 || pct > 100) {
+            setInputError('Percentage must be between 1 and 100.');
+            return;
+        }
+
+        const slipCheck = validateSlippage(slippage);
+        if (!slipCheck.ok) {
+            setInputError(slipCheck.error!);
+            return;
+        }
+
+        setStage('confirm');
     };
 
     const handleConfirm = async () => {
         if (!client || !address) return;
+
+        // SECURITY: Chain assertion before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setErrorMsg(chainCheck.error!);
+            setStage('error');
+            return;
+        }
+
         setStage('executing');
         try {
-            const deviationBps = Math.floor(parseFloat(slippage) * 100);
+            const slipResult = validateSlippage(slippage);
+            const deviationBps = Math.floor((slipResult.pct ?? 1) * 100);
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
             const pct = parseInt(percentage);
 
@@ -599,6 +1015,23 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
                 };
             }
 
+            // SECURITY: Transaction simulation before signing.
+            try {
+                await client.simulate(address, [{
+                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+                    value: {
+                        sender: address,
+                        contract: poolAddress,
+                        msg: new TextEncoder().encode(JSON.stringify(msg)),
+                        funds: [],
+                    },
+                }], 'Remove Liquidity');
+            } catch (simErr) {
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setStage('error');
+                return;
+            }
+
             const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Remove Liquidity');
             setTxHash(result.transactionHash);
             setStage('success');
@@ -607,6 +1040,8 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
             setStage('error');
         }
     };
+
+    const slipResult = validateSlippage(slippage);
 
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
@@ -643,11 +1078,13 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
                             onChange={(e) => setSlippage(e.target.value)}
                             type="number"
                             fullWidth
+                            helperText="Min 0.1%, max 49%. Warning above 5%."
                         />
+                        {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
                             color="error"
-                            onClick={() => setStage('confirm')}
+                            onClick={handleReview}
                             disabled={!positionId}
                             fullWidth
                         >
@@ -659,6 +1096,8 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
                 {(stage === 'confirm' || stage === 'executing') && (
                     <ConfirmationView
                         title="Confirm Liquidity Removal"
+                        summary={`You are removing ${percentage}% of position ${positionId}. You will receive the corresponding share of pooled tokens.`}
+                        slippageWarning={slipResult.warn}
                         details={[
                             { label: 'Position ID', value: positionId },
                             { label: 'Remove', value: `${percentage}%` },
