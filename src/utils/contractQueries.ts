@@ -602,12 +602,15 @@ function findPool(address: string): PoolSummary | undefined {
 
 export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
     await delay(400);
-    return findPool(poolAddress) || MOCK_POOLS[0];
+    const pool = findPool(poolAddress) || MOCK_POOLS[0];
+    // SECURITY: Sanitize all on-chain strings before they enter the render tree.
+    return pool ? sanitizePoolSummary(pool) : null;
 }
 
 export async function fetchAllPoolSummaries(_factoryAddress: string): Promise<PoolSummary[]> {
     await delay(600);
-    return [...MOCK_POOLS];
+    // SECURITY: Sanitize every pool summary returned from the chain query.
+    return MOCK_POOLS.map(sanitizePoolSummary);
 }
 
 export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitResponse | null> {
@@ -818,4 +821,26 @@ export function formatMicroAmount(amount: string, decimals: number = 6): string 
 export function abbreviateAddress(address: string, prefixLen: number = 12, suffixLen: number = 6): string {
     if (address.length <= prefixLen + suffixLen + 3) return address;
     return `${address.slice(0, prefixLen)}...${address.slice(-suffixLen)}`;
+}
+
+// SECURITY: Sanitizes all user-facing string fields on a PoolSummary before
+// they are rendered. On-chain data (token names, symbols, contract labels)
+// is untrusted — an attacker could deploy a pool with a name containing
+// zero-width characters, RTL overrides, or abusively long strings that break
+// layout or enable phishing. This function strips control characters and
+// truncates to safe lengths. Should be called on every pool summary returned
+// from a chain query before it enters the React render tree.
+// eslint-disable-next-line no-control-regex
+const UNSAFE_CHARS = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
+function sanitizeStr(s: string, maxLen: number): string {
+    const cleaned = s.replace(UNSAFE_CHARS, '');
+    return cleaned.length <= maxLen ? cleaned : cleaned.slice(0, maxLen) + '\u2026';
+}
+
+export function sanitizePoolSummary(pool: PoolSummary): PoolSummary {
+    return {
+        ...pool,
+        tokenName: sanitizeStr(pool.tokenName, 64),
+        tokenSymbol: sanitizeStr(pool.tokenSymbol, 16),
+    };
 }

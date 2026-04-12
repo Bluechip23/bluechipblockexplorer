@@ -8,9 +8,17 @@ import BlockExpSideBar from '../navigation/BlockExpSideBar';
 import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import CommitTracker from './CommitTracker';
-import { NATIVE_DENOM } from './types';
+import { NATIVE_DENOM, COIN_DECIMALS } from './types';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 import { useWallet } from '../context/WalletContext';
+import {
+    validateTokenAmount,
+    validateBech32Address,
+    validateSlippage,
+    assertWalletOnExpectedChain,
+    verifyFundsMatch,
+    sanitizeOnChainString,
+} from '../utils/security';
 
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
     <div role="tabpanel" hidden={value !== index}>
@@ -60,6 +68,31 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
         if (!client || !address) { setStatus('Please connect your wallet'); return; }
         if (!FACTORY) { setStatus('Error: Factory address not configured'); return; }
         if (!tokenName || !tokenSymbol) { setStatus('Error: Enter token name and symbol'); return; }
+
+        // SECURITY: Sanitize token name/symbol — reject control chars and special
+        // characters that could be used for XSS on downstream consumers.
+        if (!/^[A-Za-z0-9 _\-().]+$/.test(tokenName)) {
+            setStatus('Error: Token name contains invalid characters');
+            return;
+        }
+        if (!/^[A-Z0-9]+$/.test(tokenSymbol)) {
+            setStatus('Error: Token symbol must be uppercase letters and numbers only');
+            return;
+        }
+
+        // SECURITY: Validate factory address is well-formed bech32.
+        const factoryCheck = validateBech32Address(FACTORY);
+        if (!factoryCheck.ok) {
+            setStatus(`Error: Factory address invalid — ${factoryCheck.error}`);
+            return;
+        }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) {
+            setStatus(`Error: ${chainCheck.error}`);
+            return;
+        }
 
         try {
             setStatus('Creating pool...');
@@ -164,12 +197,25 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
 
     const handleSubscribe = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
+
+        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
+
+        // SECURITY: Validate amount using string-math to avoid floating-point drift.
+        const amtCheck = validateTokenAmount(amount, COIN_DECIMALS);
+        if (!amtCheck.ok) { setStatus(`Error: ${amtCheck.error}`); return; }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
+
         try {
             setStatus('Subscribing...');
             setTxHash('');
             const amountVal = parseFloat(amount);
             if (isNaN(amountVal) || amountVal <= 0) { setStatus('Error: Enter a valid amount'); return; }
-            const micro = Math.floor(amountVal * 1_000_000).toString();
+            const micro = amtCheck.micro!;
 
             const thresholdStatus = await client.queryContractSmart(poolAddress, { is_fully_commited: {} });
             const isThresholdCrossed = thresholdStatus === 'fully_committed';
@@ -234,12 +280,33 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 
     const handleSwap = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
+
+        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
+
+        // SECURITY: Validate amount using string-math to avoid floating-point drift.
+        const amtCheck = validateTokenAmount(amount, COIN_DECIMALS);
+        if (!amtCheck.ok) { setStatus(`Error: ${amtCheck.error}`); return; }
+
+        // SECURITY: Validate slippage bounds — maxSpread here is a decimal (0.005 = 0.5%).
+        // Convert to percentage for our validator then convert back.
+        const spreadPct = parseFloat(maxSpread) * 100;
+        if (Number.isFinite(spreadPct)) {
+            const slipCheck = validateSlippage(spreadPct);
+            if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
+        }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
+
         try {
             setStatus('Swapping...');
             setTxHash('');
             const amountVal = parseFloat(amount);
             if (isNaN(amountVal) || amountVal <= 0) { setStatus('Error: Enter a valid amount'); return; }
-            const micro = Math.floor(amountVal * 1_000_000).toString();
+            const micro = amtCheck.micro!;
             const deadlineNs = deadline && parseFloat(deadline) > 0 ? (Date.now() + parseFloat(deadline) * 60000) * 1000000 : null;
 
             const isContract = offerAsset.length > 20 && (offerAsset.startsWith('bluechip') || offerAsset.startsWith('cosmos'));
@@ -304,11 +371,30 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
 
     const handleDeposit = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and set pool address'); return; }
+
+        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
+
+        // SECURITY: Validate both deposit amounts.
+        const amt0Check = validateTokenAmount(amount0, COIN_DECIMALS);
+        if (!amt0Check.ok) { setStatus(`Error: Bluechip amount — ${amt0Check.error}`); return; }
+        const amt1Check = validateTokenAmount(amount1, COIN_DECIMALS);
+        if (!amt1Check.ok) { setStatus(`Error: Creator token amount — ${amt1Check.error}`); return; }
+
+        // SECURITY: Validate slippage bounds.
+        const slipCheck = validateSlippage(slippage);
+        if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
+
         try {
             setStatus('Depositing...');
             setTxHash('');
-            const a0 = Math.ceil(parseFloat(amount0) * 1_000_000).toString();
-            const a1 = Math.ceil(parseFloat(amount1) * 1_000_000).toString();
+            const a0 = amt0Check.micro!;
+            const a1 = amt1Check.micro!;
 
             // Get token address from pool
             const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
@@ -347,6 +433,19 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
 
     const handleRemove = async () => {
         if (!client || !address || !poolAddress || !positionId) { setStatus('Fill in all fields'); return; }
+
+        // SECURITY: Validate pool address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
+
+        // SECURITY: Validate slippage bounds.
+        const slipCheck = validateSlippage(slippage);
+        if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
+
         try {
             setStatus('Removing...');
             setTxHash('');
@@ -416,6 +515,15 @@ const FeesTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 
     const handleCollect = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
+
+        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
+
+        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        const chainCheck = await assertWalletOnExpectedChain(client);
+        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
+
         try {
             setStatus('Verifying ownership...');
             setTxHash('');
