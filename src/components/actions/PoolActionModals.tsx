@@ -29,6 +29,7 @@ import {
     formatSwapSummary,
     formatLiquidityDepositSummary,
 } from '../../utils/security';
+import { compareMicro } from '../../utils/bigintMath';
 
 
 interface BaseModalProps {
@@ -778,7 +779,7 @@ export const DepositLiquidityModal: React.FC<BaseModalProps & { creatorTokenAddr
             const allowance = await client.queryContractSmart(creatorTokenAddress, {
                 allowance: { owner: address, spender: poolAddress },
             });
-            if (parseInt(allowance.allowance) < parseInt(a1)) {
+            if (compareMicro(allowance.allowance, a1) < 0) {
                 await client.execute(
                     address,
                     creatorTokenAddress,
@@ -958,7 +959,7 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
             return;
         }
 
-        const pct = parseInt(percentage);
+        const pct = parseInt(percentage, 10);
         if (isNaN(pct) || pct < 1 || pct > 100) {
             setInputError('Percentage must be between 1 and 100.');
             return;
@@ -989,7 +990,7 @@ export const RemoveLiquidityModal: React.FC<BaseModalProps> = ({ open, onClose, 
             const slipResult = validateSlippage(slippage);
             const deviationBps = Math.floor((slipResult.pct ?? 1) * 100);
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
-            const pct = parseInt(percentage);
+            const pct = parseInt(percentage, 10);
 
             let msg: any;
             if (pct >= 100) {

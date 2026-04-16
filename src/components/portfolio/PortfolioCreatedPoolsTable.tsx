@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom';
 import PoolActionMenu from '../actions/PoolActionMenu';
 import StatCard from '../universal/StatCard';
 import { formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
+import { safeBigInt } from '../../utils/bigintMath';
 
 interface PortfolioCreatedPoolsTableProps {
     createdPools: PoolSummary[];
@@ -57,14 +58,14 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
         );
     }
 
-    const totalFeesEarned0 = createdPools.reduce(
-        (sum, p) => sum + parseInt(p.totalFeesCollected0 || '0'), 0
+    const totalFeesEarned0 = createdPools.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.totalFeesCollected0), 0n
     );
-    const totalFeesEarned1 = createdPools.reduce(
-        (sum, p) => sum + parseInt(p.totalFeesCollected1 || '0'), 0
+    const totalFeesEarned1 = createdPools.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.totalFeesCollected1), 0n
     );
-    const totalPoolLiquidity = createdPools.reduce(
-        (sum, p) => sum + parseInt(p.totalLiquidity || '0'), 0
+    const totalPoolLiquidity = createdPools.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.totalLiquidity), 0n
     );
     const totalSubscribers = createdPools.reduce(
         (sum, p) => sum + p.totalCommitters, 0

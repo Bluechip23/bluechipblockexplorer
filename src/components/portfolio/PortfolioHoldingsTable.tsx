@@ -16,6 +16,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { formatMicroAmount, WalletHolding } from '../../utils/contractQueries';
+import { safeBigInt } from '../../utils/bigintMath';
 
 interface PortfolioHoldingsTableProps {
     holdings: WalletHolding[];
@@ -33,7 +34,7 @@ const PortfolioHoldingsTable: React.FC<PortfolioHoldingsTableProps> = ({ holding
         );
     }
 
-    const hasNative = nativeBalance && parseInt(nativeBalance) > 0;
+    const hasNative = !!nativeBalance && safeBigInt(nativeBalance) > 0n;
     if (!hasNative && holdings.length === 0) {
         return (
             <Card>

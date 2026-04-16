@@ -1,3 +1,5 @@
+import { formatMicroAmount } from './bigintMath';
+
 const MESSAGE_TYPE_MAP: Record<string, string> = {
     '/cosmos.bank.v1beta1.MsgSend': 'Send',
     '/cosmos.staking.v1beta1.MsgDelegate': 'Delegate',
@@ -39,10 +41,11 @@ export function formatDenom(denom: string): string {
 }
 
 export function formatAmount(amount: string | number, denom?: string): string {
-    const num = typeof amount === 'string' ? parseInt(amount, 10) : amount;
-    if (isNaN(num)) return '0';
+    // u-prefixed denoms (e.g. ubluechip, uatom) are micro-units with 6 decimals.
     if (denom?.startsWith('u')) {
-        return (num / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 6 });
+        return formatMicroAmount(amount, 6, 6);
     }
+    const num = typeof amount === 'string' ? Number(amount) : amount;
+    if (!Number.isFinite(num)) return '0';
     return num.toLocaleString();
 }

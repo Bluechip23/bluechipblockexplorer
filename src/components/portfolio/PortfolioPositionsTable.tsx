@@ -16,7 +16,16 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import PoolActionMenu from '../actions/PoolActionMenu';
 import { formatMicroAmount } from '../../utils/contractQueries';
+import { safeBigInt } from '../../utils/bigintMath';
 import { MyPosition } from './types';
+
+// Cosmos SDK timestamps are nanoseconds; JS Date wants milliseconds.
+function nsToDateStr(ns: string | number | null | undefined): string {
+    const n = safeBigInt(ns);
+    if (n === 0n) return '-';
+    const d = new Date(Number(n / 1_000_000n));
+    return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString();
+}
 
 interface PortfolioPositionsTableProps {
     positions: MyPosition[];
@@ -74,14 +83,10 @@ const PortfolioPositionsTable: React.FC<PortfolioPositionsTableProps> = ({ posit
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_0)}</TableCell>
                                 <TableCell>{formatMicroAmount(p.position.unclaimed_fees_1)}</TableCell>
                                 <TableCell>
-                                    {p.position.last_fee_collection
-                                        ? new Date(p.position.last_fee_collection / 1_000_000).toLocaleDateString()
-                                        : 'Never'}
+                                    {p.position.last_fee_collection ? nsToDateStr(p.position.last_fee_collection) : 'Never'}
                                 </TableCell>
                                 <TableCell>
-                                    {p.position.created_at
-                                        ? new Date(p.position.created_at / 1_000_000).toLocaleDateString()
-                                        : '-'}
+                                    {nsToDateStr(p.position.created_at)}
                                 </TableCell>
                                 <TableCell align="right">
                                     <PoolActionMenu

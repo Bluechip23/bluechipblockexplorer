@@ -1,3 +1,4 @@
+import { safeBigInt } from './bigintMath';
 
 const MOCK_WALLET = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 
@@ -698,11 +699,11 @@ export async function queryThresholdAnalytics(
         };
     }
 
-    const totalUsd = committers.reduce((s, c) => s + parseInt(c.total_paid_usd || '0'), 0);
-    const avgUsd = committers.length > 0 ? Math.floor(totalUsd / committers.length) : 0;
+    const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
+    const avgUsd = committers.length > 0 ? totalUsd / BigInt(committers.length) : 0n;
 
-    const WHALE_USD = 5000_000_000;  // $5,000 in micro
-    const MID_USD = 500_000_000;     // $500 in micro
+    const WHALE_USD = 5_000_000_000n;  // $5,000 in micro
+    const MID_USD = 500_000_000n;      // $500 in micro
 
     return {
         thresholdCrossedAt: null,
@@ -712,12 +713,12 @@ export async function queryThresholdAnalytics(
         avgCommitValueUsd: avgUsd.toString(),
         totalRaisedUsd: pool.raised,
         walletBreakdown: {
-            whaleCommitters: committers.filter(c => parseInt(c.total_paid_usd) >= WHALE_USD).length,
+            whaleCommitters: committers.filter(c => safeBigInt(c.total_paid_usd) >= WHALE_USD).length,
             midCommitters: committers.filter(c => {
-                const v = parseInt(c.total_paid_usd);
+                const v = safeBigInt(c.total_paid_usd);
                 return v >= MID_USD && v < WHALE_USD;
             }).length,
-            smallCommitters: committers.filter(c => parseInt(c.total_paid_usd) < MID_USD).length,
+            smallCommitters: committers.filter(c => safeBigInt(c.total_paid_usd) < MID_USD).length,
         },
     };
 }
@@ -812,11 +813,7 @@ export function getCreatorTokenAddress(assetInfos: [TokenType, TokenType]): stri
     return creatorToken?.creator_token.contract_addr ?? null;
 }
 
-export function formatMicroAmount(amount: string, decimals: number = 6): string {
-    const num = parseInt(amount) / Math.pow(10, decimals);
-    if (isNaN(num)) return '0';
-    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
+export { formatMicroAmount, safeBigInt, microToNumber } from './bigintMath';
 
 export function abbreviateAddress(address: string, prefixLen: number = 12, suffixLen: number = 6): string {
     if (address.length <= prefixLen + suffixLen + 3) return address;

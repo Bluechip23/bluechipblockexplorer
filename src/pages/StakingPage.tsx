@@ -31,6 +31,7 @@ import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import { apiEndpoint } from '../components/universal/IndividualPage.const';
 import { formatAmount } from '../utils/txDecoder';
+import { compareMicro, safeBigInt } from '../utils/bigintMath';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import CopyableId from '../components/universal/CopyableId';
@@ -75,7 +76,7 @@ const StakingPage: React.FC = () => {
                     axios.get(`${apiEndpoint}/cosmos/staking/v1beta1/pool`),
                 ]);
                 const sorted = (validatorsRes.data.validators || []).sort(
-                    (a: ValidatorInfo, b: ValidatorInfo) => parseInt(b.tokens) - parseInt(a.tokens)
+                    (a: ValidatorInfo, b: ValidatorInfo) => compareMicro(b.tokens, a.tokens)
                 );
                 setValidators(sorted);
                 setStakingPool({
@@ -91,7 +92,7 @@ const StakingPage: React.FC = () => {
         fetchValidators();
     }, []);
 
-    const totalBonded = parseInt(stakingPool.bonded);
+    const totalBonded = safeBigInt(stakingPool.bonded);
 
     const handleDelegate = (validatorAddr: string) => {
         setSelectedValidator(validatorAddr);
@@ -168,8 +169,8 @@ const StakingPage: React.FC = () => {
                                         {validators
                                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                                             .map((v, i) => {
-                                                const votingPower = totalBonded > 0
-                                                    ? ((parseInt(v.tokens) / totalBonded) * 100).toFixed(2)
+                                                const votingPower = totalBonded > 0n
+                                                    ? (Number((safeBigInt(v.tokens) * 10000n) / totalBonded) / 100).toFixed(2)
                                                     : '0';
                                                 return (
                                                     <TableRow key={v.operator_address}>

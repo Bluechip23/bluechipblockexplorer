@@ -17,6 +17,7 @@ import GeneralStats from '../navigation/GeneralStats';
 import { apiEndpoint } from '../components/universal/IndividualPage.const';
 import axios from 'axios';
 import { CardSkeleton } from '../components/universal/LoadingSkeleton';
+import { safeBigInt } from '../utils/bigintMath';
 
 interface Proposal {
     proposal_id: string;
@@ -79,13 +80,20 @@ const GovernancePage: React.FC = () => {
         fetchProposals();
     }, []);
 
-    const getTallyTotal = (tally: Proposal['final_tally_result']) => {
+    const getTallyTotal = (tally: Proposal['final_tally_result']): bigint => {
         return (
-            parseInt(tally.yes) +
-            parseInt(tally.no) +
-            parseInt(tally.abstain) +
-            parseInt(tally.no_with_veto)
+            safeBigInt(tally.yes) +
+            safeBigInt(tally.no) +
+            safeBigInt(tally.abstain) +
+            safeBigInt(tally.no_with_veto)
         );
+    };
+
+    const tallyPct = (numerator: string, total: bigint): number => {
+        if (total === 0n) return 0;
+        // Scale by 10000 to preserve 2 decimals of percentage precision
+        // before converting to Number (avoids bigint → Number truncation).
+        return Number((safeBigInt(numerator) * 10000n) / total) / 100;
     };
 
     return (
@@ -119,8 +127,8 @@ const GovernancePage: React.FC = () => {
                         <Stack spacing={2}>
                             {proposals.map((proposal) => {
                                 const total = getTallyTotal(proposal.final_tally_result);
-                                const yesPercent = total > 0 ? (parseInt(proposal.final_tally_result.yes) / total) * 100 : 0;
-                                const noPercent = total > 0 ? (parseInt(proposal.final_tally_result.no) / total) * 100 : 0;
+                                const yesPercent = tallyPct(proposal.final_tally_result.yes, total);
+                                const noPercent = tallyPct(proposal.final_tally_result.no, total);
 
                                 return (
                                     <Card key={proposal.proposal_id}>
