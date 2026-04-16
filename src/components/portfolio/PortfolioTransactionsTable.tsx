@@ -16,7 +16,17 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { formatMicroAmount } from '../../utils/contractQueries';
+import { safeBigInt } from '../../utils/bigintMath';
 import { MyCommitment, MyPosition, TxRecord } from './types';
+
+// Cosmos SDK timestamps are nanoseconds. Divide by 1e6 to get JS ms.
+function nsToDate(ns: string | number | null | undefined): string {
+    const n = safeBigInt(ns);
+    if (n === 0n) return '-';
+    const ms = Number(n / 1_000_000n);
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString();
+}
 
 interface PortfolioTransactionsTableProps {
     commitments: MyCommitment[];
@@ -41,9 +51,7 @@ const PortfolioTransactionsTable: React.FC<PortfolioTransactionsTableProps> = ({
             pool: c.pool,
             type: 'commit',
             amount: `$${formatMicroAmount(c.commit.total_paid_usd)}`,
-            timestamp: c.commit.last_commited
-                ? new Date(parseInt(c.commit.last_commited) / 1_000_000).toLocaleString()
-                : '-',
+            timestamp: nsToDate(c.commit.last_commited),
         });
     });
 
@@ -52,9 +60,7 @@ const PortfolioTransactionsTable: React.FC<PortfolioTransactionsTableProps> = ({
             pool: p.pool,
             type: 'position',
             amount: formatMicroAmount(p.position.liquidity),
-            timestamp: p.position.created_at
-                ? new Date(p.position.created_at / 1_000_000).toLocaleString()
-                : '-',
+            timestamp: nsToDate(p.position.created_at),
         });
     });
 

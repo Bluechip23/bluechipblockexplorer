@@ -11,10 +11,60 @@ import { rpcEndpoint } from '../../components/universal/IndividualPage.const';
 import axios from 'axios';
 import { CardSkeleton, TableSkeleton } from '../../components/universal/LoadingSkeleton';
 import CopyableId from '../../components/universal/CopyableId';
+import { decodeTxRaw } from '@cosmjs/proto-signing';
+import { decodeMessageType } from '../../utils/txDecoder';
+
+// Tendermint `/block` returns each tx as a base64-encoded protobuf TxRaw —
+// NOT JSON. The tx hash is sha256(raw_bytes) hex-uppercase.
+function base64ToBytes(b64: string): Uint8Array {
+    const binary = window.atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('')
+        .toUpperCase();
+}
+
+interface DecodedRow {
+    hash: string;
+    method: string;
+    sender: string;
+    recipient: string;
+    value: number;
+    fee: number;
+}
+
+async function decodeTxToRow(txB64: string): Promise<DecodedRow> {
+    const bytes = base64ToBytes(txB64);
+    const hash = await sha256Hex(bytes);
+    try {
+        const decoded = decodeTxRaw(bytes);
+        const firstMsg = decoded.body.messages[0];
+        const feeCoin = decoded.authInfo.fee?.amount?.[0];
+        const feeAmount = feeCoin?.amount ? Number(feeCoin.amount) : 0;
+        return {
+            hash,
+            method: decodeMessageType(firstMsg?.typeUrl ?? ''),
+            sender: '',
+            recipient: '',
+            value: 0,
+            fee: Number.isFinite(feeAmount) ? feeAmount : 0,
+        };
+    } catch (err) {
+        console.error('Failed to decode tx', hash, err);
+        return { hash, method: 'Unknown', sender: '', recipient: '', value: 0, fee: 0 };
+    }
+}
 
 const BlockPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
-    const [rows, setRows] = useState<[]>([]);
+    const [rows, setRows] = useState<DecodedRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [blockInfo, setBlockInfo] = useState({
         height: '',
@@ -26,47 +76,49 @@ const BlockPage: React.FC = () => {
         transactionCount: 0
     });
     useEffect(() => {
+        if (!id) return;
+        const controller = new AbortController();
+        let cancelled = false;
         async function loadBlocks() {
             setLoading(true);
             try {
-                const response = await axios.get(`${rpcEndpoint}/block?height=${id}`);
+                const response = await axios.get(`${rpcEndpoint}/block?height=${id}`, {
+                    signal: controller.signal,
+                });
+                if (cancelled) return;
                 const block = response.data?.result?.block;
                 if (!block) {
                     console.error('No block found.');
                     return;
                 }
-                const transactions = block?.data?.txs || [];
+                const transactions: string[] = block?.data?.txs ?? [];
                 setBlockInfo({
-                    height: block.header.height,
-                    timestamp: block.header.time,
-                    hash: response.data?.result?.block_id?.hash,
+                    height: block.header?.height ?? '',
+                    timestamp: block.header?.time ?? '',
+                    hash: response.data?.result?.block_id?.hash ?? '',
                     reward: 'N/A',
-                    proposer: block.header.proposer_address,
+                    proposer: block.header?.proposer_address ?? '',
                     fee: 'N/A',
-                    transactionCount: transactions.length
+                    transactionCount: transactions.length,
                 });
                 if (transactions.length > 0) {
-                    const transactionsRows = transactions.map((tx: any) => {
-                        const decodedTx = window.atob(tx);
-                        const parsedTx = JSON.parse(decodedTx);
-                        return {
-                            hash: parsedTx.txhash,
-                            method: parsedTx.tx?.body?.messages[0]?.type || 'Unknown',
-                            sender: parsedTx.tx?.body?.messages[0]?.sender || 'Unknown',
-                            recipient: parsedTx.tx?.body?.messages[0]?.recipient || 'Unknown',
-                            value: parsedTx.tx?.body?.messages[0]?.amount[0]?.amount || '0',
-                            fee: parsedTx.tx?.auth_info?.fee?.amount[0]?.amount || '0'
-                        };
-                    });
-                    setRows(transactionsRows);
+                    const decodedRows = await Promise.all(transactions.map(decodeTxToRow));
+                    if (!cancelled) setRows(decodedRows);
+                } else if (!cancelled) {
+                    setRows([]);
                 }
             } catch (error) {
+                if ((error as { name?: string })?.name === 'CanceledError') return;
                 console.error('Error loading transactions:', error);
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         }
         loadBlocks();
+        return () => {
+            cancelled = true;
+            controller.abort();
+        };
     }, [id]);
 
     if (!id) {

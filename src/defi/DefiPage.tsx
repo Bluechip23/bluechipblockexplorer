@@ -19,6 +19,7 @@ import {
     verifyFundsMatch,
     sanitizeOnChainString,
 } from '../utils/security';
+import { compareMicro, safeBigInt, formatMicroAmount } from '../utils/bigintMath';
 
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
     <div role="tabpanel" hidden={value !== index}>
@@ -259,7 +260,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             {subTab === 1 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <TextField label="Pool Contract Address" value={poolAddress} onChange={(e) => setPoolAddress(e.target.value)} placeholder="bluechip1..." />
-                    {poolAddress && <CommitTracker client={client} address={address} contractAddress={poolAddress} />}
+                    {poolAddress && <CommitTracker client={client} contractAddress={poolAddress} />}
                 </Box>
             )}
         </Box>
@@ -408,19 +409,26 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
 
             // Check/increase allowance
             const allowance = await client.queryContractSmart(tokenAddress, { allowance: { owner: address, spender: poolAddress } });
-            if (parseInt(allowance.allowance) < parseInt(a1)) {
+            if (compareMicro(allowance.allowance, a1) < 0) {
                 setStatus('Approving tokens...');
                 await client.execute(address, tokenAddress, { increase_allowance: { spender: poolAddress, amount: a1 } }, { amount: [], gas: '200000' }, 'Approve', []);
             }
 
-            const slipFactor = 1 - (parseFloat(slippage) / 100);
+            // SECURITY: slippage math done on BigInt micro-units to avoid
+            // floating-point drift for large deposits. slippage is a
+            // percentage string (e.g. "1" for 1%); convert to basis points
+            // for integer math: min = amount * (10_000 - slippageBps) / 10_000.
+            const slippageBps = BigInt(Math.round(parseFloat(slippage || '0') * 100));
+            const scale = 10_000n;
+            const minA0 = (safeBigInt(a0) * (scale - slippageBps)) / scale;
+            const minA1 = (safeBigInt(a1) * (scale - slippageBps)) / scale;
             const deadlineNs = deadline ? (Date.now() + parseFloat(deadline) * 60000) * 1000000 : null;
 
             const msg = {
                 deposit_liquidity: {
                     amount0: a0, amount1: a1,
-                    min_amount0: Math.floor(parseFloat(a0) * slipFactor).toString(),
-                    min_amount1: Math.floor(parseFloat(a1) * slipFactor).toString(),
+                    min_amount0: minA0.toString(),
+                    min_amount1: minA1.toString(),
                     transaction_deadline: deadlineNs ? deadlineNs.toString() : null
                 }
             };
@@ -456,7 +464,7 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
             if (removeMode === 'all') {
                 msg = { remove_all_liquidity: { position_id: positionId, min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs?.toString() || null } };
             } else if (removeMode === 'percent') {
-                msg = { remove_partial_liquidity_by_percent: { position_id: positionId, percentage: parseInt(removePercent), min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs?.toString() || null } };
+                msg = { remove_partial_liquidity_by_percent: { position_id: positionId, percentage: parseInt(removePercent, 10) || 0, min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs?.toString() || null } };
             } else {
                 msg = { remove_partial_liquidity: { position_id: positionId, liquidity_to_remove: Math.floor(parseFloat(removeAmount)).toString(), min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs?.toString() || null } };
             }
@@ -572,7 +580,7 @@ const DefiPage: React.FC = () => {
                                 <Typography variant="h5" fontWeight="bold">Creator Economy</Typography>
                                 {balance && (
                                     <Typography variant="body2">
-                                        {(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip
+                                        {formatMicroAmount(balance.amount)} bluechip
                                     </Typography>
                                 )}
                             </Stack>

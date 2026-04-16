@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { Coin } from '@cosmjs/stargate';
 import {
@@ -57,10 +57,12 @@ export const useWallet = () => useContext(WalletContext);
 export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
     const [address, setAddress] = useState(MOCK_ADDRESS);
     const [balance, setBalance] = useState<Coin | null>(MOCK_BALANCE);
-    const [client] = useState<SigningCosmWasmClient | null>(null);
-    const [connecting] = useState(false);
-    const [error] = useState('');
     const [idleExpired, setIdleExpired] = useState(false);
+    // Mock-mode only — real wallet wiring would replace these with
+    // connect-time state. Leaving as constants keeps renders cheap.
+    const client: SigningCosmWasmClient | null = null;
+    const connecting = false;
+    const error = '';
 
     // SECURITY: idle timer reference. Cleared on every user "touch" and on
     // unmount to avoid leaking timers when the provider tree is re-rendered.
@@ -149,22 +151,25 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
         assertNoSecretsInStorage();
     }, []);
 
+    const value = useMemo<WalletContextType>(
+        () => ({
+            client,
+            address,
+            balance,
+            connecting,
+            error,
+            expectedChainId: EXPECTED_CHAIN_ID,
+            idleExpired,
+            connect,
+            disconnect,
+            touch,
+            assertOnExpectedChain,
+        }),
+        [client, address, balance, connecting, error, idleExpired, connect, disconnect, touch, assertOnExpectedChain],
+    );
+
     return (
-        <WalletContext.Provider
-            value={{
-                client,
-                address,
-                balance,
-                connecting,
-                error,
-                expectedChainId: EXPECTED_CHAIN_ID,
-                idleExpired,
-                connect,
-                disconnect,
-                touch,
-                assertOnExpectedChain,
-            }}
-        >
+        <WalletContext.Provider value={value}>
             {children}
         </WalletContext.Provider>
     );

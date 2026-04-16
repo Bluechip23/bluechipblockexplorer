@@ -30,6 +30,7 @@ import {
     formatMicroAmount,
     PoolSummary,
 } from '../utils/contractQueries';
+import { microToNumber, safeBigInt } from '../utils/bigintMath';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 
 const PortfolioPage: React.FC = () => {
@@ -101,25 +102,25 @@ const PortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    const totalCommittedUsd = commitments.reduce(
-        (sum, c) => sum + parseInt(c.commit.total_paid_usd || '0'),
-        0
+    const totalCommittedUsd = commitments.reduce<bigint>(
+        (sum, c) => sum + safeBigInt(c.commit.total_paid_usd),
+        0n
     );
-    const totalCommittedBluechip = commitments.reduce(
-        (sum, c) => sum + parseInt(c.commit.total_paid_bluechip || '0'),
-        0
+    const totalCommittedBluechip = commitments.reduce<bigint>(
+        (sum, c) => sum + safeBigInt(c.commit.total_paid_bluechip),
+        0n
     );
-    const totalUnclaimedFees0 = positions.reduce(
-        (sum, p) => sum + parseInt(p.position.unclaimed_fees_0 || '0'),
-        0
+    const totalUnclaimedFees0 = positions.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.position.unclaimed_fees_0),
+        0n
     );
-    const totalUnclaimedFees1 = positions.reduce(
-        (sum, p) => sum + parseInt(p.position.unclaimed_fees_1 || '0'),
-        0
+    const totalUnclaimedFees1 = positions.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.position.unclaimed_fees_1),
+        0n
     );
-    const totalLiquidity = positions.reduce(
-        (sum, p) => sum + parseInt(p.position.liquidity || '0'),
-        0
+    const totalLiquidity = positions.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.position.liquidity),
+        0n
     );
     const lastFeeCollection = positions.reduce((latest, p) => {
         const ts = p.position.last_fee_collection || 0;
@@ -151,7 +152,7 @@ const PortfolioPage: React.FC = () => {
                                     </Typography>
                                     {balance && (
                                         <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                            Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip</strong>
+                                            Wallet Balance: <strong>{formatMicroAmount(balance.amount)} bluechip</strong>
                                         </Typography>
                                     )}
                                 </CardContent>

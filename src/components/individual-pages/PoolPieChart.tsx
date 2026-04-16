@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { formatMicroAmount } from '../../utils/contractQueries';
+import { microToNumber } from '../../utils/bigintMath';
 
 const bluechip_COLOR = '#1976d2';
 const CREATOR_COLOR = '#9932CC';
@@ -14,8 +15,10 @@ interface PoolPieChartProps {
 }
 
 const PoolPieChart: React.FC<PoolPieChartProps> = ({ reserve0, reserve1, tokenSymbol, tokenDecimals }) => {
-    const r0 = parseInt(reserve0) || 0;
-    const r1 = parseInt(reserve1) || 0;
+    // Pie slice sizes are relative — Number precision is fine for chart layout,
+    // but display values still use full-precision formatMicroAmount below.
+    const r0 = microToNumber(reserve0, 0);
+    const r1 = microToNumber(reserve1, 0);
     const total = r0 + r1;
 
     if (total === 0) {

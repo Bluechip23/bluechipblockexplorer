@@ -44,29 +44,30 @@ import CopyableId from '../../components/universal/CopyableId';
 import StatCard from '../../components/universal/StatCard';
 import PoolPieChart from '../../components/individual-pages/PoolPieChart';
 import { useWallet } from '../../context/WalletContext';
+import { compareMicro, microToNumber, safeBigInt } from '../../utils/bigintMath';
 
 function computeTokenPrice(reserve0: string, reserve1: string): string {
-    const r0 = parseInt(reserve0);
-    const r1 = parseInt(reserve1);
+    const r0 = microToNumber(reserve0, 0);
+    const r1 = microToNumber(reserve1, 0);
     if (!r0 || !r1) return '-';
     const price = r0 / r1;
     return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
 function computeReserveRatio(reserve0: string, reserve1: string): string {
-    const r0 = parseInt(reserve0);
-    const r1 = parseInt(reserve1);
-    if (!r0 || !r1) return '-';
+    const r0 = safeBigInt(reserve0);
+    const r1 = safeBigInt(reserve1);
     const total = r0 + r1;
-    const pct0 = ((r0 / total) * 100).toFixed(1);
-    const pct1 = ((r1 / total) * 100).toFixed(1);
-    return `${pct0}% / ${pct1}%`;
+    if (total === 0n) return '-';
+    const pct0 = Number((r0 * 1000n) / total) / 10;
+    const pct1 = Number((r1 * 1000n) / total) / 10;
+    return `${pct0.toFixed(1)}% / ${pct1.toFixed(1)}%`;
 }
 
 function computeMarketCap(reserve0: string, reserve1: string, totalSupply: string, decimals: number): string {
-    const r0 = parseInt(reserve0);
-    const r1 = parseInt(reserve1);
-    const supply = parseInt(totalSupply);
+    const r0 = microToNumber(reserve0, 0);
+    const r1 = microToNumber(reserve1, 0);
+    const supply = microToNumber(totalSupply, 0);
     if (!r0 || !r1 || !supply) return '-';
     const pricePerToken = r0 / r1;
     const mcap = (pricePerToken * supply) / Math.pow(10, decimals);
@@ -79,9 +80,9 @@ function computeFeeApr(
     totalLiquidity: string,
     blockTimeLast: number
 ): string {
-    const fees0 = parseInt(totalFeesCollected0);
-    const fees1 = parseInt(totalFeesCollected1);
-    const liquidity = parseInt(totalLiquidity);
+    const fees0 = microToNumber(totalFeesCollected0, 0);
+    const fees1 = microToNumber(totalFeesCollected1, 0);
+    const liquidity = microToNumber(totalLiquidity, 0);
     if (!liquidity || (!fees0 && !fees1)) return '-';
     const totalFees = fees0 + fees1;
     const feeRatio = totalFees / liquidity;
@@ -102,33 +103,52 @@ function computeFeeApr(
     return apr.toFixed(1) + '%';
 }
 
+function sumPaidUsd(committers: CommiterInfo[]): bigint {
+    return committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n);
+}
+
 function computeAvgCommit(committers: CommiterInfo[]): string {
     if (committers.length === 0) return '$0';
-    const total = committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0);
-    return '$' + formatMicroAmount((total / committers.length).toFixed(0));
+    const total = sumPaidUsd(committers);
+    const avg = total / BigInt(committers.length);
+    return '$' + formatMicroAmount(avg);
 }
 
 function computeLargestCommit(committers: CommiterInfo[]): string {
     if (committers.length === 0) return '$0';
-    const max = Math.max(...committers.map((c) => parseInt(c.total_paid_usd || '0')));
-    return '$' + formatMicroAmount(max.toString());
+    let max = 0n;
+    for (const c of committers) {
+        const v = safeBigInt(c.total_paid_usd);
+        if (v > max) max = v;
+    }
+    return '$' + formatMicroAmount(max);
 }
 
 function computeCreatorFeeRevenue(committers: CommiterInfo[], feeRate: number): string {
-    const totalUsd = committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0);
-    return '$' + formatMicroAmount(Math.floor(totalUsd * feeRate).toString());
+    const totalUsd = sumPaidUsd(committers);
+    // feeRate is a Number ratio (e.g. 0.05). Scale to 10_000 bps for integer math.
+    const feeBps = BigInt(Math.round(feeRate * 10_000));
+    const revenue = (totalUsd * feeBps) / 10_000n;
+    return '$' + formatMicroAmount(revenue);
+}
+
+function commitDaysSpan(sorted: CommiterInfo[]): number {
+    const firstNs = safeBigInt(sorted[0].last_commited);
+    const lastNs = safeBigInt(sorted[sorted.length - 1].last_commited);
+    if (firstNs === 0n || lastNs === 0n) return 0;
+    const firstMs = Number(firstNs / 1_000_000n);
+    const lastMs = Number(lastNs / 1_000_000n);
+    return (lastMs - firstMs) / (1000 * 60 * 60 * 24);
 }
 
 function computeCommitVelocity(committers: CommiterInfo[]): string {
     if (committers.length < 2) return '-';
     const sorted = [...committers].sort(
-        (a, b) => parseInt(a.last_commited) - parseInt(b.last_commited)
+        (a, b) => compareMicro(a.last_commited, b.last_commited)
     );
-    const first = parseInt(sorted[0].last_commited) / 1_000_000;
-    const last = parseInt(sorted[sorted.length - 1].last_commited) / 1_000_000;
-    const days = (last - first) / (1000 * 60 * 60 * 24);
+    const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
-    const totalUsd = committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0);
+    const totalUsd = microToNumber(sumPaidUsd(committers), 0);
     const perDay = totalUsd / days;
     return '$' + formatMicroAmount(Math.floor(perDay).toString()) + '/day';
 }
@@ -140,18 +160,16 @@ function computeEstimatedTimeToThreshold(
 ): string {
     if (committers.length < 2) return '-';
     const sorted = [...committers].sort(
-        (a, b) => parseInt(a.last_commited) - parseInt(b.last_commited)
+        (a, b) => compareMicro(a.last_commited, b.last_commited)
     );
-    const first = parseInt(sorted[0].last_commited) / 1_000_000;
-    const last = parseInt(sorted[sorted.length - 1].last_commited) / 1_000_000;
-    const days = (last - first) / (1000 * 60 * 60 * 24);
+    const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
-    const totalUsd = committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0);
+    const totalUsd = microToNumber(sumPaidUsd(committers), 0);
     const perDay = totalUsd / days;
     if (perDay <= 0) return '-';
-    const remaining = parseInt(target) - parseInt(raised);
-    if (remaining <= 0) return 'Reached';
-    const daysLeft = remaining / perDay;
+    const remaining = safeBigInt(target) - safeBigInt(raised);
+    if (remaining <= 0n) return 'Reached';
+    const daysLeft = microToNumber(remaining, 0) / perDay;
     if (daysLeft < 1) return '< 1 day';
     if (daysLeft < 30) return `~${Math.ceil(daysLeft)} days`;
     return `~${Math.ceil(daysLeft / 30)} months`;
@@ -348,7 +366,12 @@ const CreatorPoolPage: React.FC = () => {
                                             <Box sx={{ flexGrow: 1 }}>
                                                 <LinearProgress
                                                     variant="determinate"
-                                                    value={Math.min((parseInt(pool.raised) / parseInt(pool.target)) * 100, 100)}
+                                                    value={Math.min(
+                                                        safeBigInt(pool.target) > 0n
+                                                            ? Number((safeBigInt(pool.raised) * 10000n) / safeBigInt(pool.target)) / 100
+                                                            : 0,
+                                                        100,
+                                                    )}
                                                     sx={{
                                                         height: 24,
                                                         borderRadius: 12,
@@ -365,7 +388,10 @@ const CreatorPoolPage: React.FC = () => {
                                             </Typography>
                                         </Box>
                                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                                            {((parseInt(pool.raised) / parseInt(pool.target)) * 100).toFixed(1)}% funded
+                                            {(safeBigInt(pool.target) > 0n
+                                                ? Number((safeBigInt(pool.raised) * 10000n) / safeBigInt(pool.target)) / 100
+                                                : 0
+                                            ).toFixed(1)}% funded
                                         </Typography>
                                     </CardContent>
                                 </Card>
@@ -695,14 +721,14 @@ const CreatorPoolPage: React.FC = () => {
                                             <TableBody>
                                                 {(() => {
                                                     const sorted = [...committers].sort(
-                                                        (a, b) => parseInt(b.total_paid_usd) - parseInt(a.total_paid_usd)
+                                                        (a, b) => compareMicro(b.total_paid_usd, a.total_paid_usd)
                                                     );
-                                                    const grandTotal = sorted.reduce(
-                                                        (sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0
+                                                    const grandTotal = sorted.reduce<bigint>(
+                                                        (sum, c) => sum + safeBigInt(c.total_paid_usd), 0n
                                                     );
                                                     return sorted.map((c, idx) => {
-                                                        const pct = grandTotal > 0
-                                                            ? ((parseInt(c.total_paid_usd || '0') / grandTotal) * 100).toFixed(1)
+                                                        const pct = grandTotal > 0n
+                                                            ? (Number((safeBigInt(c.total_paid_usd) * 10000n) / grandTotal) / 100).toFixed(1)
                                                             : '0';
                                                         return (
                                                             <TableRow key={c.wallet} hover>

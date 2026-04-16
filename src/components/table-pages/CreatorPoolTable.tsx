@@ -37,6 +37,8 @@ import {
     abbreviateAddress,
     PoolSummary,
 } from '../../utils/contractQueries';
+import { compareMicro } from '../../utils/bigintMath';
+import { getPoolMetricValue } from '../portfolio/poolMetrics';
 import PoolActionMenu from '../actions/PoolActionMenu';
 
 interface Column {
@@ -71,29 +73,6 @@ const POOL_COMPARE_METRICS = [
     { key: 'reserve1', label: 'Creator Token Reserve' },
 ];
 
-function getPoolMetricValue(pool: PoolSummary, metric: string): number {
-    switch (metric) {
-        case 'totalLiquidity': return parseInt(pool.totalLiquidity || '0');
-        case 'totalFeesCollected': return parseInt(pool.totalFeesCollected0 || '0') + parseInt(pool.totalFeesCollected1 || '0');
-        case 'totalCommitters': return pool.totalCommitters;
-        case 'totalPositions': return pool.totalPositions;
-        case 'raised': return parseInt(pool.raised || '0');
-        case 'tokenPrice': {
-            const r0 = parseInt(pool.reserve0);
-            const r1 = parseInt(pool.reserve1);
-            return (r0 && r1) ? r0 / r1 : 0;
-        }
-        case 'marketCap': {
-            const r0 = parseInt(pool.reserve0);
-            const r1 = parseInt(pool.reserve1);
-            const price = (r0 && r1) ? r0 / r1 : 0;
-            return price * parseInt(pool.totalSupply || '0');
-        }
-        case 'reserve0': return parseInt(pool.reserve0 || '0');
-        case 'reserve1': return parseInt(pool.reserve1 || '0');
-        default: return 0;
-    }
-}
 
 function getPoolHighlightMap(pools: PoolSummary[], metrics: string[]): Map<string, Set<string>> {
     const result = new Map<string, Set<string>>();
@@ -300,7 +279,7 @@ const CreatorPoolTable: React.FC = () => {
                     return;
                 }
                 const summaries = await fetchAllPoolSummaries(factoryAddress);
-                summaries.sort((a, b) => parseInt(b.totalLiquidity) - parseInt(a.totalLiquidity));
+                summaries.sort((a, b) => compareMicro(b.totalLiquidity, a.totalLiquidity));
                 setRows(summaries);
             } catch (err) {
                 console.error('Error loading pools:', err);

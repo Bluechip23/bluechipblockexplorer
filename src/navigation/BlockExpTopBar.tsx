@@ -6,6 +6,7 @@ import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import { useThemeMode } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
+import { formatMicroAmount } from '../utils/bigintMath';
 
 const BlockExpTopBar: React.FC = () => {
     const { mode, toggleTheme } = useThemeMode();
@@ -45,7 +46,7 @@ const BlockExpTopBar: React.FC = () => {
                     <>
                         {balance && (
                             <Typography variant="body2" sx={{ mr: 1 }}>
-                                {(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip
+                                {formatMicroAmount(balance.amount)} bluechip
                             </Typography>
                         )}
                         <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>

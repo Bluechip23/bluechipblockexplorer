@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { createTheme, ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
@@ -16,19 +16,34 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const useThemeMode = () => useContext(ThemeContext);
 
-export const ThemeContextProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-    const [mode, setMode] = useState<ThemeMode>(() => {
+// Safari private mode and sandboxed iframes throw on localStorage access.
+function readStoredMode(): ThemeMode {
+    try {
         const saved = localStorage.getItem('themeMode');
-        return (saved === 'dark' || saved === 'light') ? saved : 'light';
-    });
+        return saved === 'dark' || saved === 'light' ? saved : 'light';
+    } catch {
+        return 'light';
+    }
+}
 
-    const toggleTheme = () => {
+function writeStoredMode(mode: ThemeMode): void {
+    try {
+        localStorage.setItem('themeMode', mode);
+    } catch {
+        // Storage unavailable — preference stays in-memory for this session.
+    }
+}
+
+export const ThemeContextProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+    const [mode, setMode] = useState<ThemeMode>(readStoredMode);
+
+    const toggleTheme = useCallback(() => {
         setMode((prev) => {
             const next = prev === 'light' ? 'dark' : 'light';
-            localStorage.setItem('themeMode', next);
+            writeStoredMode(next);
             return next;
         });
-    };
+    }, []);
 
     const theme = useMemo(
         () =>
@@ -48,8 +63,10 @@ export const ThemeContextProvider: React.FC<React.PropsWithChildren> = ({ childr
         [mode]
     );
 
+    const value = useMemo(() => ({ mode, toggleTheme }), [mode, toggleTheme]);
+
     return (
-        <ThemeContext.Provider value={{ mode, toggleTheme }}>
+        <ThemeContext.Provider value={value}>
             <MuiThemeProvider theme={theme}>
                 <CssBaseline />
                 {children}

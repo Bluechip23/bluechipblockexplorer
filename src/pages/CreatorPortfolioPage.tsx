@@ -31,6 +31,7 @@ import {
     formatMicroAmount,
     PoolSummary,
 } from '../utils/contractQueries';
+import { safeBigInt } from '../utils/bigintMath';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 
 const CreatorPortfolioPage: React.FC = () => {
@@ -65,9 +66,9 @@ const CreatorPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    const totalFeesEarned0 = createdPools.reduce((s, p) => s + parseInt(p.totalFeesCollected0 || '0'), 0);
-    const totalFeesEarned1 = createdPools.reduce((s, p) => s + parseInt(p.totalFeesCollected1 || '0'), 0);
-    const totalPoolLiquidity = createdPools.reduce((s, p) => s + parseInt(p.totalLiquidity || '0'), 0);
+    const totalFeesEarned0 = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalFeesCollected0), 0n);
+    const totalFeesEarned1 = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalFeesCollected1), 0n);
+    const totalPoolLiquidity = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalLiquidity), 0n);
     const totalSubscribers = createdPools.reduce((s, p) => s + p.totalCommitters, 0);
     const totalLpPositions = createdPools.reduce((s, p) => s + p.totalPositions, 0);
 
@@ -105,7 +106,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                             Create Another Pool
                                         </Button>
                                     </Box>
-                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip</strong></Typography>}
+                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{formatMicroAmount(balance.amount)} bluechip</strong></Typography>}
                                 </CardContent>
                             </Card>
 

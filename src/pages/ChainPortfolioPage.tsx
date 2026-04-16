@@ -29,6 +29,7 @@ import {
     formatMicroAmount,
     WalletHolding,
 } from '../utils/contractQueries';
+import { safeBigInt } from '../utils/bigintMath';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 
 const ChainPortfolioPage: React.FC = () => {
@@ -84,11 +85,11 @@ const ChainPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address]);
 
-    const totalCommittedUsd = commitments.reduce((sum, c) => sum + parseInt(c.commit.total_paid_usd || '0'), 0);
-    const totalCommittedBluechip = commitments.reduce((sum, c) => sum + parseInt(c.commit.total_paid_bluechip || '0'), 0);
-    const totalUnclaimedFees0 = positions.reduce((sum, p) => sum + parseInt(p.position.unclaimed_fees_0 || '0'), 0);
-    const totalUnclaimedFees1 = positions.reduce((sum, p) => sum + parseInt(p.position.unclaimed_fees_1 || '0'), 0);
-    const totalLiquidity = positions.reduce((sum, p) => sum + parseInt(p.position.liquidity || '0'), 0);
+    const totalCommittedUsd = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_usd), 0n);
+    const totalCommittedBluechip = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_bluechip), 0n);
+    const totalUnclaimedFees0 = positions.reduce<bigint>((sum, p) => sum + safeBigInt(p.position.unclaimed_fees_0), 0n);
+    const totalUnclaimedFees1 = positions.reduce<bigint>((sum, p) => sum + safeBigInt(p.position.unclaimed_fees_1), 0n);
+    const totalLiquidity = positions.reduce<bigint>((sum, p) => sum + safeBigInt(p.position.liquidity), 0n);
     const lastFeeCollection = positions.reduce((latest, p) => { const ts = p.position.last_fee_collection || 0; return ts > latest ? ts : latest; }, 0);
 
     return (
@@ -104,12 +105,12 @@ const ChainPortfolioPage: React.FC = () => {
                                 <CardContent>
                                     <Typography variant="h5" fontWeight="bold" sx={{ mb: 1 }}>Chain Portfolio</Typography>
                                     <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace' }}>{address}</Typography>
-                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{(parseInt(balance.amount) / 1_000_000).toFixed(2)} bluechip</strong></Typography>}
+                                    {balance && <Typography variant="body2" sx={{ mt: 0.5 }}>Wallet Balance: <strong>{formatMicroAmount(balance.amount)} bluechip</strong></Typography>}
                                 </CardContent>
                             </Card>
 
                             <Grid container spacing={2}>
-                                <Grid item xs={6} sm={3}><StatCard label="Tokens Held" value={holdings.length + (balance && parseInt(balance.amount) > 0 ? 1 : 0)} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="Tokens Held" value={holdings.length + (balance && safeBigInt(balance.amount) > 0n ? 1 : 0)} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Pools Committed" value={commitments.length} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (bluechip)" value={formatMicroAmount(totalCommittedBluechip.toString())} /></Grid>
@@ -123,7 +124,7 @@ const ChainPortfolioPage: React.FC = () => {
                             <Card>
                                 <CardContent sx={{ pb: 0 }}>
                                     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                                        <Tab label={`My Holdings (${holdings.length + (balance && parseInt(balance.amount) > 0 ? 1 : 0)})`} />
+                                        <Tab label={`My Holdings (${holdings.length + (balance && safeBigInt(balance.amount) > 0n ? 1 : 0)})`} />
                                         <Tab label={`Pools I Committed To (${commitments.length})`} />
                                         <Tab label={`My LP Positions (${positions.length})`} />
                                         <Tab label="My Transactions" />

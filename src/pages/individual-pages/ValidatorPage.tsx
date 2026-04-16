@@ -19,21 +19,28 @@ interface ValidatorData {
 }
 
 const Validator: React.FC = () => {
-    const id = useParams<{ id: string }>();
+    const { id } = useParams<{ id: string }>();
     const [validator, setValidator] = useState<ValidatorData | null>(null);
 
     useEffect(() => {
+        if (!id) return;
+        const controller = new AbortController();
         const fetchValidator = async () => {
             try {
-                const response = await fetch(`${apiEndpoint}/validators?height_`);
+                const response = await fetch(
+                    `${apiEndpoint}/cosmos/staking/v1beta1/validators/${encodeURIComponent(id)}`,
+                    { signal: controller.signal },
+                );
                 const data = await response.json();
-                const queriedValidator = data.result.validators.find((v:ValidatorData) => v.id === id);
-                setValidator(queriedValidator)
+                const queriedValidator = data?.validator ?? null;
+                setValidator(queriedValidator);
             } catch (error) {
+                if ((error as { name?: string })?.name === 'AbortError') return;
                 console.error("Failed to fetch validator:", error);
             }
         };
         fetchValidator();
+        return () => controller.abort();
     }, [id]);
 
     if (!id) {

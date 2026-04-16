@@ -1,12 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, Typography, Box, LinearProgress } from '@mui/material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
+import { compareMicro, microToNumber, safeBigInt } from '../utils/bigintMath';
 
 interface CommitTrackerProps {
     client: SigningCosmWasmClient | null;
-    address: string;
     contractAddress: string;
+}
+
+interface Commit {
+    total_paid_usd: string;
+    total_paid_bluechip: string;
+    last_commited: string;
 }
 
 interface GraphDataPoint {
@@ -16,20 +22,14 @@ interface GraphDataPoint {
     timestamp: string;
 }
 
-const CommitTracker: React.FC<CommitTrackerProps> = ({ client, address, contractAddress }) => {
-    const [commits, setCommits] = useState<any[]>([]);
+const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }) => {
+    const [commits, setCommits] = useState<Commit[]>([]);
     const [totalRaised, setTotalRaised] = useState(0);
     const [totalBluechips, setTotalBluechips] = useState(0);
     const [graphData, setGraphData] = useState<GraphDataPoint[]>([]);
     const THRESHOLD = 25000;
 
-    useEffect(() => {
-        if (client && contractAddress) {
-            fetchCommits();
-        }
-    }, [client, contractAddress]);
-
-    const fetchCommits = async () => {
+    const fetchCommits = useCallback(async () => {
         if (!client) return;
         try {
             const response = await client.queryContractSmart(contractAddress, {
@@ -40,34 +40,42 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, address, contract
             });
 
             if (response && response.commiters) {
-                const sortedCommits = [...response.commiters].sort((a: any, b: any) => {
-                    return parseInt(a.last_commited) - parseInt(b.last_commited);
+                const sortedCommits: Commit[] = [...response.commiters].sort((a: Commit, b: Commit) => {
+                    return compareMicro(a.last_commited, b.last_commited);
                 });
 
-                let cumulative = 0;
-                let bluechipTotal = 0;
-                const data = sortedCommits.map((commit: any) => {
-                    const value = parseInt(commit.total_paid_usd);
-                    const bluechipValue = parseInt(commit.total_paid_bluechip);
+                let cumulative = 0n;
+                let bluechipTotal = 0n;
+                const data: GraphDataPoint[] = sortedCommits.map((commit: Commit) => {
+                    const value = safeBigInt(commit.total_paid_usd);
                     cumulative += value;
-                    bluechipTotal += bluechipValue;
+                    bluechipTotal += safeBigInt(commit.total_paid_bluechip);
+                    // Cosmos SDK timestamps are nanoseconds — divide by 1e6 for ms.
+                    const tsNs = safeBigInt(commit.last_commited);
+                    const tsMs = tsNs === 0n ? NaN : Number(tsNs / 1_000_000n);
                     return {
                         name: '',
-                        value,
-                        total: cumulative,
-                        timestamp: new Date(parseInt(commit.last_commited) / 1000000).toLocaleString()
+                        value: microToNumber(value, 0),
+                        total: microToNumber(cumulative, 0),
+                        timestamp: Number.isNaN(tsMs) ? '-' : new Date(tsMs).toLocaleString(),
                     };
                 });
 
                 setCommits(sortedCommits);
-                setTotalRaised(cumulative);
-                setTotalBluechips(bluechipTotal);
+                setTotalRaised(microToNumber(cumulative, 0));
+                setTotalBluechips(microToNumber(bluechipTotal, 0));
                 setGraphData(data);
             }
         } catch (err) {
             console.error('Error fetching commits:', err);
         }
-    };
+    }, [client, contractAddress]);
+
+    useEffect(() => {
+        if (client && contractAddress) {
+            fetchCommits();
+        }
+    }, [client, contractAddress, fetchCommits]);
 
     const displayTotal = totalRaised > 1000000 ? totalRaised / 1000000 : totalRaised;
     const progress = Math.min((displayTotal / THRESHOLD) * 100, 100);

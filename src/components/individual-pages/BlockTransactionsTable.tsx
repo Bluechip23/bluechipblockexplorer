@@ -42,7 +42,6 @@ const columns: readonly Column[] = [
 ];
 
 interface TransactionRow {
-    blockId: string;
     hash: string;
     method: string;
     sender: string;
@@ -87,7 +86,7 @@ const BlockTransactionsTable: React.FC<BlockTransactionsTableProps> = ({ rows })
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                             .map((row) => {
                                 return (
-                                    <TableRow>
+                                    <TableRow key={row.hash}>
                                         <TableCell >
                                             <CopyableId value={row.hash}><Link to={`/transactionpage/${row.hash}`}>{row.hash}</Link></CopyableId>
                                         </TableCell>

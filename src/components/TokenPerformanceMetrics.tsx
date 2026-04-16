@@ -46,6 +46,7 @@ import {
     queryThresholdAnalytics,
     ThresholdAnalytics,
 } from '../utils/contractQueries';
+import { microToNumber, safeBigInt } from '../utils/bigintMath';
 
 type TimePeriod = '1m' | '3m' | '1y';
 
@@ -62,25 +63,28 @@ const PERIOD_MS: Record<TimePeriod, number> = {
 };
 
 function getActiveSubscribers(committers: CommiterInfo[], period: TimePeriod): number {
-    const cutoff = Date.now() - PERIOD_MS[period];
+    const cutoffMs = BigInt(Date.now() - PERIOD_MS[period]);
+    // last_commited is nanoseconds; divide by 1e6 for ms using BigInt to
+    // avoid precision loss on timestamps above 2^53.
     return committers.filter(
-        (c) => parseInt(c.last_commited) / 1_000_000 > cutoff
+        (c) => safeBigInt(c.last_commited) / 1_000_000n > cutoffMs
     ).length;
 }
 
 export function computeCurrentPrice(pool: PoolSummary): string {
-    const r0 = parseInt(pool.reserve0);
-    const r1 = parseInt(pool.reserve1);
+    const r0 = microToNumber(pool.reserve0, 0);
+    const r1 = microToNumber(pool.reserve1, 0);
     if (!r0 || !r1) return '-';
     const price = r0 / r1;
     return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
 function computeCreatorFeeRevenue(pool: PoolSummary): string {
-    // Creator earns 5% of commit fees (commit_fee_creator = 0.05)
-    const fee0 = parseInt(pool.totalFeesCollected0 || '0');
-    const fee1 = parseInt(pool.totalFeesCollected1 || '0');
-    const creatorShare = Math.floor((fee0 + fee1) * 0.05);
+    // Creator earns 5% of commit fees (commit_fee_creator = 0.05) — scale
+    // with BigInt to preserve precision on large fee totals.
+    const fee0 = safeBigInt(pool.totalFeesCollected0);
+    const fee1 = safeBigInt(pool.totalFeesCollected1);
+    const creatorShare = ((fee0 + fee1) * 500n) / 10_000n;
     return creatorShare.toString();
 }
 
@@ -89,9 +93,11 @@ function computeCirculatingSupply(pool: PoolSummary): {
     locked: number;
     total: number;
 } {
-    const total = parseInt(pool.totalSupply || '0');
+    // Supply values can exceed 2^53; accept Number-level precision only for
+    // the chart/ratio display here — not for any on-chain math.
+    const total = microToNumber(pool.totalSupply, 0);
     // Locked = tokens sitting in the pool reserves (reserve1 = creator token side)
-    const locked = parseInt(pool.reserve1 || '0');
+    const locked = microToNumber(pool.reserve1, 0);
     const circulating = Math.max(0, total - locked);
     return { circulating, locked, total };
 }
@@ -198,15 +204,17 @@ const ThresholdSection: React.FC<{
     committers: CommiterInfo[];
     totalCommitCount: number;
 }> = ({ pool, analytics, committers, totalCommitCount }) => {
-    const raised = parseInt(pool.raised || '0');
-    const target = parseInt(pool.target || '0');
-    const progressPct = target > 0 ? Math.min(100, (raised / target) * 100) : 0;
+    const raised = safeBigInt(pool.raised);
+    const target = safeBigInt(pool.target);
+    const progressPct = target > 0n
+        ? Math.min(100, Number((raised * 10000n) / target) / 100)
+        : 0;
 
     if (!pool.thresholdReached) {
         // ── Pre-threshold: show progress bar and live stats ──
         const avgCommitUsd = committers.length > 0
-            ? Math.floor(raised / committers.length)
-            : 0;
+            ? raised / BigInt(committers.length)
+            : 0n;
 
         return (
             <Box>
@@ -233,7 +241,7 @@ const ThresholdSection: React.FC<{
                     icon={<MonetizationOnIcon fontSize="small" color="primary" />}
                     label="Total Committed"
                     value={`$${formatMicroAmount(
-                        committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0).toString()
+                        committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n).toString()
                     )}`}
                     subtext="Aggregate of all commit contributions"
                 />
@@ -369,17 +377,17 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
     const supply = computeCirculatingSupply(pool);
 
     const avgCommitSize = committers.length > 0
-        ? Math.floor(
-              committers.reduce((s, c) => s + parseInt(c.total_paid_usd || '0'), 0) / committers.length
+        ? (
+              committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n) / BigInt(committers.length)
           ).toString()
         : '0';
 
     const avgLiquidityPosition = pool.totalPositions > 0
-        ? Math.floor(parseInt(pool.totalLiquidity || '0') / pool.totalPositions).toString()
+        ? (safeBigInt(pool.totalLiquidity) / BigInt(pool.totalPositions)).toString()
         : '0';
 
     const totalFeesProduced = (
-        parseInt(pool.totalFeesCollected0 || '0') + parseInt(pool.totalFeesCollected1 || '0')
+        safeBigInt(pool.totalFeesCollected0) + safeBigInt(pool.totalFeesCollected1)
     ).toString();
 
     if (loading) {
@@ -479,13 +487,13 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                                         </TableHead>
                                         <TableBody>
                                             {holders.topHolders.map((h, i) => {
-                                                const bal = parseInt(h.balance);
-                                                const totalSupply = parseInt(pool.totalSupply || '1');
-                                                const pctSupply = totalSupply > 0
-                                                    ? ((bal / totalSupply) * 100).toFixed(2)
+                                                const bal = safeBigInt(h.balance);
+                                                const totalSupply = safeBigInt(pool.totalSupply);
+                                                const pctSupply = totalSupply > 0n
+                                                    ? (Number((bal * 10000n) / totalSupply) / 100).toFixed(2)
                                                     : '0';
-                                                const tierColor = bal >= 60_000_000_000 ? '#f44336'
-                                                    : bal >= 100_000_000 ? '#ff9800'
+                                                const tierColor = bal >= 60_000_000_000n ? '#f44336'
+                                                    : bal >= 100_000_000n ? '#ff9800'
                                                     : '#4caf50';
                                                 return (
                                                     <TableRow key={h.address} hover>

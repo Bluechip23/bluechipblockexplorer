@@ -1,26 +1,28 @@
 import { PoolSummary } from '../../utils/contractQueries';
+import { microToNumber, safeBigInt } from '../../utils/bigintMath';
 
 /** Extract a numeric value from a pool for a given metric key */
 export function getPoolMetricValue(pool: PoolSummary, metric: string): number {
     switch (metric) {
-        case 'totalLiquidity': return parseInt(pool.totalLiquidity || '0');
-        case 'totalFeesCollected': return parseInt(pool.totalFeesCollected0 || '0') + parseInt(pool.totalFeesCollected1 || '0');
+        case 'totalLiquidity': return microToNumber(pool.totalLiquidity, 0);
+        case 'totalFeesCollected':
+            return microToNumber(safeBigInt(pool.totalFeesCollected0) + safeBigInt(pool.totalFeesCollected1), 0);
         case 'totalCommitters': return pool.totalCommitters;
         case 'totalPositions': return pool.totalPositions;
-        case 'raised': return parseInt(pool.raised || '0');
-        case 'totalSupply': return parseInt(pool.totalSupply || '0');
-        case 'reserve0': return parseInt(pool.reserve0 || '0');
-        case 'reserve1': return parseInt(pool.reserve1 || '0');
+        case 'raised': return microToNumber(pool.raised, 0);
+        case 'totalSupply': return microToNumber(pool.totalSupply, 0);
+        case 'reserve0': return microToNumber(pool.reserve0, 0);
+        case 'reserve1': return microToNumber(pool.reserve1, 0);
         case 'tokenPrice': {
-            const r0 = parseInt(pool.reserve0);
-            const r1 = parseInt(pool.reserve1);
-            return (r0 && r1) ? r0 / r1 : 0;
+            const r0 = microToNumber(pool.reserve0, 0);
+            const r1 = microToNumber(pool.reserve1, 0);
+            return r1 > 0 ? r0 / r1 : 0;
         }
         case 'marketCap': {
-            const r0 = parseInt(pool.reserve0);
-            const r1 = parseInt(pool.reserve1);
-            const price = (r0 && r1) ? r0 / r1 : 0;
-            return price * parseInt(pool.totalSupply || '0');
+            const r0 = microToNumber(pool.reserve0, 0);
+            const r1 = microToNumber(pool.reserve1, 0);
+            const price = r1 > 0 ? r0 / r1 : 0;
+            return price * microToNumber(pool.totalSupply, 0);
         }
         default: return 0;
     }

@@ -7,6 +7,7 @@
 
 import type { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import type { Coin } from '@cosmjs/stargate';
+import { safeBigInt } from './bigintMath';
 
 // SECURITY: The only chain this frontend is allowed to broadcast against.
 // Any other chain ID reported by the wallet must block the transaction.
@@ -246,12 +247,15 @@ export function hasPriceShiftedBeyondTolerance(
     latestMicro: string,
     slippagePct: number,
 ): { shifted: boolean; deltaPct: number } {
-    const expected = Number(expectedMicro);
-    const latest = Number(latestMicro);
-    if (!Number.isFinite(expected) || expected <= 0 || !Number.isFinite(latest)) {
+    const expected = safeBigInt(expectedMicro);
+    const latest = safeBigInt(latestMicro);
+    if (expected <= 0n) {
         return { shifted: true, deltaPct: 100 };
     }
-    const deltaPct = Math.abs((latest - expected) / expected) * 100;
+    // Integer math preserves precision for amounts above 2^53. Scale by 10_000
+    // to retain 2 decimals of percentage precision before Number conversion.
+    const diff = latest > expected ? latest - expected : expected - latest;
+    const deltaPct = Number((diff * 10_000n) / expected) / 100;
     return { shifted: deltaPct > slippagePct, deltaPct };
 }
 
