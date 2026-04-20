@@ -60,8 +60,8 @@ const PortfolioPage: React.FC = () => {
                 await Promise.all(
                     pools.map(async (pool) => {
                         const commits = await queryPoolCommits(pool.poolAddress);
-                        if (commits?.commiters) {
-                            const myCommit = commits.commiters.find(
+                        if (commits?.committers) {
+                            const myCommit = commits.committers.find(
                                 (c) => c.wallet === address
                             );
                             if (myCommit) {

@@ -51,7 +51,7 @@ const PortfolioTransactionsTable: React.FC<PortfolioTransactionsTableProps> = ({
             pool: c.pool,
             type: 'commit',
             amount: `$${formatMicroAmount(c.commit.total_paid_usd)}`,
-            timestamp: nsToDate(c.commit.last_commited),
+            timestamp: nsToDate(c.commit.last_committed),
         });
     });
 

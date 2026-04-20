@@ -56,18 +56,18 @@ export interface CommitStatus {
     fully_committed?: Record<string, never>;
 }
 
-export interface CommiterInfo {
+export interface CommitterInfo {
     wallet: string;
     last_payment_bluechip: string;
     last_payment_usd: string;
-    last_commited: string;
+    last_committed: string;
     total_paid_usd: string;
     total_paid_bluechip: string;
 }
 
 export interface PoolCommitResponse {
     total_count: number;
-    commiters: CommiterInfo[];
+    committers: CommitterInfo[];
 }
 
 export interface CW20TokenInfo {
@@ -211,14 +211,14 @@ export interface PoolSummary {
 const now = Date.now();
 const day = 86400000;
 
-const MOCK_COMMITTERS: CommiterInfo[] = [
+const MOCK_COMMITTERS: CommitterInfo[] = [
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '5200000000',
         total_paid_bluechip: '41600000000',
         last_payment_usd: '1200000000',
         last_payment_bluechip: '9600000000',
-        last_commited: ((now - 2 * day) * 1000000).toString(),
+        last_committed: ((now - 2 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
@@ -226,7 +226,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '67200000000',
         last_payment_usd: '3000000000',
         last_payment_bluechip: '24000000000',
-        last_commited: ((now - 1 * day) * 1000000).toString(),
+        last_committed: ((now - 1 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
@@ -234,7 +234,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '24800000000',
         last_payment_usd: '800000000',
         last_payment_bluechip: '6400000000',
-        last_commited: ((now - 18 * day) * 1000000).toString(),
+        last_committed: ((now - 18 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
@@ -242,7 +242,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '22000000000',
         last_payment_usd: '2750000000',
         last_payment_bluechip: '22000000000',
-        last_commited: ((now - 45 * day) * 1000000).toString(),
+        last_committed: ((now - 45 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
@@ -250,7 +250,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '12000000000',
         last_payment_usd: '500000000',
         last_payment_bluechip: '4000000000',
-        last_commited: ((now - 60 * day) * 1000000).toString(),
+        last_committed: ((now - 60 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1hodl6n3m8k2f5wp4xr7qt0jv9ydclhsab3ue2',
@@ -258,7 +258,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '7600000000',
         last_payment_usd: '950000000',
         last_payment_bluechip: '7600000000',
-        last_commited: ((now - 75 * day) * 1000000).toString(),
+        last_committed: ((now - 75 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1',
@@ -266,7 +266,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '5440000000',
         last_payment_usd: '680000000',
         last_payment_bluechip: '5440000000',
-        last_commited: ((now - 150 * day) * 1000000).toString(),
+        last_committed: ((now - 150 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1tiny3m7k2f8n5wp4xr6qt0jv9ydclhsab1ue4',
@@ -274,7 +274,7 @@ const MOCK_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '2000000000',
         last_payment_usd: '250000000',
         last_payment_bluechip: '2000000000',
-        last_commited: ((now - 300 * day) * 1000000).toString(),
+        last_committed: ((now - 300 * day) * 1000000).toString(),
     },
 ];
 
@@ -492,14 +492,14 @@ const MOCK_POSITIONS: PositionResponse[] = [
     },
 ];
 
-const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
+const MOCK_DELTA_COMMITTERS: CommitterInfo[] = [
     {
         wallet: MOCK_WALLET,
         total_paid_usd: '4200000000',
         total_paid_bluechip: '33600000000',
         last_payment_usd: '1500000000',
         last_payment_bluechip: '12000000000',
-        last_commited: ((now - 3 * day) * 1000000).toString(),
+        last_committed: ((now - 3 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
@@ -507,7 +507,7 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '52000000000',
         last_payment_usd: '2000000000',
         last_payment_bluechip: '16000000000',
-        last_commited: ((now - 1 * day) * 1000000).toString(),
+        last_committed: ((now - 1 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
@@ -515,7 +515,7 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '28000000000',
         last_payment_usd: '3500000000',
         last_payment_bluechip: '28000000000',
-        last_commited: ((now - 40 * day) * 1000000).toString(),
+        last_committed: ((now - 40 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
@@ -523,7 +523,7 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '14400000000',
         last_payment_usd: '1800000000',
         last_payment_bluechip: '14400000000',
-        last_commited: ((now - 55 * day) * 1000000).toString(),
+        last_committed: ((now - 55 * day) * 1000000).toString(),
     },
     {
         wallet: 'bluechip1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
@@ -531,7 +531,7 @@ const MOCK_DELTA_COMMITTERS: CommiterInfo[] = [
         total_paid_bluechip: '6400000000',
         last_payment_usd: '800000000',
         last_payment_bluechip: '6400000000',
-        last_commited: ((now - 200 * day) * 1000000).toString(),
+        last_committed: ((now - 200 * day) * 1000000).toString(),
     },
 ];
 
@@ -618,9 +618,9 @@ export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitR
     await delay(200);
     const pool = findPool(poolAddress);
     if (pool && (pool.tokenSymbol === 'DELTA' || pool.tokenSymbol === 'EPS')) {
-        return { total_count: MOCK_DELTA_COMMITTERS.length, commiters: MOCK_DELTA_COMMITTERS };
+        return { total_count: MOCK_DELTA_COMMITTERS.length, committers: MOCK_DELTA_COMMITTERS };
     }
-    return { total_count: MOCK_COMMITTERS.length, commiters: MOCK_COMMITTERS };
+    return { total_count: MOCK_COMMITTERS.length, committers: MOCK_COMMITTERS };
 }
 
 export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
@@ -685,7 +685,7 @@ export async function queryHolderDistribution(tokenAddress: string): Promise<Hol
 
 export async function queryThresholdAnalytics(
     poolAddress: string,
-    committers: CommiterInfo[]
+    committers: CommitterInfo[]
 ): Promise<ThresholdAnalytics | null> {
     await delay(200);
     const pool = findPool(poolAddress);

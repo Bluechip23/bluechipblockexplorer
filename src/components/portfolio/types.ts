@@ -1,12 +1,12 @@
 import {
     PoolSummary,
-    CommiterInfo,
+    CommitterInfo,
     PositionResponse,
 } from '../../utils/contractQueries';
 
 export interface MyCommitment {
     pool: PoolSummary;
-    commit: CommiterInfo;
+    commit: CommitterInfo;
 }
 
 export interface MyPosition {

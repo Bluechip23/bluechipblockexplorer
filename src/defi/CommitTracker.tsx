@@ -12,7 +12,7 @@ interface CommitTrackerProps {
 interface Commit {
     total_paid_usd: string;
     total_paid_bluechip: string;
-    last_commited: string;
+    last_committed: string;
 }
 
 interface GraphDataPoint {
@@ -39,9 +39,9 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                 }
             });
 
-            if (response && response.commiters) {
-                const sortedCommits: Commit[] = [...response.commiters].sort((a: Commit, b: Commit) => {
-                    return compareMicro(a.last_commited, b.last_commited);
+            if (response && response.committers) {
+                const sortedCommits: Commit[] = [...response.committers].sort((a: Commit, b: Commit) => {
+                    return compareMicro(a.last_committed, b.last_committed);
                 });
 
                 let cumulative = 0n;
@@ -51,7 +51,7 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                     cumulative += value;
                     bluechipTotal += safeBigInt(commit.total_paid_bluechip);
                     // Cosmos SDK timestamps are nanoseconds — divide by 1e6 for ms.
-                    const tsNs = safeBigInt(commit.last_commited);
+                    const tsNs = safeBigInt(commit.last_committed);
                     const tsMs = tsNs === 0n ? NaN : Number(tsNs / 1_000_000n);
                     return {
                         name: '',

@@ -35,7 +35,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import {
     abbreviateAddress,
-    CommiterInfo,
+    CommitterInfo,
     formatMicroAmount,
     HolderDistribution,
     PoolAnalyticsResponse,
@@ -62,12 +62,12 @@ const PERIOD_MS: Record<TimePeriod, number> = {
     '1y': 365 * 86400000,
 };
 
-function getActiveSubscribers(committers: CommiterInfo[], period: TimePeriod): number {
+function getActiveSubscribers(committers: CommitterInfo[], period: TimePeriod): number {
     const cutoffMs = BigInt(Date.now() - PERIOD_MS[period]);
-    // last_commited is nanoseconds; divide by 1e6 for ms using BigInt to
+    // last_committed is nanoseconds; divide by 1e6 for ms using BigInt to
     // avoid precision loss on timestamps above 2^53.
     return committers.filter(
-        (c) => safeBigInt(c.last_commited) / 1_000_000n > cutoffMs
+        (c) => safeBigInt(c.last_committed) / 1_000_000n > cutoffMs
     ).length;
 }
 
@@ -201,7 +201,7 @@ const HolderBar: React.FC<{ distribution: HolderDistribution }> = ({ distributio
 const ThresholdSection: React.FC<{
     pool: PoolSummary;
     analytics: ThresholdAnalytics | null;
-    committers: CommiterInfo[];
+    committers: CommitterInfo[];
     totalCommitCount: number;
 }> = ({ pool, analytics, committers, totalCommitCount }) => {
     const raised = safeBigInt(pool.raised);
@@ -328,7 +328,7 @@ interface TokenPerformanceMetricsProps {
 
 const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool }) => {
     const [period, setPeriod] = useState<TimePeriod>('1m');
-    const [committers, setCommitters] = useState<CommiterInfo[]>([]);
+    const [committers, setCommitters] = useState<CommitterInfo[]>([]);
     const [totalCommitCount, setTotalCommitCount] = useState<number>(0);
     const [holders, setHolders] = useState<HolderDistribution | null>(null);
     const [thresholdAnalytics, setThresholdAnalytics] = useState<ThresholdAnalytics | null>(null);
@@ -349,7 +349,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 ]);
 
                 if (cancelled) return;
-                const fetchedCommitters = commitData?.commiters || [];
+                const fetchedCommitters = commitData?.committers || [];
                 setCommitters(fetchedCommitters);
                 setTotalCommitCount(commitData?.total_count || 0);
                 setHolders(holderData);

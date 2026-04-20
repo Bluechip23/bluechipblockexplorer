@@ -27,7 +27,7 @@ import {
     formatMicroAmount,
     abbreviateAddress,
     PoolSummary,
-    CommiterInfo,
+    CommitterInfo,
     PoolAnalyticsResponse,
 } from '../../utils/contractQueries';
 import Paper from '@mui/material/Paper';
@@ -103,18 +103,18 @@ function computeFeeApr(
     return apr.toFixed(1) + '%';
 }
 
-function sumPaidUsd(committers: CommiterInfo[]): bigint {
+function sumPaidUsd(committers: CommitterInfo[]): bigint {
     return committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n);
 }
 
-function computeAvgCommit(committers: CommiterInfo[]): string {
+function computeAvgCommit(committers: CommitterInfo[]): string {
     if (committers.length === 0) return '$0';
     const total = sumPaidUsd(committers);
     const avg = total / BigInt(committers.length);
     return '$' + formatMicroAmount(avg);
 }
 
-function computeLargestCommit(committers: CommiterInfo[]): string {
+function computeLargestCommit(committers: CommitterInfo[]): string {
     if (committers.length === 0) return '$0';
     let max = 0n;
     for (const c of committers) {
@@ -124,7 +124,7 @@ function computeLargestCommit(committers: CommiterInfo[]): string {
     return '$' + formatMicroAmount(max);
 }
 
-function computeCreatorFeeRevenue(committers: CommiterInfo[], feeRate: number): string {
+function computeCreatorFeeRevenue(committers: CommitterInfo[], feeRate: number): string {
     const totalUsd = sumPaidUsd(committers);
     // feeRate is a Number ratio (e.g. 0.05). Scale to 10_000 bps for integer math.
     const feeBps = BigInt(Math.round(feeRate * 10_000));
@@ -132,19 +132,19 @@ function computeCreatorFeeRevenue(committers: CommiterInfo[], feeRate: number): 
     return '$' + formatMicroAmount(revenue);
 }
 
-function commitDaysSpan(sorted: CommiterInfo[]): number {
-    const firstNs = safeBigInt(sorted[0].last_commited);
-    const lastNs = safeBigInt(sorted[sorted.length - 1].last_commited);
+function commitDaysSpan(sorted: CommitterInfo[]): number {
+    const firstNs = safeBigInt(sorted[0].last_committed);
+    const lastNs = safeBigInt(sorted[sorted.length - 1].last_committed);
     if (firstNs === 0n || lastNs === 0n) return 0;
     const firstMs = Number(firstNs / 1_000_000n);
     const lastMs = Number(lastNs / 1_000_000n);
     return (lastMs - firstMs) / (1000 * 60 * 60 * 24);
 }
 
-function computeCommitVelocity(committers: CommiterInfo[]): string {
+function computeCommitVelocity(committers: CommitterInfo[]): string {
     if (committers.length < 2) return '-';
     const sorted = [...committers].sort(
-        (a, b) => compareMicro(a.last_commited, b.last_commited)
+        (a, b) => compareMicro(a.last_committed, b.last_committed)
     );
     const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
@@ -156,11 +156,11 @@ function computeCommitVelocity(committers: CommiterInfo[]): string {
 function computeEstimatedTimeToThreshold(
     raised: string,
     target: string,
-    committers: CommiterInfo[]
+    committers: CommitterInfo[]
 ): string {
     if (committers.length < 2) return '-';
     const sorted = [...committers].sort(
-        (a, b) => compareMicro(a.last_commited, b.last_commited)
+        (a, b) => compareMicro(a.last_committed, b.last_committed)
     );
     const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
@@ -187,7 +187,7 @@ const CreatorPoolPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const { address } = useWallet();
     const [pool, setPool] = useState<PoolSummary | null>(null);
-    const [committers, setCommitters] = useState<CommiterInfo[]>([]);
+    const [committers, setCommitters] = useState<CommitterInfo[]>([]);
     const [analytics, setAnalytics] = useState<PoolAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [isCreator, setIsCreator] = useState(false);
@@ -205,7 +205,7 @@ const CreatorPoolPage: React.FC = () => {
                     queryPoolAnalytics(id),
                 ]);
                 setPool(summary);
-                setCommitters(commits?.commiters || []);
+                setCommitters(commits?.committers || []);
                 setPoolTypeLabel(getPoolTypeLabel(pair));
                 setAnalytics(analyticsData);
 

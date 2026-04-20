@@ -63,7 +63,6 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
     const [txHash, setTxHash] = useState('');
 
     const FACTORY = factoryAddress || process.env.REACT_APP_FACTORY_ADDRESS || '';
-    const ORACLE = process.env.REACT_APP_ORACLE_ADDRESS || '';
 
     const handleCreatePool = async () => {
         if (!client || !address) { setStatus('Please connect your wallet'); return; }
@@ -125,8 +124,11 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
                         creator_token_address: address,
                         commit_amount_for_threshold: '25000000000',
                         commit_limit_usd: '25000000000',
-                        pyth_contract_addr_for_conversions: ORACLE || 'oracle_placeholder',
-                        pyth_atom_usd_price_feed_id: 'ATOM_USD',
+                        // Schema still requires these fields, but the factory reads
+                        // its pyth config from its own stored state and ignores what
+                        // the CreatePool message carries.
+                        pyth_contract_addr_for_conversions: '',
+                        pyth_atom_usd_price_feed_id: '',
                         max_bluechip_lock_per_pool: '10000000000',
                         creator_excess_liquidity_lock_days: 7,
                         is_standard_pool: isStandardPool
