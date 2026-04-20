@@ -222,17 +222,28 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             const isThresholdCrossed = thresholdStatus === 'fully_committed';
             const deadlineNs = deadline && parseFloat(deadline) > 0 ? ((Date.now() + parseFloat(deadline) * 60000) * 1000000).toString() : null;
 
+            // Pool denom is configurable per-pool; read it from pair {} rather than
+            // assuming NATIVE_DENOM.
+            let bluechipDenom = NATIVE_DENOM;
+            try {
+                const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
+                const infos: any[] = pairInfo?.asset_infos ?? [];
+                const found = infos.find((i) => i?.bluechip?.denom)?.bluechip?.denom;
+                if (typeof found === 'string' && found.length > 0) bluechipDenom = found;
+            } catch {
+                // Fall back to NATIVE_DENOM.
+            }
+
             const msg = {
                 commit: {
-                    asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
-                    amount: micro,
+                    asset: { info: { bluechip: { denom: bluechipDenom } }, amount: micro },
                     transaction_deadline: deadlineNs,
                     belief_price: null,
                     max_spread: (isThresholdCrossed && maxSpread) ? maxSpread : null
                 }
             };
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [{ denom: NATIVE_DENOM, amount: micro }]);
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [{ denom: bluechipDenom, amount: micro }]);
             setTxHash(result.transactionHash);
             setStatus('Success! Transaction confirmed.');
         } catch (err) {
