@@ -227,7 +227,6 @@ async function handleSubscribe() {
                     info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
                     amount: microAmount
                 },
-                amount:               microAmount,
                 transaction_deadline: deadlineNs,
                 belief_price:         null,
                 max_spread:           (isThresholdCrossed && spreadInput) ? spreadInput : null
@@ -689,8 +688,10 @@ async function handleCreatePool() {
                     creator_token_address:                 window.bluechipAddress,
                     commit_amount_for_threshold:           "25000000000",
                     commit_limit_usd:                      "25000000000",
-                    pyth_contract_addr_for_conversions:    "oracle_address_placeholder",
-                    pyth_atom_usd_price_feed_id:           "ATOM_USD",
+                    // Schema still requires these fields, but the factory ignores
+                    // them and reads pyth config from its own stored state.
+                    pyth_contract_addr_for_conversions:    "",
+                    pyth_atom_usd_price_feed_id:           "",
                     max_bluechip_lock_per_pool:            "10000000000",
                     creator_excess_liquidity_lock_days:    7,
                     is_standard_pool:                      isStandard

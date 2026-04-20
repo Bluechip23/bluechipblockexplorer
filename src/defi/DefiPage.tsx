@@ -63,7 +63,6 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
     const [txHash, setTxHash] = useState('');
 
     const FACTORY = factoryAddress || process.env.REACT_APP_FACTORY_ADDRESS || '';
-    const ORACLE = process.env.REACT_APP_ORACLE_ADDRESS || '';
 
     const handleCreatePool = async () => {
         if (!client || !address) { setStatus('Please connect your wallet'); return; }
@@ -125,8 +124,11 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
                         creator_token_address: address,
                         commit_amount_for_threshold: '25000000000',
                         commit_limit_usd: '25000000000',
-                        pyth_contract_addr_for_conversions: ORACLE || 'oracle_placeholder',
-                        pyth_atom_usd_price_feed_id: 'ATOM_USD',
+                        // Schema still requires these fields, but the factory reads
+                        // its pyth config from its own stored state and ignores what
+                        // the CreatePool message carries.
+                        pyth_contract_addr_for_conversions: '',
+                        pyth_atom_usd_price_feed_id: '',
                         max_bluechip_lock_per_pool: '10000000000',
                         creator_excess_liquidity_lock_days: 7,
                         is_standard_pool: isStandardPool
@@ -222,17 +224,28 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             const isThresholdCrossed = thresholdStatus === 'fully_committed';
             const deadlineNs = deadline && parseFloat(deadline) > 0 ? ((Date.now() + parseFloat(deadline) * 60000) * 1000000).toString() : null;
 
+            // Pool denom is configurable per-pool; read it from pair {} rather than
+            // assuming NATIVE_DENOM.
+            let bluechipDenom = NATIVE_DENOM;
+            try {
+                const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
+                const infos: any[] = pairInfo?.asset_infos ?? [];
+                const found = infos.find((i) => i?.bluechip?.denom)?.bluechip?.denom;
+                if (typeof found === 'string' && found.length > 0) bluechipDenom = found;
+            } catch {
+                // Fall back to NATIVE_DENOM.
+            }
+
             const msg = {
                 commit: {
-                    asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
-                    amount: micro,
+                    asset: { info: { bluechip: { denom: bluechipDenom } }, amount: micro },
                     transaction_deadline: deadlineNs,
                     belief_price: null,
                     max_spread: (isThresholdCrossed && maxSpread) ? maxSpread : null
                 }
             };
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [{ denom: NATIVE_DENOM, amount: micro }]);
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [{ denom: bluechipDenom, amount: micro }]);
             setTxHash(result.transactionHash);
             setStatus('Success! Transaction confirmed.');
         } catch (err) {

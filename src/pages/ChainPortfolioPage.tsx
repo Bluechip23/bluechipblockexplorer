@@ -60,8 +60,8 @@ const ChainPortfolioPage: React.FC = () => {
                     const batch = pools.slice(i, i + BATCH_SIZE);
                     await Promise.all(batch.map(async (pool) => {
                         const commits = await queryPoolCommits(pool.poolAddress);
-                        if (commits?.commiters) {
-                            const myCommit = commits.commiters.find((c) => c.wallet === address);
+                        if (commits?.committers) {
+                            const myCommit = commits.committers.find((c) => c.wallet === address);
                             if (myCommit) myCommitments.push({ pool, commit: myCommit });
                         }
                         if (pool.thresholdReached) {

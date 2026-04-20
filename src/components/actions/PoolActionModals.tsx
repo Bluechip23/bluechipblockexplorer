@@ -582,19 +582,31 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
             const micro = amtResult.micro;
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
 
+            // Pool denom is configurable per-pool; read it from pair {} rather than
+            // assuming NATIVE_DENOM so this still works if a future pool uses a
+            // different bluechip denom.
+            let bluechipDenom = NATIVE_DENOM;
+            try {
+                const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
+                const infos: any[] = pairInfo?.asset_infos ?? [];
+                const found = infos.find((i) => i?.bluechip?.denom)?.bluechip?.denom;
+                if (typeof found === 'string' && found.length > 0) bluechipDenom = found;
+            } catch {
+                // Fall back to NATIVE_DENOM if the query fails.
+            }
+
             const msg = {
                 commit: {
-                    asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
-                    amount: micro,
+                    asset: { info: { bluechip: { denom: bluechipDenom } }, amount: micro },
                     transaction_deadline: deadlineNs,
                     belief_price: null,
                     max_spread: null,
                 },
             };
 
-            const funds = [{ denom: NATIVE_DENOM, amount: micro }];
+            const funds = [{ denom: bluechipDenom, amount: micro }];
             const fundsCheck = verifyFundsMatch(
-                [{ denom: NATIVE_DENOM, amount: micro }],
+                [{ denom: bluechipDenom, amount: micro }],
                 funds,
             );
             if (!fundsCheck.ok) {
