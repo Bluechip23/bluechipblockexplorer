@@ -24,6 +24,14 @@ import { compareMicro, safeBigInt, formatMicroAmount } from '../utils/bigintMath
 // during creation and rewrites this slot to the freshly minted address.
 const CREATOR_TOKEN_SENTINEL = 'WILL_BE_CREATED_BY_FACTORY';
 
+// Mirrors the Rust TokenType discriminated union over the wire. The
+// `bluechip` tag is the serde-renamed Native variant; the `creator_token`
+// tag is the CW20 variant. Declared as a real union so TypeScript can
+// narrow on `'bluechip' in t` / `'creator_token' in t` checks.
+type TokenTypeWire =
+    | { bluechip: { denom: string } }
+    | { creator_token: { contract_addr: string } };
+
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
     <div role="tabpanel" hidden={value !== index}>
         {value === index && <Box sx={{ py: 2 }}>{children}</Box>}
@@ -58,7 +66,7 @@ const TxHashDisplay: React.FC<{ txHash: string }> = ({ txHash }) => {
 // Builds a TokenType wire entry from a free-form input. Anything starting
 // with `bluechip` / `cosmos` and over the typical bech32 length is treated
 // as a CW20 contract; otherwise we treat it as a native bank denom.
-const tokenTypeFromInput = (raw: string) => {
+const tokenTypeFromInput = (raw: string): TokenTypeWire => {
     const trimmed = raw.trim();
     const looksLikeAddress = trimmed.length > 20 && (trimmed.startsWith('bluechip') || trimmed.startsWith('cosmos'));
     return looksLikeAddress
@@ -173,10 +181,9 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
             // The factory enforces that at least one leg equal the canonical
             // bluechip denom. Surface that requirement client-side so the
             // user gets immediate feedback rather than a contract error.
-            const includesCanonical =
-                ('bluechip' in token0 && token0.bluechip.denom === NATIVE_DENOM) ||
-                ('bluechip' in token1 && token1.bluechip.denom === NATIVE_DENOM);
-            if (!includesCanonical) {
+            const isCanonicalBluechip = (t: TokenTypeWire) =>
+                'bluechip' in t && t.bluechip.denom === NATIVE_DENOM;
+            if (!isCanonicalBluechip(token0) && !isCanonicalBluechip(token1)) {
                 setStatus(`Error: One asset must be the canonical bluechip denom (${NATIVE_DENOM})`);
                 return;
             }
