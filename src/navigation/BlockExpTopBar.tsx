@@ -34,6 +34,26 @@ const BlockExpTopBar: React.FC = () => {
                 <Typography>
                     blue chip price:
                 </Typography>
+                {address ? (
+                    <Button
+                        component={Link}
+                        to="/defi?tab=commit"
+                        variant="contained"
+                        size="small"
+                        sx={{ textTransform: 'none' }}
+                    >
+                        Commit
+                    </Button>
+                ) : (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        disabled
+                        sx={{ textTransform: 'none' }}
+                    >
+                        Commit
+                    </Button>
+                )}
             </Stack>
             <Stack
                 width="100%"

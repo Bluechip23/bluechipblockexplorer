@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Grid, Stack, Typography, Tabs, Tab, Box, Card, CardContent, TextField, Button, Alert, IconButton, Tooltip } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
@@ -335,7 +336,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
     return (
         <Box>
             <Tabs value={subTab} onChange={(_, v) => setSubTab(v)} sx={{ mb: 2 }}>
-                <Tab label="Subscribe" />
+                <Tab label="Commit" />
                 <Tab label="Progress Tracker" />
             </Tabs>
             {subTab === 0 && (
@@ -344,7 +345,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
                     <TextField label="Amount (bluechip)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
                     <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5%" />
                     <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
-                    <Button variant="contained" onClick={handleSubscribe} disabled={!client}>Subscribe</Button>
+                    <Button variant="contained" onClick={handleSubscribe} disabled={!client}>Commit</Button>
                     {status && <Alert severity={status.includes('Success') ? 'success' : 'info'}>{status}</Alert>}
                     <TxHashDisplay txHash={txHash} />
                 </Box>
@@ -755,7 +756,18 @@ const FeesTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 // =========================================================================
 const DefiPage: React.FC = () => {
     const { client, address, balance } = useWallet();
+    const location = useLocation();
     const [mainTab, setMainTab] = useState(0);
+
+    // Allow deep-linking to a specific tab via ?tab=<name>. The "Commit"
+    // shortcut in the top bar relies on this to drop the user straight on
+    // the commit form when they land on /defi.
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        const map: Record<string, number> = { create: 0, commit: 1, swap: 2, liquidity: 3, fees: 4 };
+        if (tab && tab in map) setMainTab(map[tab]);
+    }, [location.search]);
 
     return (
         <Layout NavBar={<BlockExpTopBar />} SideBar={<BlockExpSideBar />}>
@@ -787,7 +799,7 @@ const DefiPage: React.FC = () => {
                                 sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}
                             >
                                 <Tab label="Create Pool" />
-                                <Tab label="Subscribe" />
+                                <Tab label="Commit" />
                                 <Tab label="Swap" />
                                 <Tab label="Liquidity" />
                                 <Tab label="Collect Fees" />
