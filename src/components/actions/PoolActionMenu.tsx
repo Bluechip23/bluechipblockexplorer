@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material';
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
+import { Button, Stack, Tooltip } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SellIcon from '@mui/icons-material/Sell';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
@@ -15,73 +14,108 @@ interface PoolActionMenuProps {
     tokenSymbol?: string;
     creatorTokenAddress?: string | null;
     thresholdReached?: boolean;
+    // Compact variant uses icon-only buttons for tight contexts (table rows).
+    compact?: boolean;
 }
+
+type ActionKind = 'buy' | 'sell' | 'commit' | 'deposit' | 'remove' | null;
 
 const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     poolAddress,
     tokenSymbol,
     creatorTokenAddress,
     thresholdReached = true,
+    compact = false,
 }) => {
     const { address } = useWallet();
-    const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-    const [openModal, setOpenModal] = useState<'buy' | 'sell' | 'commit' | 'deposit' | 'remove' | null>(null);
+    const [openModal, setOpenModal] = useState<ActionKind>(null);
 
     if (!address) return null;
 
-    const handleOpen = (event: React.MouseEvent<HTMLElement>) => {
-        setAnchorEl(event.currentTarget);
-    };
+    const symbol = sanitizeOnChainString(tokenSymbol, 16) || 'Token';
 
-    const handleClose = () => {
-        setAnchorEl(null);
-    };
+    const buttons: {
+        key: Exclude<ActionKind, null>;
+        label: string;
+        icon: React.ReactElement;
+        color: 'primary' | 'error' | 'success' | 'warning' | 'info';
+        show: boolean;
+    }[] = [
+        {
+            key: 'buy',
+            label: `Buy ${symbol}`,
+            icon: <ShoppingCartIcon fontSize="small" />,
+            color: 'success',
+            show: thresholdReached,
+        },
+        {
+            key: 'sell',
+            label: `Sell ${symbol}`,
+            icon: <SellIcon fontSize="small" />,
+            color: 'error',
+            show: thresholdReached,
+        },
+        {
+            key: 'commit',
+            label: 'Commit',
+            icon: <VolunteerActivismIcon fontSize="small" />,
+            color: 'warning',
+            show: !thresholdReached,
+        },
+        {
+            key: 'deposit',
+            label: 'Deposit LP',
+            icon: <AddCircleIcon fontSize="small" />,
+            color: 'primary',
+            show: thresholdReached,
+        },
+        {
+            key: 'remove',
+            label: 'Remove LP',
+            icon: <RemoveCircleIcon fontSize="small" />,
+            color: 'info',
+            show: thresholdReached,
+        },
+    ];
 
-    const openAction = (action: typeof openModal) => {
-        setOpenModal(action);
-        handleClose();
-    };
+    const visible = buttons.filter((b) => b.show);
 
     return (
         <>
-            <IconButton onClick={handleOpen} size="small" sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}>
-                <MoreHorizIcon />
-            </IconButton>
-
-            <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
-                {thresholdReached && (
-                    <MenuItem onClick={() => openAction('buy')}>
-                        <ListItemIcon><ShoppingCartIcon fontSize="small" /></ListItemIcon>
-                        {/* SECURITY: Sanitize on-chain token symbol before rendering */}
-                        <ListItemText>Buy {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}</ListItemText>
-                    </MenuItem>
+            <Stack
+                direction="row"
+                spacing={1}
+                flexWrap="wrap"
+                useFlexGap
+                sx={{ rowGap: 1 }}
+            >
+                {visible.map((b) =>
+                    compact ? (
+                        <Tooltip key={b.key} title={b.label}>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                color={b.color}
+                                onClick={() => setOpenModal(b.key)}
+                                sx={{ minWidth: 36, px: 1 }}
+                            >
+                                {b.icon}
+                            </Button>
+                        </Tooltip>
+                    ) : (
+                        <Button
+                            key={b.key}
+                            size="small"
+                            variant="contained"
+                            color={b.color}
+                            startIcon={b.icon}
+                            onClick={() => setOpenModal(b.key)}
+                        >
+                            {b.label}
+                        </Button>
+                    )
                 )}
-                {thresholdReached && (
-                    <MenuItem onClick={() => openAction('sell')}>
-                        <ListItemIcon><SellIcon fontSize="small" /></ListItemIcon>
-                        {/* SECURITY: Sanitize on-chain token symbol before rendering */}
-                        <ListItemText>Sell {sanitizeOnChainString(tokenSymbol, 16) || 'Token'}</ListItemText>
-                    </MenuItem>
-                )}
-                {!thresholdReached && (
-                    <MenuItem onClick={() => openAction('commit')}>
-                        <ListItemIcon><VolunteerActivismIcon fontSize="small" /></ListItemIcon>
-                        <ListItemText>Commit / Subscribe</ListItemText>
-                    </MenuItem>
-                )}
-                {thresholdReached && (
-                    <MenuItem onClick={() => openAction('deposit')}>
-                        <ListItemIcon><AddCircleIcon fontSize="small" /></ListItemIcon>
-                        <ListItemText>Deposit Liquidity</ListItemText>
-                    </MenuItem>
-                )}
-                {thresholdReached && (
-                    <MenuItem onClick={() => openAction('remove')}>
-                        <ListItemIcon><RemoveCircleIcon fontSize="small" /></ListItemIcon>
-                        <ListItemText>Remove Liquidity</ListItemText>
-                    </MenuItem>
-                )}
-            </Menu>
+            </Stack>
 
             <BuyModal
                 open={openModal === 'buy'}

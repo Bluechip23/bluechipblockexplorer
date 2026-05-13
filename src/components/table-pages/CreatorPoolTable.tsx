@@ -408,6 +408,7 @@ const CreatorPoolTable: React.FC = () => {
                                                 tokenSymbol={row.tokenSymbol}
                                                 creatorTokenAddress={row.creatorTokenAddress}
                                                 thresholdReached={row.thresholdReached}
+                                                compact
                                             />
                                         </TableCell>
                                     </TableRow>

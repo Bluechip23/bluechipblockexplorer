@@ -94,6 +94,7 @@ const PortfolioPositionsTable: React.FC<PortfolioPositionsTableProps> = ({ posit
                                         tokenSymbol={p.pool.tokenSymbol}
                                         creatorTokenAddress={p.pool.creatorTokenAddress}
                                         thresholdReached={p.pool.thresholdReached}
+                                        compact
                                     />
                                 </TableCell>
                             </TableRow>
