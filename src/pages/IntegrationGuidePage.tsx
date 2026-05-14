@@ -289,10 +289,14 @@ async function handleBuy() {
                     info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
                     amount: microAmount
                 },
-                belief_price:         null,
-                max_spread:           spreadInput || null,
-                to:                   null,
-                transaction_deadline: deadlineNs
+                belief_price:          null,
+                max_spread:            spreadInput || null,
+                // Set to true to bypass the pool's spread safety cap. Leave
+                // null in the standard buy flow; only flip on if the user
+                // has explicitly opted into a higher max_spread than the cap.
+                allow_high_max_spread: null,
+                to:                    null,
+                transaction_deadline:  deadlineNs
             }
         };
 
@@ -354,10 +358,13 @@ async function handleSell() {
         // Build the inner swap hook message
         var hookMsg = {
             swap: {
-                belief_price:         null,
-                max_spread:           spreadInput || null,
-                to:                   null,
-                transaction_deadline: deadlineNs
+                belief_price:          null,
+                max_spread:            spreadInput || null,
+                // Same semantics as simple_swap.allow_high_max_spread; leave
+                // null unless you've surfaced an explicit override to the user.
+                allow_high_max_spread: null,
+                to:                    null,
+                transaction_deadline:  deadlineNs
             }
         };
 
@@ -430,12 +437,16 @@ async function handleAddLiquidity() {
 
         var tokenAddress   = null;
         var bluechipDenom  = bluechip_CONFIG.nativeDenom;
-        for (var i = 0; i < pairInfo.asset_infos.length; i++) {
-            if (pairInfo.asset_infos[i].creator_token) {
-                tokenAddress = pairInfo.asset_infos[i].creator_token.contract_addr;
+        // Pair queries return the asset list under \`pool_token_info\` on
+        // current builds; older serialised state still surfaces it as
+        // \`asset_infos\`. Read either, falling back to an empty list.
+        var assets = pairInfo.pool_token_info || pairInfo.asset_infos || [];
+        for (var i = 0; i < assets.length; i++) {
+            if (assets[i].creator_token) {
+                tokenAddress = assets[i].creator_token.contract_addr;
             }
-            if (pairInfo.asset_infos[i].bluechip) {
-                bluechipDenom = pairInfo.asset_infos[i].bluechip.denom;
+            if (assets[i].bluechip) {
+                bluechipDenom = assets[i].bluechip.denom;
             }
         }
 
@@ -638,6 +649,25 @@ async function handleCollectFees() {
 </script>`;
 
 const createPoolCode = `<script>
+// =====================================================================
+// Pool creation — two distinct factory entry points.
+//
+// Commit (creator) pool: factory \`create\` message. Mints a new CW20
+//   creator token via the factory; pool starts in funding (commit)
+//   phase and flips to active trading once the USD threshold is crossed.
+//   The factory's own stored config is the source of truth for the
+//   commit threshold, fee splits, threshold-payout amounts, and lock
+//   caps — \`pool_msg\` only carries the token pair.
+//
+// Standard pool: factory \`create_standard_pool\` message. Wraps two
+//   pre-existing assets (one of which must be the canonical bluechip
+//   denom) into a plain xyk pool. No commit phase, no distribution.
+//
+// Both paths charge a USD-denominated creation fee paid in the
+// canonical bluechip denom; surplus is refunded to the caller in the
+// same tx. Attach the funds via the 7th argument to \`execute\`.
+// =====================================================================
+
 async function handleCreatePool() {
     var statusEl = document.getElementById("create-pool-status");
     var txEl     = document.getElementById("create-pool-tx");
@@ -649,69 +679,117 @@ async function handleCreatePool() {
         if (!connected) return;
     }
 
-    var tokenName   = document.getElementById("pool-token-name").value.trim();
-    var tokenSymbol = document.getElementById("pool-token-symbol").value.trim().toUpperCase();
-    var isStandard  = document.getElementById("pool-standard").checked;
-
-    if (!tokenName || !tokenSymbol) {
-        statusEl.innerHTML = '<div style="color:red;">Please enter both a token name and symbol.</div>';
-        return;
-    }
+    var isStandard = document.getElementById("pool-standard").checked;
+    // Caller-attached creation fee in ubluechip (the canonical bluechip
+    // denom). The factory verifies the attached funds cover the
+    // USD-denominated fee converted via the oracle and refunds any
+    // surplus on-chain. Leave blank to attach nothing (only works when
+    // the factory has the fee disabled).
+    var creationFeeMicro =
+        (document.getElementById("pool-creation-fee").value || "").trim();
+    var funds = (creationFeeMicro && creationFeeMicro !== "0")
+        ? [{ denom: bluechip_CONFIG.nativeDenom, amount: creationFeeMicro }]
+        : [];
 
     statusEl.innerHTML = '<div style="color:#1565c0;">Creating your pool...</div>';
 
     try {
-        var thresholdPayout = {
-            creator_reward_amount: "325000000000",
-            bluechip_reward_amount: "25000000000",
-            pool_seed_amount: "350000000000",
-            commit_return_amount: "500000000000"
-        };
-        var thresholdPayoutB64 = btoa(JSON.stringify(thresholdPayout));
+        var msg;
+        var memo;
 
-        var createMsg = {
-            create: {
-                pool_msg: {
-                    pool_token_info: [
-                        { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
-                        { creator_token: { contract_addr: "WILL_BE_CREATED_BY_FACTORY" } }
-                    ],
-                    cw20_token_contract_id:                1,
-                    factory_to_create_pool_addr:           bluechip_CONFIG.factoryAddress,
-                    threshold_payout:                      thresholdPayoutB64,
-                    commit_fee_info: {
-                        bluechip_wallet_address: window.bluechipAddress,
-                        creator_wallet_address:  window.bluechipAddress,
-                        commit_fee_bluechip:     "0.01",
-                        commit_fee_creator:      "0.05"
-                    },
-                    creator_token_address:                 window.bluechipAddress,
-                    commit_amount_for_threshold:           "25000000000",
-                    commit_limit_usd:                      "25000000000",
-                    // Schema still requires these fields, but the factory ignores
-                    // them and reads pyth config from its own stored state.
-                    pyth_contract_addr_for_conversions:    "",
-                    pyth_atom_usd_price_feed_id:           "",
-                    max_bluechip_lock_per_pool:            "10000000000",
-                    creator_excess_liquidity_lock_days:    7,
-                    is_standard_pool:                      isStandard
-                },
-                token_info: {
-                    name:    tokenName,
-                    symbol:  tokenSymbol,
-                    decimal: 6
-                }
+        if (!isStandard) {
+            // --- Commit (creator) pool ---
+            var tokenName   = document.getElementById("pool-token-name").value.trim();
+            var tokenSymbol = document.getElementById("pool-token-symbol").value.trim().toUpperCase();
+            if (!tokenName || !tokenSymbol) {
+                statusEl.innerHTML = '<div style="color:red;">Enter token name and symbol.</div>';
+                return;
             }
-        };
+            // Mirror the factory's validate_creator_token_info bounds.
+            if (tokenName.length < 3 || tokenName.length > 50) {
+                statusEl.innerHTML = '<div style="color:red;">Token name must be 3-50 printable ASCII characters.</div>';
+                return;
+            }
+            if (!/^[A-Z0-9]{3,12}$/.test(tokenSymbol) || !/[A-Z]/.test(tokenSymbol)) {
+                statusEl.innerHTML = '<div style="color:red;">Token symbol must be 3-12 chars (A-Z, 0-9) with at least one letter.</div>';
+                return;
+            }
+
+            msg = {
+                create: {
+                    pool_msg: {
+                        // pool_token_info is the only field the factory
+                        // consumes here — bluechip at index 0, the
+                        // creator-token sentinel at index 1. Order matters.
+                        pool_token_info: [
+                            { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
+                            { creator_token: { contract_addr: "WILL_BE_CREATED_BY_FACTORY" } }
+                        ]
+                    },
+                    token_info: {
+                        name:    tokenName,
+                        symbol:  tokenSymbol,
+                        // Decimals are pinned to 6 by validate_creator_token_info;
+                        // threshold-payout amounts and the mint cap are
+                        // calibrated for this exact value.
+                        decimal: 6
+                    }
+                }
+            };
+            memo = "Create Commit Pool";
+        } else {
+            // --- Standard (xyk) pool ---
+            var asset0 = document.getElementById("pool-asset0").value.trim();
+            var asset1 = document.getElementById("pool-asset1").value.trim();
+            var label  = document.getElementById("pool-label").value.trim();
+            if (!asset0 || !asset1 || !label) {
+                statusEl.innerHTML = '<div style="color:red;">Enter both assets and a label for the standard pool.</div>';
+                return;
+            }
+            // Heuristic: contract addresses are bech32 (bluechip1.../cosmos1...)
+            // and longer than typical native denoms. Anything else is treated
+            // as a native bank denom (ubluechip, an ibc/... wrapped asset, etc.).
+            function buildEntry(s) {
+                var looksLikeAddress = s.length > 20 && (s.indexOf("bluechip") === 0 || s.indexOf("cosmos") === 0);
+                return looksLikeAddress
+                    ? { creator_token: { contract_addr: s } }
+                    : { bluechip:      { denom:         s } };
+            }
+            var entry0 = buildEntry(asset0);
+            var entry1 = buildEntry(asset1);
+
+            // Factory enforces that one leg equal the canonical bluechip
+            // denom — surface this client-side for a faster error.
+            var hasCanonical =
+                (entry0.bluechip && entry0.bluechip.denom === bluechip_CONFIG.nativeDenom) ||
+                (entry1.bluechip && entry1.bluechip.denom === bluechip_CONFIG.nativeDenom);
+            if (!hasCanonical) {
+                statusEl.innerHTML =
+                    '<div style="color:red;">One asset must be the canonical bluechip denom (' +
+                    bluechip_CONFIG.nativeDenom + ').</div>';
+                return;
+            }
+
+            msg = {
+                create_standard_pool: {
+                    pool_token_info: [entry0, entry1],
+                    label: label
+                }
+            };
+            memo = "Create Standard Pool";
+        }
 
         var result = await window.bluechipClient.execute(
-            window.bluechipAddress, bluechip_CONFIG.factoryAddress, createMsg,
-            { amount: [], gas: "2000000" }, "Create Pool"
+            window.bluechipAddress,
+            bluechip_CONFIG.factoryAddress,
+            msg,
+            { amount: [], gas: "2000000" },
+            memo,
+            funds
         );
 
         statusEl.innerHTML =
-            '<div style="color:#2e7d32;font-weight:bold;">' +
-            'Pool created! Your token "' + tokenSymbol + '" is now live.</div>';
+            '<div style="color:#2e7d32;font-weight:bold;">Pool created!</div>';
         txEl.innerHTML =
             '<div style="padding:10px;background:#fff3e0;border:1px solid #ff6f00;' +
             'border-radius:6px;font-family:monospace;word-break:break-all;">' +
@@ -793,9 +871,12 @@ const queryTokenAddressCode = `async function getCreatorTokenAddress(poolAddress
 
     var pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
 
-    for (var i = 0; i < pairInfo.asset_infos.length; i++) {
-        if (pairInfo.asset_infos[i].creator_token) {
-            return pairInfo.asset_infos[i].creator_token.contract_addr;
+    // \`pool_token_info\` is the current field name; \`asset_infos\`
+    // remains as a fallback for legacy serialised state.
+    var assets = pairInfo.pool_token_info || pairInfo.asset_infos || [];
+    for (var i = 0; i < assets.length; i++) {
+        if (assets[i].creator_token) {
+            return assets[i].creator_token.contract_addr;
         }
     }
     return null;
@@ -1125,32 +1206,36 @@ const IntegrationGuidePage: React.FC = () => {
                         {/* Section 10: Create a Pool */}
                         <SectionCard id="create-pool" number="10" title="Create a Pool">
                             <Typography paragraph>
-                                This lets anyone create a brand new creator pool with their own custom token.
-                                The pool goes through two phases:
+                                Anyone can create a new pool through the factory. Two flavors are supported:
                             </Typography>
-                            <Box component="ol" sx={{ mb: 2 }}>
+                            <Box component="ul" sx={{ mb: 2 }}>
                                 <li>
                                     <Typography>
-                                        <strong>Pre-Threshold (Funding Phase):</strong> People commit Bluechip tokens.
-                                        Only commits are accepted. No swaps yet.
+                                        <strong>Commit (creator) pool</strong> — the factory mints a fresh CW20
+                                        creator token and the pool starts in a funding (commit) phase. Once the
+                                        configured USD threshold is crossed, 1,200,000 creator tokens are minted
+                                        and distributed (500k to subscribers, 325k to the creator, 25k to BlueChip,
+                                        350k seeded as initial liquidity).
                                     </Typography>
                                 </li>
                                 <li>
                                     <Typography>
-                                        <strong>Post-Threshold (Active Trading):</strong> Once $25,000 USD in commits
-                                        is reached, 1,200,000 creator tokens are minted and distributed:
+                                        <strong>Standard pool</strong> — wraps two pre-existing assets in a plain
+                                        xyk pool. No commit phase, no distribution. One leg of the pair must be the
+                                        canonical bluechip denom.
                                     </Typography>
-                                    <Box component="ul">
-                                        <li><Typography>500,000 to early subscribers</Typography></li>
-                                        <li><Typography>325,000 to you, the creator</Typography></li>
-                                        <li><Typography>25,000 to the BlueChip protocol</Typography></li>
-                                        <li><Typography>350,000 seeded into the pool as initial liquidity</Typography></li>
-                                    </Box>
                                 </li>
                             </Box>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                Both creation paths charge a <strong>USD-denominated creation fee paid in canonical
+                                bluechip</strong>. Attach the funds to the call; the factory verifies, forwards the
+                                fee to the bluechip wallet, and refunds any surplus on-chain.
+                            </Alert>
                             <Alert severity="warning" sx={{ mb: 2 }}>
-                                The wallet you use to create the pool becomes your creator wallet.
+                                For commit pools, the wallet that creates the pool becomes the creator wallet.
                                 <strong> Do not lose your seed phrase</strong> — BlueChip cannot recover it.
+                                Token name must be 3-50 printable ASCII characters; symbol must be 3-12 chars
+                                (A-Z, 0-9) with at least one letter; decimals are pinned to 6.
                             </Alert>
                             <CodeBlock code={createPoolCode} language="JavaScript" />
                         </SectionCard>
@@ -1288,7 +1373,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <CodeBlock
                                 code={`var pairInfo = await client.queryContractSmart("YOUR_POOL_ADDRESS", { pair: {} });
-// Look for the creator_token entry in pairInfo.asset_infos`}
+// Look for the creator_token entry in pairInfo.pool_token_info
+// (older serialised state still surfaces it as pairInfo.asset_infos)`}
                                 language="JavaScript"
                             />
                             <Typography variant="body2" color="text.secondary">
