@@ -1,12 +1,37 @@
 import React from 'react';
-import { Button, CircularProgress, IconButton, Stack, Typography } from '@mui/material';
-import { Link } from 'react-router-dom';
+import { Button, CircularProgress, IconButton, Stack, Typography, Link as MuiLink, Box } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import ForumIcon from '@mui/icons-material/Forum';
+import GitHubIcon from '@mui/icons-material/GitHub';
+import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import { useThemeMode } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
 import { formatMicroAmount } from '../utils/bigintMath';
+
+// Community destinations surfaced in the top bar. Overridable at build
+// time so the canonical invite/repo can roll without redeploying code.
+const DISCORD_URL =
+    process.env.REACT_APP_DISCORD_URL || 'https://discord.gg/bluechip';
+const GITHUB_URL =
+    process.env.REACT_APP_GITHUB_URL || 'https://github.com/bluechip23';
+
+// Shared style so Commit / Discord / GitHub all read as the same kind of
+// subtle in-bar link rather than a filled CTA button. Inherits color
+// from the AppBar so the contrast comes from the bar's own palette.
+const topBarLinkSx = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 0.5,
+    color: 'inherit',
+    textDecoration: 'none',
+    fontSize: '0.9rem',
+    opacity: 0.85,
+    cursor: 'pointer',
+    '&:hover': { opacity: 1, textDecoration: 'underline' },
+};
 
 const BlockExpTopBar: React.FC = () => {
     const { mode, toggleTheme } = useThemeMode();
@@ -19,9 +44,9 @@ const BlockExpTopBar: React.FC = () => {
                 width="100%"
                 alignItems="center"
                 direction='row'
-                spacing={8}
+                spacing={4}
             >
-                <Link
+                <RouterLink
                     to="/frontpage"
                     style={{
                         color: 'inherit',
@@ -30,30 +55,47 @@ const BlockExpTopBar: React.FC = () => {
                     }}
                 >
                     Bluechip Explorer
-                </Link>
-                <Typography>
+                </RouterLink>
+                <Typography sx={{ opacity: 0.85, fontSize: '0.9rem' }}>
                     blue chip price:
                 </Typography>
                 {address ? (
-                    <Button
-                        component={Link}
-                        to="/defi?tab=commit"
-                        variant="contained"
-                        size="small"
-                        sx={{ textTransform: 'none' }}
-                    >
+                    <MuiLink component={RouterLink} to="/defi?tab=commit" sx={topBarLinkSx}>
+                        <VolunteerActivismIcon fontSize="small" />
                         Commit
-                    </Button>
+                    </MuiLink>
                 ) : (
-                    <Button
-                        variant="contained"
-                        size="small"
-                        disabled
-                        sx={{ textTransform: 'none' }}
+                    <Box
+                        sx={{
+                            ...topBarLinkSx,
+                            opacity: 0.4,
+                            cursor: 'default',
+                            '&:hover': { opacity: 0.4, textDecoration: 'none' },
+                        }}
+                        title="Connect a wallet to commit"
                     >
+                        <VolunteerActivismIcon fontSize="small" />
                         Commit
-                    </Button>
+                    </Box>
                 )}
+                <MuiLink
+                    href={DISCORD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={topBarLinkSx}
+                >
+                    <ForumIcon fontSize="small" />
+                    Discord
+                </MuiLink>
+                <MuiLink
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    sx={topBarLinkSx}
+                >
+                    <GitHubIcon fontSize="small" />
+                    GitHub
+                </MuiLink>
             </Stack>
             <Stack
                 width="100%"
