@@ -88,6 +88,7 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                                         tokenSymbol={c.pool.tokenSymbol}
                                         creatorTokenAddress={c.pool.creatorTokenAddress}
                                         thresholdReached={c.pool.thresholdReached}
+                                        compact
                                     />
                                 </TableCell>
                             </TableRow>

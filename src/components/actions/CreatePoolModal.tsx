@@ -34,16 +34,22 @@ interface CreatePoolModalProps {
 
 type TxStage = 'input' | 'confirm' | 'executing' | 'success' | 'error';
 
-// SECURITY: Strict allowlist for token name/symbol characters.
-// On-chain, these strings are stored as contract metadata and later
-// rendered by every frontend that reads the pool — a malicious name
-// containing HTML, control chars, or zero-width chars could attack
-// other explorers or break layout. We sanitize at the point of
-// creation so bad data never reaches the chain.
-const TOKEN_NAME_RE = /^[A-Za-z0-9 _\-().]+$/;
+// SECURITY: Token name/symbol allowlists. Match the on-chain validator in
+// `factory/src/execute/pool_lifecycle/create.rs::validate_creator_token_info`:
+//   - name: 3..=50 printable ASCII chars
+//   - symbol: 3..=12 uppercase ASCII letters + digits, must contain ≥1 letter
+// Sanitizing here keeps malformed strings from ever reaching the chain.
+const TOKEN_NAME_RE = /^[\x20-\x7E]+$/;
 const TOKEN_SYMBOL_RE = /^[A-Z0-9]+$/;
-const TOKEN_NAME_MAX = 64;
-const TOKEN_SYMBOL_MAX = 10;
+const TOKEN_NAME_MIN = 3;
+const TOKEN_NAME_MAX = 50;
+const TOKEN_SYMBOL_MIN = 3;
+const TOKEN_SYMBOL_MAX = 12;
+
+// The factory rewrites this sentinel with the freshly-minted CW20
+// contract address. Must match `CREATOR_TOKEN_SENTINEL` in
+// `factory/src/execute/pool_lifecycle/create.rs`.
+const CREATOR_TOKEN_SENTINEL = 'WILL_BE_CREATED_BY_FACTORY';
 
 const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSuccess }) => {
     const { client, address } = useWallet();
@@ -51,11 +57,13 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
     const [tokenName, setTokenName] = useState('');
     const [tokenSymbol, setTokenSymbol] = useState('');
     const [isStandardPool, setIsStandardPool] = useState(false);
+    const [counterpartTokenAddr, setCounterpartTokenAddr] = useState('');
+    const [poolLabel, setPoolLabel] = useState('');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [inputError, setInputError] = useState('');
 
-    const steps = ['Token Details', 'Confirm', 'Result'];
+    const steps = ['Pool Details', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
 
     const FACTORY = factoryAddress || process.env.REACT_APP_FACTORY_ADDRESS || '';
@@ -65,45 +73,17 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         setTokenName('');
         setTokenSymbol('');
         setIsStandardPool(false);
+        setCounterpartTokenAddr('');
+        setPoolLabel('');
         setTxHash('');
         setErrorMsg('');
         setInputError('');
         onClose();
     };
 
-    // SECURITY: Validate all user-supplied inputs before showing the confirm screen.
     const handleReview = () => {
         setInputError('');
 
-        if (!tokenName.trim()) {
-            setInputError('Token name is required.');
-            return;
-        }
-        if (tokenName.length > TOKEN_NAME_MAX) {
-            setInputError(`Token name cannot exceed ${TOKEN_NAME_MAX} characters.`);
-            return;
-        }
-        // SECURITY: Reject names with special/control characters that could
-        // be used for XSS or layout attacks on downstream consumers.
-        if (!TOKEN_NAME_RE.test(tokenName)) {
-            setInputError('Token name contains invalid characters. Use letters, numbers, spaces, hyphens, underscores, or parentheses.');
-            return;
-        }
-
-        if (!tokenSymbol.trim()) {
-            setInputError('Token symbol is required.');
-            return;
-        }
-        if (tokenSymbol.length > TOKEN_SYMBOL_MAX) {
-            setInputError(`Token symbol cannot exceed ${TOKEN_SYMBOL_MAX} characters.`);
-            return;
-        }
-        if (!TOKEN_SYMBOL_RE.test(tokenSymbol)) {
-            setInputError('Token symbol must be uppercase letters and numbers only.');
-            return;
-        }
-
-        // SECURITY: Validate factory address is well-formed bech32.
         if (FACTORY) {
             const factoryCheck = validateBech32Address(FACTORY);
             if (!factoryCheck.ok) {
@@ -112,8 +92,89 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
             }
         }
 
+        if (isStandardPool) {
+            // Standard pool: pair the canonical bluechip denom against an
+            // existing CW20 contract (the counterpart). Contract enforces
+            // shape via `validate_standard_pool_token_info`.
+            if (!counterpartTokenAddr.trim()) {
+                setInputError('Counterpart token contract address is required for a standard pool.');
+                return;
+            }
+            const addrCheck = validateBech32Address(counterpartTokenAddr.trim());
+            if (!addrCheck.ok) {
+                setInputError(`Counterpart token address invalid: ${addrCheck.error}`);
+                return;
+            }
+            if (!poolLabel.trim()) {
+                setInputError('Pool label is required for a standard pool.');
+                return;
+            }
+            if (poolLabel.length > 64) {
+                setInputError('Pool label cannot exceed 64 characters.');
+                return;
+            }
+        } else {
+            // Creator pool: factory mints a new CW20 from name/symbol.
+            // Mirrors on-chain `validate_creator_token_info`.
+            if (!tokenName.trim()) {
+                setInputError('Token name is required.');
+                return;
+            }
+            if (tokenName.length < TOKEN_NAME_MIN || tokenName.length > TOKEN_NAME_MAX) {
+                setInputError(`Token name must be ${TOKEN_NAME_MIN}-${TOKEN_NAME_MAX} characters.`);
+                return;
+            }
+            if (!TOKEN_NAME_RE.test(tokenName)) {
+                setInputError('Token name must contain only printable ASCII characters.');
+                return;
+            }
+
+            if (!tokenSymbol.trim()) {
+                setInputError('Token symbol is required.');
+                return;
+            }
+            if (tokenSymbol.length < TOKEN_SYMBOL_MIN || tokenSymbol.length > TOKEN_SYMBOL_MAX) {
+                setInputError(`Token symbol must be ${TOKEN_SYMBOL_MIN}-${TOKEN_SYMBOL_MAX} characters.`);
+                return;
+            }
+            if (!TOKEN_SYMBOL_RE.test(tokenSymbol)) {
+                setInputError('Token symbol must be uppercase letters and digits only.');
+                return;
+            }
+            if (!/[A-Z]/.test(tokenSymbol)) {
+                setInputError('Token symbol must contain at least one letter.');
+                return;
+            }
+        }
+
         setStage('confirm');
     };
+
+    const buildCreatorPoolMsg = () => ({
+        create: {
+            pool_msg: {
+                pool_token_info: [
+                    { bluechip: { denom: NATIVE_DENOM } },
+                    { creator_token: { contract_addr: CREATOR_TOKEN_SENTINEL } },
+                ],
+            },
+            token_info: {
+                name: tokenName,
+                symbol: tokenSymbol,
+                decimal: 6,
+            },
+        },
+    });
+
+    const buildStandardPoolMsg = () => ({
+        create_standard_pool: {
+            pool_token_info: [
+                { bluechip: { denom: NATIVE_DENOM } },
+                { creator_token: { contract_addr: counterpartTokenAddr.trim() } },
+            ],
+            label: poolLabel.trim(),
+        },
+    });
 
     const handleConfirm = async () => {
         if (!client || !address) return;
@@ -123,7 +184,6 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
             return;
         }
 
-        // SECURITY: Assert chain ID matches bluechip-3 immediately before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
         if (!chainCheck.ok) {
             setErrorMsg(chainCheck.error!);
@@ -133,52 +193,8 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
 
         setStage('executing');
         try {
-            const thresholdPayout = {
-                creator_reward_amount: '325000000000',
-                bluechip_reward_amount: '25000000000',
-                pool_seed_amount: '350000000000',
-                commit_return_amount: '500000000000',
-            };
+            const createMsg = isStandardPool ? buildStandardPoolMsg() : buildCreatorPoolMsg();
 
-            const createMsg = {
-                create: {
-                    pool_msg: {
-                        pool_token_info: [
-                            { bluechip: { denom: NATIVE_DENOM } },
-                            { creator_token: { contract_addr: 'WILL_BE_CREATED_BY_FACTORY' } },
-                        ],
-                        cw20_token_contract_id: 1,
-                        factory_to_create_pool_addr: FACTORY,
-                        threshold_payout: btoa(JSON.stringify(thresholdPayout)),
-                        commit_fee_info: {
-                            bluechip_wallet_address: address,
-                            creator_wallet_address: address,
-                            commit_fee_bluechip: '0.01',
-                            commit_fee_creator: '0.05',
-                        },
-                        creator_token_address: address,
-                        commit_amount_for_threshold: '25000000000',
-                        commit_limit_usd: '25000000000',
-                        // Schema still requires these fields, but the factory reads
-                        // its pyth config from its own stored state and ignores what
-                        // the CreatePool message carries. Send empty strings so we
-                        // don't document a misleading value to subscribers.
-                        pyth_contract_addr_for_conversions: '',
-                        pyth_atom_usd_price_feed_id: '',
-                        max_bluechip_lock_per_pool: '10000000000',
-                        creator_excess_liquidity_lock_days: 7,
-                        is_standard_pool: isStandardPool,
-                    },
-                    token_info: {
-                        name: tokenName,
-                        symbol: tokenSymbol,
-                        decimal: 6,
-                    },
-                },
-            };
-
-            // SECURITY: Transaction simulation before signing — if the chain
-            // would reject the pool creation, block signing and show the error.
             try {
                 await client.simulate(address, [{
                     typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
@@ -200,7 +216,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                 FACTORY,
                 createMsg,
                 { amount: [], gas: '2000000' },
-                'Create Pool'
+                isStandardPool ? 'Create Standard Pool' : 'Create Creator Pool'
             );
             setTxHash(result.transactionHash);
             setStage('success');
@@ -214,7 +230,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
     return (
         <Dialog open={open} onClose={resetAndClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Create a Creator Pool
+                {isStandardPool ? 'Create a Standard Pool' : 'Create a Creator Pool'}
                 <IconButton onClick={resetAndClose} size="small"><CloseIcon /></IconButton>
             </DialogTitle>
             <DialogContent>
@@ -224,30 +240,6 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
 
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Create your own creator token and liquidity pool. Subscribers will commit bluechip
-                            to fund your pool. Once the $25,000 threshold is reached, trading goes live.
-                        </Typography>
-                        <TextField
-                            label="Token Name"
-                            value={tokenName}
-                            onChange={(e) => setTokenName(e.target.value)}
-                            placeholder="My Creator Token"
-                            fullWidth
-                            required
-                            inputProps={{ maxLength: TOKEN_NAME_MAX }}
-                            helperText="Letters, numbers, spaces, hyphens, underscores, parentheses only."
-                        />
-                        <TextField
-                            label="Token Symbol"
-                            value={tokenSymbol}
-                            onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
-                            placeholder="MCT"
-                            fullWidth
-                            required
-                            inputProps={{ maxLength: TOKEN_SYMBOL_MAX }}
-                            helperText="Uppercase letters and numbers only."
-                        />
                         <FormControlLabel
                             control={
                                 <Checkbox
@@ -258,29 +250,88 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                             label={
                                 <Box>
                                     <Typography variant="body2" fontWeight="bold">
-                                        Standard Pool (skip commit phase)
+                                        Standard Pool (existing CW20 pair)
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                        Pool starts with 0 liquidity - you must deposit manually.
+                                        Pair bluechip against an existing CW20 token. Skips the commit phase.
                                     </Typography>
                                 </Box>
                             }
                         />
-                        <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                            <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
-                                Pool Configuration
-                            </Typography>
-                            <Typography variant="body2">Commit Threshold: $25,000 USD</Typography>
-                            <Typography variant="body2">Commit Fee: 1% BlueChip, 5% Creator</Typography>
-                            <Typography variant="body2">Max BlueChip Lock: 10,000 tokens</Typography>
-                            <Typography variant="body2">Liquidity Lock: 7 days</Typography>
-                        </Box>
-                        {/* SECURITY: Display input validation errors inline. */}
+
+                        {isStandardPool ? (
+                            <>
+                                <Typography variant="body2" color="text.secondary">
+                                    Pairs the canonical bluechip native denom against an existing CW20 token.
+                                    Requires the standard-pool creation fee in ubluechip (auto-handled by the factory).
+                                </Typography>
+                                <TextField
+                                    label="Counterpart CW20 Contract Address"
+                                    value={counterpartTokenAddr}
+                                    onChange={(e) => setCounterpartTokenAddr(e.target.value)}
+                                    placeholder="bluechip1..."
+                                    fullWidth
+                                    required
+                                />
+                                <TextField
+                                    label="Pool Label"
+                                    value={poolLabel}
+                                    onChange={(e) => setPoolLabel(e.target.value)}
+                                    placeholder="bluechip-FOO standard pool"
+                                    fullWidth
+                                    required
+                                    inputProps={{ maxLength: 64 }}
+                                    helperText="Shown in block explorers and operator tooling."
+                                />
+                            </>
+                        ) : (
+                            <>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    Create your own creator token and liquidity pool. Subscribers commit bluechip
+                                    to fund the pool. Once the threshold is reached, trading goes live.
+                                </Typography>
+                                <TextField
+                                    label="Token Name"
+                                    value={tokenName}
+                                    onChange={(e) => setTokenName(e.target.value)}
+                                    placeholder="My Creator Token"
+                                    fullWidth
+                                    required
+                                    inputProps={{ maxLength: TOKEN_NAME_MAX }}
+                                    helperText={`${TOKEN_NAME_MIN}-${TOKEN_NAME_MAX} printable ASCII characters.`}
+                                />
+                                <TextField
+                                    label="Token Symbol"
+                                    value={tokenSymbol}
+                                    onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())}
+                                    placeholder="MCT"
+                                    fullWidth
+                                    required
+                                    inputProps={{ maxLength: TOKEN_SYMBOL_MAX }}
+                                    helperText={`${TOKEN_SYMBOL_MIN}-${TOKEN_SYMBOL_MAX} uppercase letters/digits, must contain a letter.`}
+                                />
+                                <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>
+                                        Pool Configuration (factory-managed)
+                                    </Typography>
+                                    <Typography variant="body2">Decimals: 6 (required by contract)</Typography>
+                                    <Typography variant="body2">
+                                        Threshold, fee splits, lock caps and oracle config are read from the
+                                        factory's stored configuration.
+                                    </Typography>
+                                </Box>
+                            </>
+                        )}
+
                         {inputError && <Alert severity="error">{inputError}</Alert>}
                         <Button
                             variant="contained"
                             onClick={handleReview}
-                            disabled={!tokenName || !tokenSymbol}
+                            disabled={
+                                isStandardPool
+                                    ? !counterpartTokenAddr || !poolLabel
+                                    : !tokenName || !tokenSymbol
+                            }
                             fullWidth
                         >
                             Review Pool
@@ -293,22 +344,28 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                         <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2 }}>
                             Confirm Pool Creation
                         </Typography>
-                        {/* SECURITY: Human-readable creation summary. */}
                         <Alert severity="info" sx={{ mb: 2 }}>
-                            You are creating a new pool with token &quot;{sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}&quot; ({sanitizeOnChainString(tokenName, TOKEN_NAME_MAX)}).
                             {isStandardPool
-                                ? ' This is a standard pool — you must deposit liquidity manually.'
-                                : ' Subscribers will commit bluechip toward the $25,000 threshold before trading goes live.'}
+                                ? `Creating a standard pool pairing bluechip with ${sanitizeOnChainString(counterpartTokenAddr, 64)}.`
+                                : `Creating a creator pool with token "${sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}" (${sanitizeOnChainString(tokenName, TOKEN_NAME_MAX)}). Subscribers commit bluechip toward the funding threshold before trading goes live.`}
                         </Alert>
                         <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>
-                            {[
-                                { label: 'Token Name', value: sanitizeOnChainString(tokenName, TOKEN_NAME_MAX) },
-                                { label: 'Token Symbol', value: sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX) },
-                                { label: 'Pool Type', value: isStandardPool ? 'Standard (no commit phase)' : 'Commit-based ($25k threshold)' },
-                                { label: 'Creator Wallet', value: `${address.slice(0, 12)}...${address.slice(-6)}` },
-                                { label: 'Commit Fee (Creator)', value: '5%' },
-                                { label: 'Commit Fee (BlueChip)', value: '1%' },
-                            ].map((d, i) => (
+                            {(isStandardPool
+                                ? [
+                                    { label: 'Pool Type', value: 'Standard (existing CW20 pair)' },
+                                    { label: 'bluechip side', value: NATIVE_DENOM },
+                                    { label: 'Counterpart Token', value: `${counterpartTokenAddr.slice(0, 14)}...${counterpartTokenAddr.slice(-6)}` },
+                                    { label: 'Label', value: sanitizeOnChainString(poolLabel, 64) },
+                                    { label: 'Creator Wallet', value: `${address.slice(0, 12)}...${address.slice(-6)}` },
+                                ]
+                                : [
+                                    { label: 'Pool Type', value: 'Creator (commit-based)' },
+                                    { label: 'Token Name', value: sanitizeOnChainString(tokenName, TOKEN_NAME_MAX) },
+                                    { label: 'Token Symbol', value: sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX) },
+                                    { label: 'Decimals', value: '6' },
+                                    { label: 'Creator Wallet', value: `${address.slice(0, 12)}...${address.slice(-6)}` },
+                                ]
+                            ).map((d, i) => (
                                 <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
                                     <Typography variant="body2" color="text.secondary">{d.label}</Typography>
                                     <Typography variant="body2" fontWeight="bold">{d.value}</Typography>
@@ -335,7 +392,10 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                 {stage === 'success' && (
                     <Box>
                         <Alert severity="success" sx={{ mb: 2 }}>
-                            Pool created successfully! Your token &quot;{sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}&quot; is now live.
+                            Pool created successfully!
+                            {!isStandardPool && tokenSymbol && (
+                                <> Your token &quot;{sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}&quot; is now live.</>
+                            )}
                         </Alert>
                         {txHash && (
                             <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>

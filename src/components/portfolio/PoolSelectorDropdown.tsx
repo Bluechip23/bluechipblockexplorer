@@ -215,6 +215,7 @@ const PoolSelectorDropdown: React.FC<PoolSelectorDropdownProps> = ({
                                         tokenSymbol={pool.tokenSymbol}
                                         creatorTokenAddress={pool.creatorTokenAddress}
                                         thresholdReached={pool.thresholdReached}
+                                        compact
                                     />
                                 </Box>
                             </Box>

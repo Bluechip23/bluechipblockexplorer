@@ -144,6 +144,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                                             tokenSymbol={pool.tokenSymbol}
                                             creatorTokenAddress={pool.creatorTokenAddress}
                                             thresholdReached={pool.thresholdReached}
+                                            compact
                                         />
                                     </TableCell>
                                 </TableRow>
