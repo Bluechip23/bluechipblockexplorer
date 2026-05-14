@@ -9,7 +9,6 @@ import MenuIcon from '@mui/icons-material/Menu';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import Sidebar from './Sidebar';
-import Footer from './Footer';
 
 const drawerWidth = 240;
 
@@ -81,8 +80,6 @@ export const Layout: React.FC<React.PropsWithChildren<LayoutProps>> = (props) =>
                     flexGrow: 1,
                     height: '100vh',
                     overflow: 'auto',
-                    display: 'flex',
-                    flexDirection: 'column',
                 }}
             >
                 <Toolbar />
@@ -91,12 +88,10 @@ export const Layout: React.FC<React.PropsWithChildren<LayoutProps>> = (props) =>
                     sx={{
                         px: isMobile ? 1 : 3,
                         py: 1,
-                        flexGrow: 1,
                     }}
                 >
                     {props.children}
                 </Container>
-                <Footer />
             </Box>
         </Box>
     );
