@@ -17,6 +17,7 @@ import {
     validateBech32Address,
     validateSlippage,
     assertWalletOnExpectedChain,
+    humanizeContractError,
 } from '../utils/security';
 import { compareMicro, safeBigInt, formatMicroAmount } from '../utils/bigintMath';
 
@@ -329,7 +330,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             setTxHash(result.transactionHash);
             setStatus('Success! Transaction confirmed.');
         } catch (err) {
-            setStatus('Error: ' + (err as Error).message);
+            setStatus('Error: ' + humanizeContractError(err));
         }
     };
 
@@ -445,7 +446,7 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
                 setStatus('Success!');
             }
         } catch (err) {
-            setStatus('Error: ' + (err as Error).message);
+            setStatus('Error: ' + humanizeContractError(err));
         }
     };
 

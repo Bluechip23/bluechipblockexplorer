@@ -28,6 +28,7 @@ import {
     sanitizeOnChainString,
     formatSwapSummary,
     formatLiquidityDepositSummary,
+    humanizeContractError,
 } from '../../utils/security';
 import { compareMicro } from '../../utils/bigintMath';
 
@@ -231,7 +232,7 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
                     },
                 }], 'Buy Token');
             } catch (simErr) {
-                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${humanizeContractError(simErr)}`);
                 setStage('error');
                 return;
             }
@@ -240,7 +241,7 @@ export const BuyModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress,
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            setErrorMsg(humanizeContractError(err));
             setStage('error');
         }
     };
@@ -431,7 +432,7 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
                     },
                 }], 'Sell Token');
             } catch (simErr) {
-                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${humanizeContractError(simErr)}`);
                 setStage('error');
                 return;
             }
@@ -440,7 +441,7 @@ export const SellModal: React.FC<BaseModalProps & { creatorTokenAddress?: string
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            setErrorMsg(humanizeContractError(err));
             setStage('error');
         }
     };
@@ -627,7 +628,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
                     },
                 }], 'Commit');
             } catch (simErr) {
-                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
+                setErrorMsg(`Simulation failed — transaction would be rejected: ${humanizeContractError(simErr)}`);
                 setStage('error');
                 return;
             }
@@ -636,7 +637,7 @@ export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddre
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
-            setErrorMsg((err as Error).message);
+            setErrorMsg(humanizeContractError(err));
             setStage('error');
         }
     };
