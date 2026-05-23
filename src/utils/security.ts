@@ -392,6 +392,42 @@ export function formatLiquidityRemoveSummary(args: {
 }
 
 // ============================================================================
+// Contract error humanization
+// ============================================================================
+
+// The pool emits two narrowly-scoped errors during the post-threshold MEV
+// guard window that read as gibberish in the default raw-bubbled-up form:
+//
+//   1. `PostThresholdCooldownActive { until_block }` — every swap (and the
+//      swap leg of post-threshold commits) reverts for ~2 blocks after a
+//      threshold cross.
+//   2. `PostThresholdSwapCapExceeded { offer, cap }` — for ~100 blocks after
+//      the cooldown ends, per-tx offer size is bounded to a fraction of the
+//      offer-side reserve that ramps from 0.5% up to 100%.
+//
+// We don't have a query for the ramp state, so the UX is: let the user
+// submit, catch the error, swap the cryptic Rust-formatter output for a
+// sentence that tells them what happened and what to do.
+export function humanizeContractError(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err);
+
+    const cooldownMatch = raw.match(/Post-threshold cooldown active:\s*trades resume at block\s+(\d+)/i);
+    if (cooldownMatch) {
+        const untilBlock = cooldownMatch[1];
+        return `This pool just crossed its commit threshold and is in a brief no-trade cooldown. Trades resume at block ${untilBlock} — try again in a few seconds.`;
+    }
+
+    const capMatch = raw.match(/Post-threshold swap cap exceeded:\s*offer\s+(\d+)\s+exceeds the allowed cap\s+(\d+)/i);
+    if (capMatch) {
+        const offer = capMatch[1];
+        const cap = capMatch[2];
+        return `This pool just crossed its commit threshold and is in a 100-block trade-size ramp. Your trade (${offer}) is larger than the current per-tx cap (${cap}). Reduce the trade size or wait a few blocks for the cap to widen.`;
+    }
+
+    return raw;
+}
+
+// ============================================================================
 // Key material sanity check
 // ============================================================================
 
