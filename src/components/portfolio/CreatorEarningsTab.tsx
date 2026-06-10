@@ -31,6 +31,7 @@ import {
     queryPoolIsPaused,
 } from '../../utils/contractQueries';
 import { safeBigInt } from '../../utils/bigintMath';
+import { fetchCreatorStatement, indexerHealth } from '../../utils/indexerApi';
 import {
     assertWalletOnExpectedChain,
     humanizeContractError,
@@ -94,6 +95,14 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
     const [claimStatus, setClaimStatus] = useState('');
     const [claiming, setClaiming] = useState(false);
     const [exporting, setExporting] = useState(false);
+    // Per-transaction statements need the time-series indexer.
+    const [indexerOk, setIndexerOk] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        indexerHealth().then((h) => { if (!cancelled) setIndexerOk(!!h?.ok); });
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -236,6 +245,46 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     'token_symbol', 'pool_address', 'supporter_wallet',
                     'total_paid_usd', 'total_paid_bluechip',
                     'last_payment_usd', 'last_payment_bluechip', 'last_committed_utc',
+                ],
+                rows,
+            );
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // Transaction-level income statement from the indexer: the creator's
+    // fee share of every individual commit plus claim payouts, with block
+    // timestamps — the bookkeeping-grade export the on-chain cumulative
+    // ledger can't provide.
+    const exportPerTxStatement = async () => {
+        setExporting(true);
+        try {
+            const rows: string[][] = [];
+            for (const p of pools) {
+                const lines = await fetchCreatorStatement(p.poolAddress);
+                for (const ln of lines ?? []) {
+                    rows.push([
+                        new Date(ln.ts * 1000).toISOString(),
+                        p.tokenSymbol,
+                        p.poolAddress,
+                        ln.type,
+                        ln.counterparty ?? '',
+                        ln.phase ?? '',
+                        microToCsvDecimal(ln.gross_usd),
+                        microToCsvDecimal(ln.fee_share_usd),
+                        microToCsvDecimal(ln.amount_0),
+                        microToCsvDecimal(ln.amount_1),
+                        ln.txhash,
+                    ]);
+                }
+            }
+            downloadCsv(
+                `bluechip-creator-statement-${new Date().toISOString().slice(0, 10)}.csv`,
+                [
+                    'timestamp_utc', 'token_symbol', 'pool_address', 'type',
+                    'counterparty', 'phase', 'gross_commit_usd', 'creator_fee_share_usd',
+                    'claim_bluechip', 'claim_token', 'txhash',
                 ],
                 rows,
             );
@@ -452,11 +501,26 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     >
                         Supporter Ledger (CSV)
                     </Button>
+                    <Tooltip title={indexerOk === false
+                        ? 'Requires the time-series indexer (see indexer/README.md in this repo)'
+                        : ''}>
+                        <span>
+                            <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={exporting ? <CircularProgress size={14} /> : <DownloadIcon />}
+                                disabled={exporting || !indexerOk}
+                                onClick={exportPerTxStatement}
+                            >
+                                Per-Transaction Statement (CSV)
+                            </Button>
+                        </span>
+                    </Tooltip>
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                     Amounts are in whole units (USD and tokens, 6-decimal precision). The supporter ledger
-                    reflects current on-chain totals per wallet; per-transaction statements with historical
-                    USD valuations arrive with event indexing.
+                    reflects current on-chain totals per wallet; the per-transaction statement comes from the
+                    indexer and lists every commit's fee share and every claim payout with block timestamps.
                 </Typography>
             </Box>
         </Stack>
