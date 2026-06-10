@@ -1145,3 +1145,34 @@ export async function queryBluechipOraclePrice(): Promise<chain.BluechipPriceInf
     // Demo mode: a fresh, healthy oracle reading ($0.125 per bluechip).
     return { price: '125000', timestamp: Math.floor(Date.now() / 1000) - 5, is_cached: false };
 }
+
+// ---- Router (multi-hop swaps) ----
+
+export type { RouterConfig, SimulateMultiHopResponse, SwapOperationWire } from './chainQueries';
+
+export async function queryRouterConfig(routerAddr: string): Promise<chain.RouterConfig | null> {
+    if (await onChain()) return chain.chainQueryRouterConfig(routerAddr).catch(() => null);
+    return { factory_addr: 'bluechip1factory_mock_address_for_ui_preview', bluechip_denom: 'ubluechip', admin: MOCK_WALLET };
+}
+
+export async function simulateMultiHop(
+    routerAddr: string,
+    operations: chain.SwapOperationWire[],
+    offerAmount: string,
+): Promise<chain.SimulateMultiHopResponse | null> {
+    if (await onChain()) {
+        return chain.chainSimulateMultiHop(routerAddr, operations, offerAmount).catch(() => null);
+    }
+    // Demo simulation: 0.5% commission per hop, flat 1:1 prices.
+    let amount = safeBigInt(offerAmount);
+    const intermediates: string[] = [];
+    for (let i = 0; i < operations.length; i++) {
+        amount = (amount * 9_950n) / 10_000n;
+        intermediates.push(amount.toString());
+    }
+    return {
+        final_amount: amount.toString(),
+        intermediate_amounts: intermediates,
+        price_impact: (0.005 * operations.length).toFixed(4),
+    };
+}

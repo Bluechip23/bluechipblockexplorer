@@ -437,3 +437,40 @@ export function chainQueryBluechipOraclePrice(): Promise<BluechipPriceInfo> {
         internal_blue_chip_oracle_query: { get_bluechip_usd_price: {} },
     });
 }
+
+// ---------------------------------------------------------------------------
+// Router (multi-hop swaps)
+// ---------------------------------------------------------------------------
+
+export interface SwapOperationWire {
+    pool_addr: string;
+    offer_asset_info: TokenType;
+    ask_asset_info: TokenType;
+}
+
+export interface SimulateMultiHopResponse {
+    final_amount: string;
+    // Output of every hop in order; the last entry equals final_amount.
+    intermediate_amounts: string[];
+    price_impact: string;   // Decimal string
+}
+
+export interface RouterConfig {
+    factory_addr: string;
+    bluechip_denom: string;
+    admin: string;
+}
+
+export function chainQueryRouterConfig(routerAddr: string): Promise<RouterConfig> {
+    return smart<RouterConfig>(routerAddr, { config: {} });
+}
+
+export function chainSimulateMultiHop(
+    routerAddr: string,
+    operations: SwapOperationWire[],
+    offerAmount: string,
+): Promise<SimulateMultiHopResponse> {
+    return smart<SimulateMultiHopResponse>(routerAddr, {
+        simulate_multi_hop: { operations, offer_amount: offerAmount },
+    });
+}

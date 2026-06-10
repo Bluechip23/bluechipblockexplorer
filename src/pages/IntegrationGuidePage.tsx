@@ -403,6 +403,90 @@ async function handleSell() {
 }
 </script>`;
 
+const crossTokenSwapCode = `<script>
+// ============================================================
+//  CROSS-TOKEN SWAP via the router contract.
+//  Creator tokens never share a pool with each other — every
+//  cross-token pair routes through bluechip. The router runs the
+//  whole route atomically (max 3 hops) and enforces slippage on
+//  the FINAL amount received via minimum_receive. It takes no
+//  per-hop spread parameters; size minimum_receive from the
+//  simulation below. Every hop's pool is validated against the
+//  factory registry on-chain.
+// ============================================================
+
+// Add to bluechip_CONFIG:  routerAddress: "bluechip1router_address_here",
+
+async function crossTokenSwap(fromToken, fromPool, toToken, toPool, amountMicro, slippagePct) {
+    // 1. Build the route: TOKEN_A -> bluechip -> TOKEN_B.
+    //    (For bluechip -> TOKEN_B, keep only the second hop;
+    //     for TOKEN_A -> bluechip, keep only the first.)
+    var route = [
+        {
+            pool_addr:        fromPool,
+            offer_asset_info: { creator_token: { contract_addr: fromToken } },
+            ask_asset_info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } }
+        },
+        {
+            pool_addr:        toPool,
+            offer_asset_info: { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
+            ask_asset_info:   { creator_token: { contract_addr: toToken } }
+        }
+    ];
+
+    // 2. Simulate to learn the expected output and size minimum_receive.
+    var sim = await window.bluechipClient.queryContractSmart(
+        bluechip_CONFIG.routerAddress,
+        { simulate_multi_hop: { operations: route, offer_amount: amountMicro } }
+    );
+    console.log("Expected out:", sim.final_amount,
+                "per-hop:", sim.intermediate_amounts,
+                "impact:", sim.price_impact);
+
+    var slipBps     = Math.round(slippagePct * 100);
+    var minReceive  = (BigInt(sim.final_amount) * BigInt(10000 - slipBps) / BigInt(10000)).toString();
+    var deadlineNs  = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
+
+    var hopArgs = {
+        operations:      route,
+        minimum_receive: minReceive,
+        deadline:        deadlineNs,
+        recipient:       null
+    };
+
+    // 3a. First hop offers a CW20: send the tokens to the router with
+    //     the hook embedded (the router takes custody per hop).
+    var result = await window.bluechipClient.execute(
+        window.bluechipAddress,
+        fromToken,                              // execute on the CW20
+        {
+            send: {
+                contract: bluechip_CONFIG.routerAddress,
+                amount:   amountMicro,
+                msg:      btoa(JSON.stringify({ execute_multi_hop: hopArgs }))
+            }
+        },
+        { amount: [], gas: "900000" },
+        "Cross-Token Swap",
+        []
+    );
+
+    // 3b. If the first hop offers native bluechip instead, call the
+    //     router directly and attach the funds:
+    //
+    //   await window.bluechipClient.execute(
+    //       window.bluechipAddress,
+    //       bluechip_CONFIG.routerAddress,
+    //       { execute_multi_hop: hopArgs },
+    //       { amount: [], gas: "900000" },
+    //       "Cross-Token Swap",
+    //       [{ denom: bluechip_CONFIG.nativeDenom, amount: amountMicro }]
+    //   );
+
+    return result.transactionHash;
+}
+</script>`;
+
 const addLiquidityCode = `<script>
 async function handleAddLiquidity() {
     var statusEl = document.getElementById("liq-add-status");
@@ -1242,15 +1326,16 @@ const tocItems = [
     { num: '4', title: 'Subscribe Button (Commit)', id: 'subscribe' },
     { num: '5', title: 'Buy Button (Swap Bluechips for Creator Tokens)', id: 'buy' },
     { num: '6', title: 'Sell Button (Swap Creator Tokens for Bluechips)', id: 'sell' },
-    { num: '7', title: 'Add Liquidity', id: 'add-liquidity' },
-    { num: '8', title: 'Remove Liquidity', id: 'remove-liquidity' },
-    { num: '9', title: 'Collect Fees', id: 'collect-fees' },
-    { num: '10', title: 'Create a Pool', id: 'create-pool' },
-    { num: '11', title: 'Querying Pool Info (Read-Only)', id: 'query-pool' },
-    { num: '12', title: 'Granting Special Privileges to Committed Users', id: 'special-privileges' },
-    { num: '13', title: 'Full Working Example Page', id: 'full-example' },
-    { num: '14', title: 'Troubleshooting', id: 'troubleshooting' },
-    { num: '15', title: 'Contract Address Reference', id: 'contract-reference' },
+    { num: '7', title: 'Cross-Token Swaps (Router)', id: 'cross-token' },
+    { num: '8', title: 'Add Liquidity', id: 'add-liquidity' },
+    { num: '9', title: 'Remove Liquidity', id: 'remove-liquidity' },
+    { num: '10', title: 'Collect Fees', id: 'collect-fees' },
+    { num: '11', title: 'Create a Pool', id: 'create-pool' },
+    { num: '12', title: 'Querying Pool Info (Read-Only)', id: 'query-pool' },
+    { num: '13', title: 'Granting Special Privileges to Committed Users', id: 'special-privileges' },
+    { num: '14', title: 'Full Working Example Page', id: 'full-example' },
+    { num: '15', title: 'Troubleshooting', id: 'troubleshooting' },
+    { num: '16', title: 'Contract Address Reference', id: 'contract-reference' },
 ];
 
 
@@ -1399,13 +1484,37 @@ const IntegrationGuidePage: React.FC = () => {
                             <Alert severity="warning" sx={{ mb: 2 }}>
                                 Selling creator tokens requires the CW20 token contract address, which is different
                                 from the pool address. You can find this by querying the pool's <code>pair</code> endpoint
-                                (see Section 11).
+                                (see Section 12).
                             </Alert>
                             <CodeBlock code={sellCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 7: Add Liquidity */}
-                        <SectionCard id="add-liquidity" number="7" title="Add Liquidity">
+                        {/* Section 7: Cross-Token Swaps */}
+                        <SectionCard id="cross-token" number="7" title="Cross-Token Swaps (Router)">
+                            <Typography paragraph>
+                                Creator tokens never share a pool with each other — every pair trades
+                                through bluechip. To let a fan swap <em>another creator's token</em>{' '}
+                                directly into yours, use the <strong>router contract</strong>: it executes
+                                the whole route (up to 3 hops) in a single atomic transaction and validates
+                                every hop's pool against the factory registry before moving funds.
+                            </Typography>
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                The router has <strong>no per-hop slippage parameters</strong>. Protection
+                                comes from <code>minimum_receive</code> on the final token: simulate first
+                                with <code>simulate_multi_hop</code>, then set{' '}
+                                <code>minimum_receive</code> a tolerance below the simulated output. If any
+                                hop moves the price so the final amount lands short, the entire route
+                                reverts — partial swaps cannot strand funds mid-route.
+                            </Alert>
+                            <CodeBlock code={crossTokenSwapCode} language="JavaScript" />
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                Get the router address from the BlueChip team alongside the factory
+                                address. Both pools in the route must be past their threshold (active AMMs).
+                            </Typography>
+                        </SectionCard>
+
+                        {/* Section 8: Add Liquidity */}
+                        <SectionCard id="add-liquidity" number="8" title="Add Liquidity">
                             <Typography paragraph>
                                 Liquidity providers earn trading fees. When you add liquidity, you receive an NFT that
                                 represents your position. You must provide <strong>both</strong> Bluechip tokens and
@@ -1419,8 +1528,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={addLiquidityCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 8: Remove Liquidity */}
-                        <SectionCard id="remove-liquidity" number="8" title="Remove Liquidity">
+                        {/* Section 9: Remove Liquidity */}
+                        <SectionCard id="remove-liquidity" number="9" title="Remove Liquidity">
                             <Typography paragraph>
                                 You can remove liquidity three ways:
                             </Typography>
@@ -1435,8 +1544,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={removeLiquidityCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 9: Collect Fees */}
-                        <SectionCard id="collect-fees" number="9" title="Collect Fees">
+                        {/* Section 10: Collect Fees */}
+                        <SectionCard id="collect-fees" number="10" title="Collect Fees">
                             <Typography paragraph>
                                 If you have a liquidity position (NFT), you can collect your accumulated trading
                                 fees <strong>without</strong> removing your liquidity. Fees are paid out in both
@@ -1445,8 +1554,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={collectFeesCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 10: Create a Pool */}
-                        <SectionCard id="create-pool" number="10" title="Create a Pool">
+                        {/* Section 11: Create a Pool */}
+                        <SectionCard id="create-pool" number="11" title="Create a Pool">
                             <Typography paragraph>
                                 Anyone can create a new pool through the factory. Two flavors are supported:
                             </Typography>
@@ -1482,8 +1591,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={createPoolCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 11: Querying Pool Info */}
-                        <SectionCard id="query-pool" number="11" title="Querying Pool Info (Read-Only)">
+                        {/* Section 12: Querying Pool Info */}
+                        <SectionCard id="query-pool" number="12" title="Querying Pool Info (Read-Only)">
                             <Typography paragraph>
                                 These queries don't require a wallet connection — they're read-only.
                                 You can use them to show pool status on your site.
@@ -1535,8 +1644,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </Accordion>
                         </SectionCard>
 
-                        {/* Section 12: Special Privileges */}
-                        <SectionCard id="special-privileges" number="12" title="Granting Special Privileges to Committed Users">
+                        {/* Section 13: Special Privileges */}
+                        <SectionCard id="special-privileges" number="13" title="Granting Special Privileges to Committed Users">
                             <Typography paragraph>
                                 Every commit writes a permanent, public record to your pool's ledger:
                                 who committed, how much (in USD and bluechip), and when. After the
@@ -1602,8 +1711,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </Alert>
                         </SectionCard>
 
-                        {/* Section 13: Full Working Example */}
-                        <SectionCard id="full-example" number="13" title="Full Working Example Page">
+                        {/* Section 14: Full Working Example */}
+                        <SectionCard id="full-example" number="14" title="Full Working Example Page">
                             <Typography paragraph>
                                 Here's a complete, self-contained HTML page you can save and use. It includes
                                 wallet connection, subscribe, buy, sell, and fee collection all on one page.
@@ -1611,8 +1720,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={fullExampleCode} language="HTML" />
                         </SectionCard>
 
-                        {/* Section 14: Troubleshooting */}
-                        <SectionCard id="troubleshooting" number="14" title="Troubleshooting">
+                        {/* Section 15: Troubleshooting */}
+                        <SectionCard id="troubleshooting" number="15" title="Troubleshooting">
                             <TableContainer component={Paper} variant="outlined">
                                 <Table size="small">
                                     <TableHead>
@@ -1631,6 +1740,9 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['"Insufficient creation fee"', "The attached bluechip amount is below the oracle-derived USD fee. Re-query the required amount (it changes with bluechip's USD price) and re-attach"],
                                             ['"creation fee is disabled; do not attach any funds"', 'The factory currently has the creation fee set to zero. Pass an empty funds array on these calls'],
                                             ['"rate limited"', 'Commits have a 13-second cooldown per wallet. Wait and try again'],
+                                            ['"Route exceeds the maximum of 3 hops"', 'The router caps routes at 3 hops. Any creator-token pair needs at most 2 (token → bluechip → token)'],
+                                            ['"not registered with the factory" (router)', "A hop's pool address is not in the factory registry. Use pool addresses from the factory's pools query or this explorer"],
+                                            ['Router swap reverts with a minimum_receive error', 'Price moved past your tolerance between simulation and execution. Re-quote and retry, or widen slippage slightly'],
                                             ['"Commit too small"', 'Each pool enforces a minimum commit value in USD (separate pre- and post-threshold floors). Increase the amount'],
                                             ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the $25,000 threshold. Use Subscribe instead'],
                                             ['"You do not own this position"', 'Double-check your Position ID. Query positions_by_owner to find your positions'],
@@ -1647,8 +1759,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </TableContainer>
                         </SectionCard>
 
-                        {/* Section 15: Contract Address Reference */}
-                        <SectionCard id="contract-reference" number="15" title="Contract Address Reference">
+                        {/* Section 16: Contract Address Reference */}
+                        <SectionCard id="contract-reference" number="16" title="Contract Address Reference">
                             <Typography paragraph>
                                 These are the addresses you need. Get them from the BlueChip team or your block explorer:
                             </Typography>
