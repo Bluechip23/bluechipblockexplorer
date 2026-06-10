@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { Button, Stack, Tooltip } from '@mui/material';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
-import SellIcon from '@mui/icons-material/Sell';
+import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useWallet } from '../../context/WalletContext';
-import { BuyModal, SellModal, CommitModal, DepositLiquidityModal, RemoveLiquidityModal } from './PoolActionModals';
+import { TradeModal, LiquidityModal, CommitModal } from './PoolActionModals';
 import { sanitizeOnChainString } from '../../utils/security';
 
 interface PoolActionMenuProps {
@@ -18,8 +16,12 @@ interface PoolActionMenuProps {
     compact?: boolean;
 }
 
-type ActionKind = 'buy' | 'sell' | 'commit' | 'deposit' | 'remove' | null;
+type ActionKind = 'trade' | 'liquidity' | 'commit' | null;
 
+// Post-threshold pools get two consolidated entry points: a Trade modal
+// (Buy / Sell / Commit tabs) and a Liquidity modal (Provide / Remove
+// tabs). Pools still in their funding phase keep the standalone Commit
+// button — trading and liquidity don't exist for them yet.
 const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     poolAddress,
     tokenSymbol,
@@ -42,17 +44,17 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
         show: boolean;
     }[] = [
         {
-            key: 'buy',
-            label: `Buy ${symbol}`,
+            key: 'trade',
+            label: `Trade ${symbol}`,
             icon: <ShoppingCartIcon fontSize="small" />,
             color: 'success',
             show: thresholdReached,
         },
         {
-            key: 'sell',
-            label: `Sell ${symbol}`,
-            icon: <SellIcon fontSize="small" />,
-            color: 'error',
+            key: 'liquidity',
+            label: 'Liquidity',
+            icon: <WaterDropIcon fontSize="small" />,
+            color: 'primary',
             show: thresholdReached,
         },
         {
@@ -61,20 +63,6 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
             icon: <VolunteerActivismIcon fontSize="small" />,
             color: 'warning',
             show: !thresholdReached,
-        },
-        {
-            key: 'deposit',
-            label: 'Deposit LP',
-            icon: <AddCircleIcon fontSize="small" />,
-            color: 'primary',
-            show: thresholdReached,
-        },
-        {
-            key: 'remove',
-            label: 'Remove LP',
-            icon: <RemoveCircleIcon fontSize="small" />,
-            color: 'info',
-            show: thresholdReached,
         },
     ];
 
@@ -117,14 +105,15 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                 )}
             </Stack>
 
-            <BuyModal
-                open={openModal === 'buy'}
+            <TradeModal
+                open={openModal === 'trade'}
                 onClose={() => setOpenModal(null)}
                 poolAddress={poolAddress}
                 tokenSymbol={tokenSymbol}
+                creatorTokenAddress={creatorTokenAddress || undefined}
             />
-            <SellModal
-                open={openModal === 'sell'}
+            <LiquidityModal
+                open={openModal === 'liquidity'}
                 onClose={() => setOpenModal(null)}
                 poolAddress={poolAddress}
                 tokenSymbol={tokenSymbol}
@@ -132,19 +121,6 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
             />
             <CommitModal
                 open={openModal === 'commit'}
-                onClose={() => setOpenModal(null)}
-                poolAddress={poolAddress}
-                tokenSymbol={tokenSymbol}
-            />
-            <DepositLiquidityModal
-                open={openModal === 'deposit'}
-                onClose={() => setOpenModal(null)}
-                poolAddress={poolAddress}
-                tokenSymbol={tokenSymbol}
-                creatorTokenAddress={creatorTokenAddress || undefined}
-            />
-            <RemoveLiquidityModal
-                open={openModal === 'remove'}
                 onClose={() => setOpenModal(null)}
                 poolAddress={poolAddress}
                 tokenSymbol={tokenSymbol}
