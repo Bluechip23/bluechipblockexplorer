@@ -125,6 +125,51 @@ export interface FactoryInstantiateResponse {
     factory: FactoryConfig;
 }
 
+// ---- Creator earnings (creator-pool `creator_earnings {}` query) ----
+
+export interface CreatorFeePotWire {
+    amount_0: string;   // claimable bluechip (micro)
+    amount_1: string;   // claimable creator token (micro)
+}
+
+export interface CreatorExcessEarnings {
+    bluechip_amount: string;
+    token_amount: string;
+    unlock_time: string;        // Timestamp — nanoseconds, as string
+    claimable_now: boolean;     // block time >= unlock_time
+}
+
+export interface CreatorEarningsResponse {
+    creator_wallet_address: string;
+    // Claimable clip-slice fee pot, emptied by `claim_creator_fees`.
+    fee_pot: CreatorFeePotWire;
+    // Locked excess-liquidity claim; null when none exists or already claimed.
+    excess: CreatorExcessEarnings | null;
+    is_threshold_hit: boolean;
+    threshold_crossed_at: string | null;   // nanoseconds string, null pre-threshold
+}
+
+// ---- Pool ops-health queries (`distribution_state`, `is_paused`,
+//      `factory_notify_status`) — mirrored from the creator-pool msg types ----
+
+export interface DistributionStateResponse {
+    is_distributing: boolean;
+    distributions_remaining: number;
+    last_processed_key: string | null;
+    started_at: string;          // nanoseconds string
+    last_updated: string;        // nanoseconds string
+    seconds_since_update: number;
+    is_stalled: boolean;
+    consecutive_failures: number;
+    total_to_distribute: string;
+    total_committed_usd: string;
+    distributed_so_far: string;
+}
+
+export interface FactoryNotifyStatusResponse {
+    pending: boolean;
+}
+
 export interface PositionResponse {
     position_id: string;
     liquidity: string;
@@ -828,6 +873,59 @@ export async function queryWalletHoldings(
         }
     }
     return holdings;
+}
+
+// Mirrors the creator-pool `creator_earnings {}` query. Mock data keeps
+// the canonical wire units: token amounts in micro, timestamps in
+// nanoseconds-as-strings.
+export async function queryCreatorEarnings(poolAddress: string): Promise<CreatorEarningsResponse | null> {
+    await delay(200);
+    const pool = findPool(poolAddress);
+    if (!pool) return null;
+
+    if (pool.tokenSymbol === 'ALPHA') {
+        return {
+            creator_wallet_address: MOCK_WALLET,
+            fee_pot: { amount_0: '850000000', amount_1: '1200000000' },   // 850 bluechip + 1,200 ALPHA
+            excess: {
+                bluechip_amount: '15000000000',   // 15,000 bluechip
+                token_amount: '30000000000',      // 30,000 ALPHA
+                unlock_time: ((now + 12 * day) * 1000000).toString(),
+                claimable_now: false,
+            },
+            is_threshold_hit: true,
+            threshold_crossed_at: ((now - 45 * day) * 1000000).toString(),
+        };
+    }
+
+    return {
+        creator_wallet_address: pool.tokenSymbol === 'DELTA'
+            ? MOCK_WALLET
+            : 'bluechip1othercreator_not_you_random_addr_placeholder',
+        fee_pot: { amount_0: '0', amount_1: '0' },
+        excess: null,
+        is_threshold_hit: pool.thresholdReached,
+        threshold_crossed_at: pool.thresholdReached
+            ? ((now - 30 * day) * 1000000).toString()
+            : null,
+    };
+}
+
+export async function queryDistributionState(_poolAddress: string): Promise<DistributionStateResponse | null> {
+    await delay(150);
+    // Mock: every pool's post-threshold payout distribution has completed
+    // (the contract returns null once the state is cleaned up).
+    return null;
+}
+
+export async function queryPoolIsPaused(_poolAddress: string): Promise<boolean> {
+    await delay(100);
+    return false;
+}
+
+export async function queryFactoryNotifyStatus(_poolAddress: string): Promise<FactoryNotifyStatusResponse> {
+    await delay(100);
+    return { pending: false };
 }
 
 export async function queryPoolState(_: string): Promise<PoolStateResponse | null> { return null; }

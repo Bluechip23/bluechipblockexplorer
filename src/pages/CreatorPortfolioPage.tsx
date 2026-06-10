@@ -8,9 +8,13 @@ import {
     CircularProgress,
     Grid,
     Stack,
+    Tab,
+    Tabs,
     Typography,
 } from '@mui/material';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import InsightsIcon from '@mui/icons-material/Insights';
+import PaidIcon from '@mui/icons-material/Paid';
 import { Link } from 'react-router-dom';
 import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
@@ -24,6 +28,7 @@ import { NotConnectedView } from '../components/universal/PortfolioShared';
 import StatCard from '../components/universal/StatCard';
 import PoolSelectorDropdown from '../components/portfolio/PoolSelectorDropdown';
 import ComparePoolsModal from '../components/portfolio/ComparePoolsModal';
+import CreatorEarningsTab from '../components/portfolio/CreatorEarningsTab';
 import NoPoolsView from '../components/portfolio/NoPoolsView';
 import {
     fetchAllPoolSummaries,
@@ -43,6 +48,7 @@ const CreatorPortfolioPage: React.FC = () => {
     const [selectedPool, setSelectedPool] = useState<PoolSummary | null>(null);
     const [comparedAddresses, setComparedAddresses] = useState<Set<string>>(new Set());
     const [showCompare, setShowCompare] = useState(false);
+    const [poolTab, setPoolTab] = useState(0);
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -155,8 +161,25 @@ const CreatorPortfolioPage: React.FC = () => {
                                             </Typography>
                                         </Box>
                                     </CardContent>
-                                    <CardContent sx={{ pt: 0 }}>
-                                        <TokenPerformanceMetrics key={selectedPool.poolAddress} pool={selectedPool} />
+                                    <Tabs
+                                        value={poolTab}
+                                        onChange={(_, v) => setPoolTab(v)}
+                                        sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}
+                                    >
+                                        <Tab icon={<InsightsIcon fontSize="small" />} iconPosition="start" label="Performance" />
+                                        <Tab icon={<PaidIcon fontSize="small" />} iconPosition="start" label="Earnings" />
+                                    </Tabs>
+                                    <CardContent>
+                                        {poolTab === 0 && (
+                                            <TokenPerformanceMetrics key={selectedPool.poolAddress} pool={selectedPool} />
+                                        )}
+                                        {poolTab === 1 && (
+                                            <CreatorEarningsTab
+                                                key={selectedPool.poolAddress}
+                                                pools={createdPools}
+                                                pool={selectedPool}
+                                            />
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}

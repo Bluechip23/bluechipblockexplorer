@@ -18,6 +18,7 @@ import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import { Link, useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
+import PoolHistoryPanel from '../../components/PoolHistoryPanel';
 import {
     fetchPoolSummary,
     queryPoolCommits,
@@ -465,6 +466,11 @@ const CreatorPoolPage: React.FC = () => {
                                     </Grid>
                                 )}
                             </Grid>
+                        </Grid>
+
+                        {/* Time-series history (price/volume/trades) via the indexer */}
+                        <Grid item xs={12} md={8}>
+                            <PoolHistoryPanel poolAddress={pool.poolAddress} tokenSymbol={pool.tokenSymbol} />
                         </Grid>
 
                         {/* On-Chain Analytics from Analytics query */}
