@@ -306,11 +306,14 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
                 : null;
 
             // Pool denom is configurable per-pool; read it from pair {} rather
-            // than assuming NATIVE_DENOM.
+            // than assuming NATIVE_DENOM. The Pair query returns PoolDetails,
+            // whose asset list field is `asset_infos`. (`pool_token_info` is
+            // the *input* field on factory create messages and the factory's
+            // pool_by_address response — kept as a defensive fallback only.)
             let bluechipDenom = NATIVE_DENOM;
             try {
                 const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
-                const infos: any[] = pairInfo?.pool_token_info ?? pairInfo?.asset_infos ?? [];
+                const infos: any[] = pairInfo?.asset_infos ?? pairInfo?.pool_token_info ?? [];
                 const found = infos.find((i) => i?.bluechip?.denom)?.bluechip?.denom;
                 if (typeof found === 'string' && found.length > 0) bluechipDenom = found;
             } catch {
@@ -489,12 +492,13 @@ const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: st
     const [txHash, setTxHash] = useState('');
 
     // Resolves the pool's CW20 ("creator") token + the bluechip denom
-    // from a pair query. Works for both creator-pool and standard-pool
-    // shapes since both expose `pool_token_info` (creator-pool also still
-    // returns `asset_infos` on legacy serialised state).
+    // from a pair query. Works for both creator-pool and standard-pool:
+    // both return PoolDetails whose asset list field is `asset_infos`.
+    // (`pool_token_info` belongs to factory create messages / the factory's
+    // pool_by_address response — kept as a defensive fallback only.)
     const resolvePoolAssets = async () => {
         const pairInfo = await client!.queryContractSmart(poolAddress, { pair: {} });
-        const infos: any[] = pairInfo?.pool_token_info ?? pairInfo?.asset_infos ?? [];
+        const infos: any[] = pairInfo?.asset_infos ?? pairInfo?.pool_token_info ?? [];
         let tokenAddress: string | null = null;
         let bluechipDenom = NATIVE_DENOM;
         for (const asset of infos) {

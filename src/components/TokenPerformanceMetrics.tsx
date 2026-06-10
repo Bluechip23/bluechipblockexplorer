@@ -351,7 +351,12 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 if (cancelled) return;
                 const fetchedCommitters = commitData?.committers || [];
                 setCommitters(fetchedCommitters);
-                setTotalCommitCount(commitData?.total_count || 0);
+                // Total commit transactions come from the Analytics query.
+                // PoolCommits' page_count is just the size of the returned
+                // page of unique committers, not a commit-transaction total.
+                setTotalCommitCount(
+                    analyticsData?.analytics.total_commit_count ?? fetchedCommitters.length
+                );
                 setHolders(holderData);
                 setOnChainAnalytics(analyticsData);
 

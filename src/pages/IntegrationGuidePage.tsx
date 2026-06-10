@@ -39,7 +39,7 @@ const configCode = `<script>
 // ============================================================
 const bluechip_CONFIG = {
     // Chain settings
-    chainId:        "bluechip-1",
+    chainId:        "bluechip-3",
     chainName:      "Bluechip Mainnet",
     rpc:            "https://bluechip.rpc.bluechip.link",
     rest:           "https://bluechip.api.bluechip.link",
@@ -437,10 +437,11 @@ async function handleAddLiquidity() {
 
         var tokenAddress   = null;
         var bluechipDenom  = bluechip_CONFIG.nativeDenom;
-        // Pair queries return the asset list under \`pool_token_info\` on
-        // current builds; older serialised state still surfaces it as
-        // \`asset_infos\`. Read either, falling back to an empty list.
-        var assets = pairInfo.pool_token_info || pairInfo.asset_infos || [];
+        // The pair query returns PoolDetails — its asset list field is
+        // \`asset_infos\`. (\`pool_token_info\` is the *input* field on the
+        // factory's create messages, not this response; it is read second
+        // purely as a defensive fallback.)
+        var assets = pairInfo.asset_infos || pairInfo.pool_token_info || [];
         for (var i = 0; i < assets.length; i++) {
             if (assets[i].creator_token) {
                 tokenAddress = assets[i].creator_token.contract_addr;
@@ -835,8 +836,10 @@ const queryPoolStateCode = `async function getPoolState(poolAddress) {
 const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, walletAddress) {
     var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
+    // NOTE: the query key is committing_info (double "t", double "m") —
+    // it mirrors the contract's CommittingInfo variant exactly.
     var info = await client.queryContractSmart(poolAddress, {
-        commiting_info: { wallet: walletAddress }
+        committing_info: { wallet: walletAddress }
     });
 
     if (info) {
@@ -871,9 +874,10 @@ const queryTokenAddressCode = `async function getCreatorTokenAddress(poolAddress
 
     var pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
 
-    // \`pool_token_info\` is the current field name; \`asset_infos\`
-    // remains as a fallback for legacy serialised state.
-    var assets = pairInfo.pool_token_info || pairInfo.asset_infos || [];
+    // \`asset_infos\` is the field on the PoolDetails response;
+    // \`pool_token_info\` (the factory-side input field) is read second
+    // purely as a defensive fallback.
+    var assets = pairInfo.asset_infos || pairInfo.pool_token_info || [];
     for (var i = 0; i < assets.length; i++) {
         if (assets[i].creator_token) {
             return assets[i].creator_token.contract_addr;
@@ -881,6 +885,243 @@ const queryTokenAddressCode = `async function getCreatorTokenAddress(poolAddress
     }
     return null;
 }`;
+
+const privClientGateCode = `<script>
+// ============================================================
+//  CLIENT-SIDE GATING (UX layer only — see the warning above)
+//  Reads the wallet's on-chain commit record and unlocks parts
+//  of the page based on how much they have committed.
+// ============================================================
+
+// Tier thresholds in micro-USD (6 decimals): $5,000 / $500.
+var TIER_GOLD_MICRO_USD   = 5000000000;
+var TIER_SILVER_MICRO_USD = 500000000;
+
+// How recent the last commit must be to count as an "active"
+// subscriber. The chain never expires commit records — recency
+// is purely your site's policy.
+var ACTIVE_WINDOW_DAYS = 30;
+
+async function getSupporterStatus(walletAddress) {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+
+    // committing_info returns null if this wallet has never committed,
+    // otherwise the wallet's cumulative commit record for this pool.
+    var info = await client.queryContractSmart(bluechip_CONFIG.poolAddress, {
+        committing_info: { wallet: walletAddress }
+    });
+
+    if (!info) {
+        return { isSupporter: false, tier: "none", isActive: false };
+    }
+
+    // total_paid_usd is micro-USD (1000000 = $1.00), as a string.
+    var totalUsd = parseInt(info.total_paid_usd);
+    var tier = "bronze";
+    if (totalUsd >= TIER_GOLD_MICRO_USD)        tier = "gold";
+    else if (totalUsd >= TIER_SILVER_MICRO_USD) tier = "silver";
+
+    // last_committed is a timestamp in NANOSECONDS (as a string).
+    var lastCommitMs = parseInt(info.last_committed) / 1000000;
+    var ageDays      = (Date.now() - lastCommitMs) / 86400000;
+    var isActive     = ageDays <= ACTIVE_WINDOW_DAYS;
+
+    return {
+        isSupporter: true,
+        tier: tier,
+        isActive: isActive,
+        totalPaidUsd: totalUsd / 1000000,
+        lastCommitted: new Date(lastCommitMs)
+    };
+}
+
+// Example: unlock page sections after the wallet connects.
+async function unlockSupporterContent() {
+    if (!window.bluechipAddress) {
+        var ok = await connectKeplrWallet();
+        if (!ok) return;
+    }
+
+    var status = await getSupporterStatus(window.bluechipAddress);
+
+    // Reveal/hide blocks by tier. Give gated blocks these IDs in
+    // your HTML: supporter-content, gold-content, etc.
+    var supporterEl = document.getElementById("supporter-content");
+    if (supporterEl) {
+        supporterEl.style.display =
+            (status.isSupporter && status.isActive) ? "block" : "none";
+    }
+    var goldEl = document.getElementById("gold-content");
+    if (goldEl) {
+        goldEl.style.display = (status.tier === "gold") ? "block" : "none";
+    }
+
+    var label = document.getElementById("supporter-status");
+    if (label) {
+        label.textContent = status.isSupporter
+            ? ("Supporter tier: " + status.tier +
+               (status.isActive ? " (active)" : " (lapsed)"))
+            : "Not a supporter yet — hit Subscribe above!";
+    }
+}
+</script>
+
+<!-- Example gated markup -->
+<div id="supporter-status"></div>
+<div id="supporter-content" style="display:none;">
+    Subscriber-only content here (early videos, downloads, chat invite...)
+</div>
+<div id="gold-content" style="display:none;">
+    Gold-tier extras here.
+</div>`;
+
+const privServerVerifyCode = `// ============================================================
+//  STEP 1 (browser): prove wallet ownership with an ADR-36
+//  signature. Anyone can READ the commit ledger, so for real
+//  privileges (downloads, Discord roles, accounts) your server
+//  must check the user actually controls the wallet.
+// ============================================================
+async function loginWithWallet() {
+    await window.keplr.enable(bluechip_CONFIG.chainId);
+
+    // 1. Ask your server for a one-time nonce (prevents replay).
+    var nonceRes = await fetch("/api/auth/nonce", { method: "POST" });
+    var nonce    = (await nonceRes.json()).nonce;
+
+    var signer   = window.getOfflineSigner(bluechip_CONFIG.chainId);
+    var accounts = await signer.getAccounts();
+    var address  = accounts[0].address;
+
+    // 2. Sign the nonce. signArbitrary = ADR-36: costs no gas and
+    //    cannot be replayed as a real transaction.
+    var message   = "bluechip-login:" + nonce;
+    var signature = await window.keplr.signArbitrary(
+        bluechip_CONFIG.chainId, address, message
+    );
+
+    // 3. Send to your server for verification.
+    var verifyRes = await fetch("/api/auth/verify", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: address, message: message, signature: signature })
+    });
+    var session = await verifyRes.json();
+    console.log("Privileges granted:", session);
+}
+
+// ============================================================
+//  STEP 2 (your server — Node.js example, adapt to your stack):
+//  verify the signature, then read the commit ledger over the
+//  chain's REST (LCD) endpoint and grant privileges by tier.
+//
+//  npm install @keplr-wallet/cosmos
+// ============================================================
+const { verifyADR36Amino } = require("@keplr-wallet/cosmos");
+
+const REST_ENDPOINT = "https://bluechip.api.bluechip.link";
+const POOL_ADDRESS  = "bluechip1your_pool_address_here";
+const BECH32_PREFIX = "bluechip";
+
+// Smart-query a contract over REST: the query JSON is base64-encoded
+// into the URL. Works from any backend language — only the base64
+// and HTTP parts are Node-specific here.
+async function queryCommitRecord(walletAddress) {
+    const query   = { committing_info: { wallet: walletAddress } };
+    const encoded = Buffer.from(JSON.stringify(query)).toString("base64");
+    const url     = REST_ENDPOINT +
+        "/cosmwasm/wasm/v1/contract/" + POOL_ADDRESS + "/smart/" + encodeURIComponent(encoded);
+    const res     = await fetch(url);
+    if (!res.ok) throw new Error("LCD query failed: " + res.status);
+    return (await res.json()).data;   // null if the wallet never committed
+}
+
+// POST /api/auth/verify
+async function handleVerify(req, res) {
+    const { address, message, signature } = req.body;
+
+    // 1. Check the nonce inside \`message\` is one you issued and unused,
+    //    then mark it spent (not shown — use your session/DB layer).
+
+    // 2. Verify the ADR-36 signature actually binds this address.
+    const pubKeyBytes = Buffer.from(signature.pub_key.value, "base64");
+    const sigBytes    = Buffer.from(signature.signature, "base64");
+    const ok = verifyADR36Amino(
+        BECH32_PREFIX, address, message, pubKeyBytes, sigBytes
+    );
+    if (!ok) return res.status(401).json({ error: "Bad signature" });
+
+    // 3. Wallet ownership proven — now read the on-chain commit record.
+    const record = await queryCommitRecord(address);
+    if (!record) return res.json({ role: "visitor" });
+
+    // 4. Map the record to YOUR privileges. total_paid_usd is micro-USD.
+    const totalUsd = Number(record.total_paid_usd) / 1e6;
+    const role = totalUsd >= 5000 ? "gold"
+               : totalUsd >= 500  ? "silver"
+               : "bronze";
+
+    // 5. Issue your normal session (cookie / JWT / Discord role grant...).
+    res.json({ role: role, totalUsd: totalUsd, lastCommitted: record.last_committed });
+}`;
+
+const privEventWatchCode = `// ============================================================
+//  REAL-TIME: react the moment a commit lands on-chain.
+//  Every commit emits a wasm event with these attributes:
+//    action:    "commit"
+//    phase:     "funding" | "post-threshold" |
+//               "threshold-crossing" | "threshold-hit-exact"
+//    committer: wallet address that committed
+//    commit_amount_bluechip / commit_amount_usd (micro-units)
+//    total_commit_count, pool_contract, block_height, block_time
+//  Subscribe over the RPC websocket and grant perks instantly
+//  (unlock a chat, ping Discord, send a thank-you email...).
+// ============================================================
+var RPC_WS = bluechip_CONFIG.rpc.replace(/^http/, "ws") + "/websocket";
+
+function watchCommits(onCommit) {
+    var ws = new WebSocket(RPC_WS);
+
+    ws.onopen = function () {
+        ws.send(JSON.stringify({
+            jsonrpc: "2.0",
+            method:  "subscribe",
+            id:      1,
+            params:  {
+                query: "tm.event='Tx' AND wasm.action='commit'" +
+                       " AND wasm._contract_address='" + bluechip_CONFIG.poolAddress + "'"
+            }
+        }));
+    };
+
+    ws.onmessage = function (msgEvent) {
+        var msg = JSON.parse(msgEvent.data);
+        // Tendermint flattens attributes into result.events:
+        // { "wasm.committer": ["bluechip1..."], "wasm.commit_amount_usd": ["1000000"], ... }
+        var events = msg.result && msg.result.events;
+        if (!events || !events["wasm.committer"]) return;
+
+        onCommit({
+            committer: events["wasm.committer"][0],
+            phase:     (events["wasm.phase"] || [])[0],
+            amountUsd: parseInt((events["wasm.commit_amount_usd"] || ["0"])[0]) / 1000000,
+            txHash:    (events["tx.hash"] || [])[0]
+        });
+    };
+
+    // Reconnect on drop — RPC nodes recycle websocket connections.
+    ws.onclose = function () { setTimeout(function () { watchCommits(onCommit); }, 5000); };
+    return ws;
+}
+
+// Example: grant a perk the moment someone commits.
+watchCommits(function (commit) {
+    console.log(commit.committer + " committed $" + commit.amountUsd + " (" + commit.phase + ")");
+    // -> POST to your backend, flip a UI flag, fire a Discord webhook, etc.
+});
+
+// No websocket? Poll the LCD for recent commit txs instead:
+//   GET /cosmos/tx/v1beta1/txs?query=wasm.action='commit'
+//        AND wasm._contract_address='<POOL>'&order_by=ORDER_BY_DESC&limit=20`;
 
 const fullExampleCode = `<!DOCTYPE html>
 <html lang="en">
@@ -1006,9 +1247,10 @@ const tocItems = [
     { num: '9', title: 'Collect Fees', id: 'collect-fees' },
     { num: '10', title: 'Create a Pool', id: 'create-pool' },
     { num: '11', title: 'Querying Pool Info (Read-Only)', id: 'query-pool' },
-    { num: '12', title: 'Full Working Example Page', id: 'full-example' },
-    { num: '13', title: 'Troubleshooting', id: 'troubleshooting' },
-    { num: '14', title: 'Contract Address Reference', id: 'contract-reference' },
+    { num: '12', title: 'Granting Special Privileges to Committed Users', id: 'special-privileges' },
+    { num: '13', title: 'Full Working Example Page', id: 'full-example' },
+    { num: '14', title: 'Troubleshooting', id: 'troubleshooting' },
+    { num: '15', title: 'Contract Address Reference', id: 'contract-reference' },
 ];
 
 
@@ -1293,8 +1535,75 @@ const IntegrationGuidePage: React.FC = () => {
                             </Accordion>
                         </SectionCard>
 
-                        {/* Section 12: Full Working Example */}
-                        <SectionCard id="full-example" number="12" title="Full Working Example Page">
+                        {/* Section 12: Special Privileges */}
+                        <SectionCard id="special-privileges" number="12" title="Granting Special Privileges to Committed Users">
+                            <Typography paragraph>
+                                Every commit writes a permanent, public record to your pool's ledger:
+                                who committed, how much (in USD and bluechip), and when. After the
+                                threshold, supporters also receive your creator tokens. Your website
+                                can read either of these to give supporters <strong>special privileges</strong> —
+                                subscriber-only pages, download links, badges, Discord roles, early access,
+                                anything you can gate.
+                            </Typography>
+                            <Typography paragraph>
+                                Because every stack is different (static site, WordPress, Node, Discord
+                                bot...), this section shows three building blocks, from simplest to most
+                                robust. They are plain JavaScript and standard HTTP/WebSocket calls, so
+                                they port to any environment.
+                            </Typography>
+
+                            <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                                Pattern A — Client-Side Gating (good for cosmetic perks)
+                            </Typography>
+                            <Typography paragraph>
+                                Read the connected wallet's commit record with the <code>committing_info</code> query
+                                and show/hide page sections by tier. No server needed — this runs entirely
+                                in the visitor's browser.
+                            </Typography>
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                Client-side checks can be bypassed by anyone comfortable with browser dev
+                                tools — and they prove only that a wallet is <em>connected</em>, not owned.
+                                Use Pattern A for cosmetic perks (badges, styling, shout-outs). For anything
+                                valuable (downloads, accounts, paid content), use Pattern B.
+                            </Alert>
+                            <CodeBlock code={privClientGateCode} language="HTML + JavaScript" />
+
+                            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+                                Pattern B — Server-Verified Privileges (secure)
+                            </Typography>
+                            <Typography paragraph>
+                                The commit ledger is public, so the question your server must answer is
+                                not "has this wallet committed?" but "does this visitor <em>own</em> that
+                                wallet?". The standard solution is an <strong>ADR-36 signature</strong>:
+                                Keplr's <code>signArbitrary</code> signs a one-time nonce at zero gas cost,
+                                your server verifies the signature, then queries the pool over the chain's
+                                REST endpoint and grants a role based on the on-chain record.
+                            </Typography>
+                            <CodeBlock code={privServerVerifyCode} language="JavaScript / Node.js" />
+
+                            <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
+                                Pattern C — React to Commits in Real Time
+                            </Typography>
+                            <Typography paragraph>
+                                Commits emit on-chain events the moment they land. Subscribe to them over
+                                the RPC WebSocket to trigger perks instantly — flip on a chat invite, fire
+                                a Discord webhook, or thank the supporter by name.
+                            </Typography>
+                            <CodeBlock code={privEventWatchCode} language="JavaScript" />
+
+                            <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                                <strong>Design notes:</strong> amounts are micro-units
+                                (<code>total_paid_usd</code> of 5000000000 = $5,000);&nbsp;
+                                <code>last_committed</code> is in nanoseconds; commit records never expire
+                                on-chain, so "active subscriber" windows (e.g. committed within 30 days) are
+                                your site's policy, enforced from <code>last_committed</code>. For
+                                token-balance-based perks instead, query the creator token's CW20&nbsp;
+                                <code>balance</code> endpoint the same way.
+                            </Alert>
+                        </SectionCard>
+
+                        {/* Section 13: Full Working Example */}
+                        <SectionCard id="full-example" number="13" title="Full Working Example Page">
                             <Typography paragraph>
                                 Here's a complete, self-contained HTML page you can save and use. It includes
                                 wallet connection, subscribe, buy, sell, and fee collection all on one page.
@@ -1302,8 +1611,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={fullExampleCode} language="HTML" />
                         </SectionCard>
 
-                        {/* Section 13: Troubleshooting */}
-                        <SectionCard id="troubleshooting" number="13" title="Troubleshooting">
+                        {/* Section 14: Troubleshooting */}
+                        <SectionCard id="troubleshooting" number="14" title="Troubleshooting">
                             <TableContainer component={Paper} variant="outlined">
                                 <Table size="small">
                                     <TableHead>
@@ -1318,7 +1627,11 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['"Failed to connect"', 'Make sure you\'ve approved the BlueChip chain in Keplr. Try disconnecting and reconnecting'],
                                             ['"out of gas"', 'Increase the gas limit in the execute() call (e.g., change "500000" to "800000")'],
                                             ['"insufficient funds"', 'You need more bluechip tokens. Check your balance in Keplr'],
+                                            ['"Invalid creation funds: ... Send exactly one denom"', 'Create-pool requires exactly one coin entry of the canonical bluechip denom. Remove any IBC / tokenfactory / stray denoms from the funds array'],
+                                            ['"Insufficient creation fee"', "The attached bluechip amount is below the oracle-derived USD fee. Re-query the required amount (it changes with bluechip's USD price) and re-attach"],
+                                            ['"creation fee is disabled; do not attach any funds"', 'The factory currently has the creation fee set to zero. Pass an empty funds array on these calls'],
                                             ['"rate limited"', 'Commits have a 13-second cooldown per wallet. Wait and try again'],
+                                            ['"Commit too small"', 'Each pool enforces a minimum commit value in USD (separate pre- and post-threshold floors). Increase the amount'],
                                             ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the $25,000 threshold. Use Subscribe instead'],
                                             ['"You do not own this position"', 'Double-check your Position ID. Query positions_by_owner to find your positions'],
                                             ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on your block explorer'],
@@ -1334,8 +1647,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </TableContainer>
                         </SectionCard>
 
-                        {/* Section 14: Contract Address Reference */}
-                        <SectionCard id="contract-reference" number="14" title="Contract Address Reference">
+                        {/* Section 15: Contract Address Reference */}
+                        <SectionCard id="contract-reference" number="15" title="Contract Address Reference">
                             <Typography paragraph>
                                 These are the addresses you need. Get them from the BlueChip team or your block explorer:
                             </Typography>
@@ -1373,8 +1686,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <CodeBlock
                                 code={`var pairInfo = await client.queryContractSmart("YOUR_POOL_ADDRESS", { pair: {} });
-// Look for the creator_token entry in pairInfo.pool_token_info
-// (older serialised state still surfaces it as pairInfo.asset_infos)`}
+// Look for the creator_token entry in pairInfo.asset_infos
+// (pool_token_info is the factory-side input field, not this response)`}
                                 language="JavaScript"
                             />
                             <Typography variant="body2" color="text.secondary">

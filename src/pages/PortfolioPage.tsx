@@ -184,7 +184,7 @@ const PortfolioPage: React.FC = () => {
                                     <StatCard
                                         label="Last Fee Collection"
                                         value={lastFeeCollection > 0
-                                            ? new Date(lastFeeCollection / 1_000_000).toLocaleDateString()
+                                            ? new Date(lastFeeCollection * 1000).toLocaleDateString()
                                             : 'Never'}
                                     />
                                 </Grid>
