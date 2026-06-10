@@ -51,9 +51,26 @@ export interface PoolInfoResponse {
     total_positions: number;
 }
 
-export interface CommitStatus {
-    in_progress?: { raised: string; target: string };
-    fully_committed?: Record<string, never>;
+// Wire format of the pool's `is_fully_commited {}` query (and the
+// `threshold_status` field on Analytics). serde serializes the
+// `FullyCommitted` unit variant as the bare string "fully_committed";
+// the in-progress variant arrives as a tagged object. The object form
+// of fully_committed is kept as a defensive member because some older
+// serializers emitted unit variants that way.
+export type CommitStatus =
+    | 'fully_committed'
+    | { in_progress: { raised: string; target: string } }
+    | { fully_committed: Record<string, never> };
+
+export function isFullyCommitted(status: CommitStatus | null | undefined): boolean {
+    if (!status) return false;
+    if (status === 'fully_committed') return true;
+    return typeof status === 'object' && 'fully_committed' in status;
+}
+
+export function commitProgress(status: CommitStatus | null | undefined): { raised: string; target: string } | null {
+    if (status && typeof status === 'object' && 'in_progress' in status) return status.in_progress;
+    return null;
 }
 
 export interface CommitterInfo {
@@ -66,7 +83,11 @@ export interface CommitterInfo {
 }
 
 export interface PoolCommitResponse {
-    total_count: number;
+    // Number of `committers` entries in THIS page after filtering —
+    // NOT a pre-filter total. Mirrors the contract's PoolCommitResponse;
+    // paginating callers should treat `committers.length < limit` as the
+    // end-of-data signal.
+    page_count: number;
     committers: CommitterInfo[];
 }
 
@@ -77,17 +98,26 @@ export interface CW20TokenInfo {
     total_supply: string;
 }
 
+// Mirrors the factory's FactoryInstantiate struct (returned by the
+// `factory {}` query wrapped as `{ factory: {...} }`).
 export interface FactoryConfig {
     factory_admin_address: string;
-    commit_amount_for_threshold_bluechip: string;
     commit_threshold_limit_usd: string;
+    pyth_contract_addr_for_conversions: string;
+    pyth_atom_usd_price_feed_id: string;
     cw20_token_contract_id: number;
     cw721_nft_contract_id: number;
     create_pool_wasm_contract_id: number;
+    standard_pool_wasm_contract_id: number;
     bluechip_wallet_address: string;
     commit_fee_bluechip: string;
     commit_fee_creator: string;
     max_bluechip_lock_per_pool: string;
+    creator_excess_liquidity_lock_days: number;
+    atom_bluechip_anchor_pool_address: string;
+    bluechip_mint_contract_address: string | null;
+    bluechip_denom: string;
+    atom_denom: string;
     [key: string]: unknown;
 }
 
@@ -456,6 +486,9 @@ const MOCK_POOLS: PoolSummary[] = [
     },
 ];
 
+// NOTE: position `created_at` / `last_fee_collection` are block-time
+// SECONDS on-chain (`env.block.time.seconds()`), unlike commit
+// `last_committed` which is a Timestamp serialized as nanoseconds.
 const MOCK_POSITIONS: PositionResponse[] = [
     {
         position_id: '1',
@@ -463,8 +496,8 @@ const MOCK_POSITIONS: PositionResponse[] = [
         owner: MOCK_WALLET,
         fee_growth_inside_0_last: '100000',
         fee_growth_inside_1_last: '80000',
-        created_at: (now - 30 * day) * 1000000,
-        last_fee_collection: (now - 5 * day) * 1000000,
+        created_at: Math.floor((now - 30 * day) / 1000),
+        last_fee_collection: Math.floor((now - 5 * day) / 1000),
         unclaimed_fees_0: '320000000',
         unclaimed_fees_1: '210000000',
     },
@@ -474,8 +507,8 @@ const MOCK_POSITIONS: PositionResponse[] = [
         owner: MOCK_WALLET,
         fee_growth_inside_0_last: '50000',
         fee_growth_inside_1_last: '40000',
-        created_at: (now - 15 * day) * 1000000,
-        last_fee_collection: (now - 2 * day) * 1000000,
+        created_at: Math.floor((now - 15 * day) / 1000),
+        last_fee_collection: Math.floor((now - 2 * day) / 1000),
         unclaimed_fees_0: '95000000',
         unclaimed_fees_1: '72000000',
     },
@@ -485,8 +518,8 @@ const MOCK_POSITIONS: PositionResponse[] = [
         owner: 'bluechip1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
         fee_growth_inside_0_last: '200000',
         fee_growth_inside_1_last: '160000',
-        created_at: (now - 40 * day) * 1000000,
-        last_fee_collection: (now - 1 * day) * 1000000,
+        created_at: Math.floor((now - 40 * day) / 1000),
+        last_fee_collection: Math.floor((now - 1 * day) / 1000),
         unclaimed_fees_0: '580000000',
         unclaimed_fees_1: '420000000',
     },
@@ -618,9 +651,9 @@ export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitR
     await delay(200);
     const pool = findPool(poolAddress);
     if (pool && (pool.tokenSymbol === 'DELTA' || pool.tokenSymbol === 'EPS')) {
-        return { total_count: MOCK_DELTA_COMMITTERS.length, committers: MOCK_DELTA_COMMITTERS };
+        return { page_count: MOCK_DELTA_COMMITTERS.length, committers: MOCK_DELTA_COMMITTERS };
     }
-    return { total_count: MOCK_COMMITTERS.length, committers: MOCK_COMMITTERS };
+    return { page_count: MOCK_COMMITTERS.length, committers: MOCK_COMMITTERS };
 }
 
 export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
@@ -636,8 +669,8 @@ export async function queryPositions(poolAddress: string): Promise<PositionsResp
                 owner: MOCK_WALLET,
                 fee_growth_inside_0_last: '75000',
                 fee_growth_inside_1_last: '60000',
-                created_at: (now - 20 * day) * 1000000,
-                last_fee_collection: (now - 8 * day) * 1000000,
+                created_at: Math.floor((now - 20 * day) / 1000),
+                last_fee_collection: Math.floor((now - 8 * day) / 1000),
                 unclaimed_fees_0: '180000000',
                 unclaimed_fees_1: '140000000',
             }],
@@ -744,8 +777,10 @@ export async function queryPoolAnalytics(poolAddress: string): Promise<PoolAnaly
         total_value_locked_1: pool.reserve1,
         fee_reserve_0: pool.feeReserve0,
         fee_reserve_1: pool.feeReserve1,
+        // Canonical wire form: serde emits the FullyCommitted unit
+        // variant as the bare string "fully_committed".
         threshold_status: pool.thresholdReached
-            ? { fully_committed: {} }
+            ? 'fully_committed'
             : { in_progress: { raised: pool.raised, target: pool.target } },
         total_usd_raised: pool.totalUsdRaised,
         total_bluechip_raised: pool.totalBluechipRaised,

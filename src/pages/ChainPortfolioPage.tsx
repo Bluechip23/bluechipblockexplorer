@@ -118,7 +118,7 @@ const ChainPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={3}><StatCard label="Total Liquidity Provided" value={formatMicroAmount(totalLiquidity.toString())} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Unclaimed Fees (bluechip)" value={formatMicroAmount(totalUnclaimedFees0.toString())} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Unclaimed Fees (Token)" value={formatMicroAmount(totalUnclaimedFees1.toString())} /></Grid>
-                                <Grid item xs={6} sm={3}><StatCard label="Last Fee Collection" value={lastFeeCollection > 0 ? new Date(lastFeeCollection / 1_000_000).toLocaleDateString() : 'Never'} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="Last Fee Collection" value={lastFeeCollection > 0 ? new Date(lastFeeCollection * 1000).toLocaleDateString() : 'Never'} /></Grid>
                             </Grid>
 
                             <Card>
