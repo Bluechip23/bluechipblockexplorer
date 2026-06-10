@@ -93,6 +93,55 @@ feed would under-report buy pressure without them.
   you outgrow it, the storage layer is isolated in `src/db.ts` — port the
   ~15 SQL statements to Postgres and nothing else changes.
 
+## Deployment
+
+**Docker** (SQLite file persisted in a named volume):
+
+```bash
+docker build -t bluechip-indexer ./indexer
+docker run -d --name bluechip-indexer \
+  -p 4316:4316 -v bluechip-indexer-data:/data \
+  -e RPC_URL=https://your-node:26657 \
+  -e FACTORY_ADDRESS=bluechip1yourfactory \
+  -e START_HEIGHT=1 \
+  bluechip-indexer
+```
+
+**systemd** (bare metal next to a node):
+
+```ini
+[Unit]
+Description=BlueChip indexer
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/bluechip-indexer
+Environment=RPC_URL=http://127.0.0.1:26657
+Environment=FACTORY_ADDRESS=bluechip1yourfactory
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`Restart=always` is the intended crash story: the cursor commits
+transactionally with each block, so a restart resumes exactly where it
+stopped.
+
+**Rate limiting:** the API applies a per-IP fixed window
+(`RATE_LIMIT_PER_MIN`, default 300; `/health` exempt; `0` disables).
+For public deployments put it behind your usual reverse proxy / CDN and
+disable the built-in limiter if the proxy already enforces one.
+
+### Wallet commit history
+
+`GET /wallets/:address/commits?limit&before_ts` returns one wallet's
+per-transaction commit history across every pool (newest first) — the
+explorer's wallet pages use it, since the chain only stores per-wallet
+cumulative totals.
+
 ## Tests
 
 ```bash

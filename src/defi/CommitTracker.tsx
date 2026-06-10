@@ -3,6 +3,7 @@ import { Card, CardContent, Typography, Box, LinearProgress } from '@mui/materia
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { compareMicro, microToNumber, safeBigInt } from '../utils/bigintMath';
+import { fetchRecentCommits } from '../utils/indexerApi';
 
 interface CommitTrackerProps {
     client: SigningCosmWasmClient | null;
@@ -23,13 +24,48 @@ interface GraphDataPoint {
 }
 
 const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }) => {
-    const [commits, setCommits] = useState<Commit[]>([]);
+    const [uniqueCommitters, setUniqueCommitters] = useState(0);
     const [totalRaised, setTotalRaised] = useState(0);
     const [totalBluechips, setTotalBluechips] = useState(0);
     const [graphData, setGraphData] = useState<GraphDataPoint[]>([]);
     const THRESHOLD = 25000;
 
-    const fetchCommits = useCallback(async () => {
+    // Preferred path: the indexer's per-transaction commit history gives
+    // the true cumulative funding curve. The on-chain ledger only stores
+    // per-wallet totals + last commit time, so repeat commits collapse
+    // into one point there.
+    const loadFromIndexer = useCallback(async (): Promise<boolean> => {
+        const rows = await fetchRecentCommits(contractAddress, 1000);
+        if (!rows || rows.length === 0) return false;
+
+        const ordered = [...rows].sort((a, b) => a.ts - b.ts || a.height - b.height);
+        let cumulative = 0n;
+        let bluechipTotal = 0n;
+        const wallets = new Set<string>();
+        const data: GraphDataPoint[] = ordered.map((c) => {
+            const value = safeBigInt(c.amount_usd ?? '0');
+            cumulative += value;
+            bluechipTotal += safeBigInt(c.amount_bluechip ?? '0');
+            wallets.add(c.committer);
+            return {
+                name: '',
+                value: microToNumber(value, 0),
+                total: microToNumber(cumulative, 0),
+                timestamp: new Date(c.ts * 1000).toLocaleString(),
+            };
+        });
+
+        setUniqueCommitters(wallets.size);
+        setTotalRaised(microToNumber(cumulative, 0));
+        setTotalBluechips(microToNumber(bluechipTotal, 0));
+        setGraphData(data);
+        return true;
+    }, [contractAddress]);
+
+    // Fallback: cumulative per-wallet snapshots from the contract,
+    // ordered by each wallet's LAST commit time. Under-represents repeat
+    // commits but works without an indexer.
+    const loadFromChain = useCallback(async () => {
         if (!client) return;
         try {
             const response = await client.queryContractSmart(contractAddress, {
@@ -61,7 +97,7 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                     };
                 });
 
-                setCommits(sortedCommits);
+                setUniqueCommitters(sortedCommits.length);
                 setTotalRaised(microToNumber(cumulative, 0));
                 setTotalBluechips(microToNumber(bluechipTotal, 0));
                 setGraphData(data);
@@ -72,10 +108,14 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
     }, [client, contractAddress]);
 
     useEffect(() => {
-        if (client && contractAddress) {
-            fetchCommits();
-        }
-    }, [client, contractAddress, fetchCommits]);
+        if (!contractAddress) return;
+        let cancelled = false;
+        (async () => {
+            const ok = await loadFromIndexer();
+            if (!cancelled && !ok) await loadFromChain();
+        })();
+        return () => { cancelled = true; };
+    }, [contractAddress, loadFromIndexer, loadFromChain]);
 
     const displayTotal = totalRaised > 1000000 ? totalRaised / 1000000 : totalRaised;
     const progress = Math.min((displayTotal / THRESHOLD) * 100, 100);
@@ -98,7 +138,7 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={graphData} margin={{ top: 5, right: 20, bottom: 20, left: 20 }}>
                             <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
-                            <XAxis dataKey="name" label={{ value: `Users Committed: ${commits.length}`, offset: -10 }} />
+                            <XAxis dataKey="name" label={{ value: `Users Committed: ${uniqueCommitters}`, offset: -10 }} />
                             <YAxis
                                 domain={[0, Math.max(THRESHOLD, displayTotal * 1.1)]}
                                 label={{ value: 'Subscription Amount', angle: -90, position: 'left', dy: -60, offset: -10 }}

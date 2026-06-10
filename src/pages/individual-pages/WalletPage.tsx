@@ -13,6 +13,7 @@ import axios from 'axios';
 import { CardSkeleton, TableSkeleton } from '../../components/universal/LoadingSkeleton';
 import { formatAmount } from '../../utils/txDecoder';
 import CopyableId from '../../components/universal/CopyableId';
+import WalletCommitHistory from '../../components/individual-pages/WalletCommitHistory';
 
 
 const Wallet: React.FC = () => {
@@ -91,6 +92,9 @@ const Wallet: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} md={8}>
                     {loading ? <TableSkeleton /> : <WalletTransactionsTable walletTx={transactions} />}
+                </Grid>
+                <Grid item xs={12} md={8}>
+                    <WalletCommitHistory wallet={id} />
                 </Grid>
             </Grid>
         </Layout>

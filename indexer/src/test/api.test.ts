@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import {
     commitSeries, creatorStatement, Db, insertClaim, insertCommit, insertTrade,
-    listTrades, migrate, priceSeries, upsertPool, volumeSeries, windowStats,
+    listCommitsByWallet, listTrades, migrate, priceSeries, upsertPool,
+    volumeSeries, windowStats,
 } from '../db';
 
 const POOL = 'bluechip1pool';
@@ -134,4 +135,29 @@ test('windowStats compares the current window to the previous one', () => {
     assert.equal(s.current.commit_usd, 7000000);
     assert.equal(s.previous.trades, 1);
     assert.equal(s.previous.sells, 1);
+});
+
+test('listCommitsByWallet returns cross-pool history newest first', () => {
+    const db = freshDb();
+    upsertPool(db, { address: 'bluechip1pool2', pool_id: 2, kind: 'commit', created_height: 2, created_at: T0 });
+    const commit = (i: number, ts: number, pool: string) => insertCommit(db, {
+        txhash: `W${i}`, event_index: 0, height: i, ts, pool,
+        committer: 'bluechip1fan', phase: 'funding',
+        amount_bluechip: '1000000', amount_usd: '125000',
+        usd_raised_after: null, bluechip_raised_after: null, tokens_received: null,
+    });
+    commit(1, T0 + 10, POOL);
+    commit(2, T0 + 20, 'bluechip1pool2');
+    insertCommit(db, {
+        txhash: 'OTHER', event_index: 0, height: 3, ts: T0 + 30, pool: POOL,
+        committer: 'bluechip1someoneelse', phase: 'funding',
+        amount_bluechip: '1', amount_usd: '1',
+        usd_raised_after: null, bluechip_raised_after: null, tokens_received: null,
+    });
+
+    const rows = listCommitsByWallet(db, { wallet: 'bluechip1fan', limit: 10, beforeTs: null }) as any[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].txhash, 'W2');           // newest first
+    assert.equal(rows[0].pool, 'bluechip1pool2');
+    assert.equal(rows[1].txhash, 'W1');
 });

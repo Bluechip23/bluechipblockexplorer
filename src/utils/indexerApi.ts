@@ -118,6 +118,22 @@ export function fetchRecentCommits(pool: string, limit = 25, wallet?: string): P
     return fetchJson<IndexedCommit[]>(`/pools/${pool}/commits?limit=${limit}${w}`);
 }
 
+export interface WalletCommit {
+    txhash: string;
+    height: number;
+    ts: number;
+    pool: string;
+    phase: string;
+    amount_bluechip: string | null;
+    amount_usd: string | null;
+    tokens_received: string | null;
+}
+
+// Cross-pool commit history for one wallet, newest first.
+export function fetchWalletCommits(wallet: string, limit = 50): Promise<WalletCommit[] | null> {
+    return fetchJson<WalletCommit[]>(`/wallets/${wallet}/commits?limit=${limit}`);
+}
+
 export function fetchCreatorStatement(pool: string, from = 0, to?: number, feeBps = 500): Promise<StatementLine[] | null> {
     const end = to ?? Math.floor(Date.now() / 1000) + 60;
     return fetchJson<StatementLine[]>(`/pools/${pool}/creator-statement?from=${from}&to=${end}&fee_bps=${feeBps}`, 20000);

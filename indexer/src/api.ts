@@ -1,8 +1,9 @@
 import cors from 'cors';
 import express, { Express, Request } from 'express';
 import {
-    commitSeries, creatorStatement, Db, healthCounts, listCommits, listPools,
-    listTrades, priceSeries, volumeSeries, windowStats,
+    commitSeries, creatorStatement, Db, healthCounts, listCommits,
+    listCommitsByWallet, listPools, listTrades, priceSeries, volumeSeries,
+    windowStats,
 } from './db';
 
 function clampInt(raw: unknown, fallback: number, min: number, max: number): number {
@@ -32,9 +33,39 @@ function seriesParams(req: Request, pool: string) {
     return { pool, bucket, from, to };
 }
 
+// Fixed-window per-IP rate limiter (no external deps). Generous default
+// for a public explorer; set RATE_LIMIT_PER_MIN=0 to disable when the
+// API sits behind a reverse proxy that already rate-limits.
+function rateLimiter(maxPerMinute: number) {
+    const windows = new Map<string, { windowStart: number; count: number }>();
+    return (req: Request, res: any, next: () => void) => {
+        if (maxPerMinute <= 0 || req.path === '/health') return next();
+        const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+            || req.socket.remoteAddress || 'unknown';
+        const now = Date.now();
+        const w = windows.get(ip);
+        if (!w || now - w.windowStart >= 60_000) {
+            windows.set(ip, { windowStart: now, count: 1 });
+            // Opportunistic cleanup so the map can't grow unbounded.
+            if (windows.size > 10_000) {
+                for (const [k, v] of windows) {
+                    if (now - v.windowStart >= 60_000) windows.delete(k);
+                }
+            }
+            return next();
+        }
+        w.count += 1;
+        if (w.count > maxPerMinute) {
+            return res.status(429).json({ error: 'rate limit exceeded' });
+        }
+        next();
+    };
+}
+
 export function buildApi(db: Db): Express {
     const app = express();
     app.use(cors());
+    app.use(rateLimiter(parseInt(process.env.RATE_LIMIT_PER_MIN ?? '300', 10)));
 
     app.get('/health', (_req, res) => {
         res.json({ ok: true, ...healthCounts(db) });
@@ -85,6 +116,16 @@ export function buildApi(db: Db): Express {
             limit: clampInt(req.query.limit, 50, 1, 1000),
             beforeTs: optInt(req.query.before_ts),
             wallet,
+        }));
+    });
+
+    app.get('/wallets/:address/commits', (req, res) => {
+        const wallet = poolParam(req);   // same bech32 shape check
+        if (!wallet) return res.status(400).json({ error: 'invalid wallet address' });
+        res.json(listCommitsByWallet(db, {
+            wallet,
+            limit: clampInt(req.query.limit, 50, 1, 1000),
+            beforeTs: optInt(req.query.before_ts),
         }));
     });
 
