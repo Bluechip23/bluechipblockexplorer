@@ -1,4 +1,5 @@
 import { safeBigInt } from './bigintMath';
+import * as chain from './chainQueries';
 
 const MOCK_WALLET = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 
@@ -679,20 +680,20 @@ function findPool(address: string): PoolSummary | undefined {
     return MOCK_POOLS.find((p) => p.poolAddress === address);
 }
 
-export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
+async function mockFetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
     await delay(400);
     const pool = findPool(poolAddress) || MOCK_POOLS[0];
     // SECURITY: Sanitize all on-chain strings before they enter the render tree.
     return pool ? sanitizePoolSummary(pool) : null;
 }
 
-export async function fetchAllPoolSummaries(_factoryAddress: string): Promise<PoolSummary[]> {
+async function mockFetchAllPoolSummaries(_factoryAddress: string): Promise<PoolSummary[]> {
     await delay(600);
     // SECURITY: Sanitize every pool summary returned from the chain query.
     return MOCK_POOLS.map(sanitizePoolSummary);
 }
 
-export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitResponse | null> {
+async function mockQueryPoolCommits(poolAddress: string): Promise<PoolCommitResponse | null> {
     await delay(200);
     const pool = findPool(poolAddress);
     if (pool && (pool.tokenSymbol === 'DELTA' || pool.tokenSymbol === 'EPS')) {
@@ -701,7 +702,7 @@ export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitR
     return { page_count: MOCK_COMMITTERS.length, committers: MOCK_COMMITTERS };
 }
 
-export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
+async function mockQueryPositions(poolAddress: string): Promise<PositionsResponse | null> {
     await delay(200);
     const pool = findPool(poolAddress);
     if (pool && !pool.thresholdReached) return { positions: [] };
@@ -724,7 +725,7 @@ export async function queryPositions(poolAddress: string): Promise<PositionsResp
     return { positions: [] };
 }
 
-export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
+async function mockQueryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
     await delay(100);
     const pool = findPool(poolAddress);
     return {
@@ -737,7 +738,7 @@ export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo |
     };
 }
 
-export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
+async function mockQueryPoolCreator(poolAddress: string): Promise<string | null> {
     await delay(100);
     const pool = findPool(poolAddress);
     if (pool && (pool.tokenSymbol === 'ALPHA' || pool.tokenSymbol === 'DELTA')) {
@@ -746,7 +747,7 @@ export async function queryPoolCreator(poolAddress: string): Promise<string | nu
     return 'bluechip1othercreator_not_you_random_addr_placeholder';
 }
 
-export async function findPoolsByCreator(
+async function mockFindPoolsByCreator(
     pools: PoolSummary[],
     walletAddress: string
 ): Promise<PoolSummary[]> {
@@ -754,14 +755,14 @@ export async function findPoolsByCreator(
     return pools.filter((p) => p.tokenSymbol === 'ALPHA' || p.tokenSymbol === 'DELTA');
 }
 
-export async function queryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
+async function mockQueryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
     await delay(350);
     if (tokenAddress.includes('alpha')) return MOCK_ALPHA_DISTRIBUTION;
     if (tokenAddress.includes('delta')) return MOCK_DELTA_DISTRIBUTION;
     return MOCK_ALPHA_DISTRIBUTION;
 }
 
-export async function queryThresholdAnalytics(
+async function mockQueryThresholdAnalytics(
     poolAddress: string,
     committers: CommitterInfo[]
 ): Promise<ThresholdAnalytics | null> {
@@ -801,7 +802,7 @@ export async function queryThresholdAnalytics(
     };
 }
 
-export async function queryPoolAnalytics(poolAddress: string): Promise<PoolAnalyticsResponse | null> {
+async function mockQueryPoolAnalytics(poolAddress: string): Promise<PoolAnalyticsResponse | null> {
     await delay(250);
     const pool = findPool(poolAddress);
     if (!pool) return null;
@@ -842,7 +843,7 @@ export interface WalletHolding {
     poolAddress: string;
 }
 
-export async function queryWalletHoldings(
+async function mockQueryWalletHoldings(
     walletAddress: string,
     pools: PoolSummary[]
 ): Promise<WalletHolding[]> {
@@ -878,7 +879,7 @@ export async function queryWalletHoldings(
 // Mirrors the creator-pool `creator_earnings {}` query. Mock data keeps
 // the canonical wire units: token amounts in micro, timestamps in
 // nanoseconds-as-strings.
-export async function queryCreatorEarnings(poolAddress: string): Promise<CreatorEarningsResponse | null> {
+async function mockQueryCreatorEarnings(poolAddress: string): Promise<CreatorEarningsResponse | null> {
     await delay(200);
     const pool = findPool(poolAddress);
     if (!pool) return null;
@@ -911,31 +912,23 @@ export async function queryCreatorEarnings(poolAddress: string): Promise<Creator
     };
 }
 
-export async function queryDistributionState(_poolAddress: string): Promise<DistributionStateResponse | null> {
+async function mockQueryDistributionState(_poolAddress: string): Promise<DistributionStateResponse | null> {
     await delay(150);
     // Mock: every pool's post-threshold payout distribution has completed
     // (the contract returns null once the state is cleaned up).
     return null;
 }
 
-export async function queryPoolIsPaused(_poolAddress: string): Promise<boolean> {
+async function mockQueryPoolIsPaused(_poolAddress: string): Promise<boolean> {
     await delay(100);
     return false;
 }
 
-export async function queryFactoryNotifyStatus(_poolAddress: string): Promise<FactoryNotifyStatusResponse> {
+async function mockQueryFactoryNotifyStatus(_poolAddress: string): Promise<FactoryNotifyStatusResponse> {
     await delay(100);
     return { pending: false };
 }
 
-export async function queryPoolState(_: string): Promise<PoolStateResponse | null> { return null; }
-export async function queryPoolInfo(_: string): Promise<PoolInfoResponse | null> { return null; }
-export async function queryFeeState(_: string): Promise<PoolFeeStateResponse | null> { return null; }
-export async function queryCommitStatus(_: string): Promise<CommitStatus | null> { return null; }
-export async function queryTokenInfo(_: string): Promise<CW20TokenInfo | null> { return null; }
-export async function queryFactoryConfig(_: string): Promise<FactoryConfig | null> { return null; }
-export async function discoverPoolContracts(_: number): Promise<string[]> { return []; }
-export function getCosmWasmClient(): Promise<any> { return Promise.resolve(null); }
 
 
 export function getCreatorTokenAddress(assetInfos: [TokenType, TokenType]): string | null {
@@ -973,4 +966,182 @@ export function sanitizePoolSummary(pool: PoolSummary): PoolSummary {
         tokenName: sanitizeStr(pool.tokenName, 64),
         tokenSymbol: sanitizeStr(pool.tokenSymbol, 16),
     };
+}
+
+// ===========================================================================
+// Data-source dispatch.
+//
+// One RPC probe per session decides between the live chain and the
+// built-in demo data:
+//   - REACT_APP_USE_MOCK_DATA=true  -> always demo data
+//   - REACT_APP_USE_MOCK_DATA=false -> always chain (failures surface as
+//     empty/null results rather than silently mixing in demo data)
+//   - unset -> chain when the RPC answers, demo data otherwise
+// Chain-side failures after the probe resolve to null/[] — never to
+// demo data — so real and mock values can't blend in one session.
+// ===========================================================================
+
+export type DataSource = 'chain' | 'mock';
+
+let dataSourcePromise: Promise<DataSource> | null = null;
+
+export function getDataSource(): Promise<DataSource> {
+    if (!dataSourcePromise) {
+        dataSourcePromise = (async () => {
+            const override = process.env.REACT_APP_USE_MOCK_DATA;
+            if (override === 'true') return 'mock';
+            if (await chain.chainAvailable()) return 'chain';
+            if (override === 'false') return 'chain';
+            console.warn('[bluechip] chain RPC unreachable — serving built-in demo data');
+            return 'mock';
+        })();
+    }
+    return dataSourcePromise;
+}
+
+async function onChain(): Promise<boolean> {
+    return (await getDataSource()) === 'chain';
+}
+
+export async function fetchPoolSummary(poolAddress: string): Promise<PoolSummary | null> {
+    if (await onChain()) {
+        const pool = await chain.chainFetchPoolSummary(poolAddress);
+        return pool ? sanitizePoolSummary(pool) : null;
+    }
+    return mockFetchPoolSummary(poolAddress);
+}
+
+export async function fetchAllPoolSummaries(factoryAddr: string): Promise<PoolSummary[]> {
+    if (await onChain()) {
+        const pools = await chain.chainFetchAllPoolSummaries().catch(() => [] as PoolSummary[]);
+        return pools.map(sanitizePoolSummary);
+    }
+    return mockFetchAllPoolSummaries(factoryAddr);
+}
+
+export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitResponse | null> {
+    if (await onChain()) return chain.chainQueryPoolCommits(poolAddress).catch(() => null);
+    return mockQueryPoolCommits(poolAddress);
+}
+
+export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
+    if (await onChain()) return chain.chainQueryPositions(poolAddress).catch(() => null);
+    return mockQueryPositions(poolAddress);
+}
+
+export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
+    if (await onChain()) return chain.chainQueryPoolPair(poolAddress).catch(() => null);
+    return mockQueryPoolPair(poolAddress);
+}
+
+export async function queryPoolCreator(poolAddress: string): Promise<string | null> {
+    if (await onChain()) return chain.chainQueryPoolCreator(poolAddress).catch(() => null);
+    return mockQueryPoolCreator(poolAddress);
+}
+
+export async function findPoolsByCreator(
+    pools: PoolSummary[],
+    walletAddress: string
+): Promise<PoolSummary[]> {
+    if (await onChain()) return chain.chainFindPoolsByCreator(pools, walletAddress).catch(() => []);
+    return mockFindPoolsByCreator(pools, walletAddress);
+}
+
+export async function queryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
+    if (await onChain()) return chain.chainQueryHolderDistribution(tokenAddress);
+    return mockQueryHolderDistribution(tokenAddress);
+}
+
+export async function queryThresholdAnalytics(
+    poolAddress: string,
+    committers: CommitterInfo[]
+): Promise<ThresholdAnalytics | null> {
+    if (await onChain()) return chain.chainQueryThresholdAnalytics(poolAddress, committers).catch(() => null);
+    return mockQueryThresholdAnalytics(poolAddress, committers);
+}
+
+export async function queryPoolAnalytics(poolAddress: string): Promise<PoolAnalyticsResponse | null> {
+    if (await onChain()) return chain.chainQueryPoolAnalytics(poolAddress).catch(() => null);
+    return mockQueryPoolAnalytics(poolAddress);
+}
+
+export async function queryWalletHoldings(
+    walletAddress: string,
+    pools: PoolSummary[]
+): Promise<WalletHolding[]> {
+    if (await onChain()) return chain.chainQueryWalletHoldings(walletAddress, pools).catch(() => []);
+    return mockQueryWalletHoldings(walletAddress, pools);
+}
+
+export async function queryCreatorEarnings(poolAddress: string): Promise<CreatorEarningsResponse | null> {
+    if (await onChain()) return chain.chainQueryCreatorEarnings(poolAddress).catch(() => null);
+    return mockQueryCreatorEarnings(poolAddress);
+}
+
+export async function queryDistributionState(poolAddress: string): Promise<DistributionStateResponse | null> {
+    if (await onChain()) return chain.chainQueryDistributionState(poolAddress).catch(() => null);
+    return mockQueryDistributionState(poolAddress);
+}
+
+export async function queryPoolIsPaused(poolAddress: string): Promise<boolean> {
+    if (await onChain()) return chain.chainQueryPoolIsPaused(poolAddress).catch(() => false);
+    return mockQueryPoolIsPaused(poolAddress);
+}
+
+export async function queryFactoryNotifyStatus(poolAddress: string): Promise<FactoryNotifyStatusResponse> {
+    if (await onChain()) {
+        return chain.chainQueryFactoryNotifyStatus(poolAddress).catch(() => ({ pending: false }));
+    }
+    return mockQueryFactoryNotifyStatus(poolAddress);
+}
+
+// ---- Previously-stubbed single reads (real on chain, null in demo mode) ----
+
+export async function queryPoolState(poolAddress: string): Promise<PoolStateResponse | null> {
+    if (await onChain()) return chain.chainQueryPoolState(poolAddress).catch(() => null);
+    return null;
+}
+
+export async function queryPoolInfo(poolAddress: string): Promise<PoolInfoResponse | null> {
+    if (await onChain()) return chain.chainQueryPoolInfo(poolAddress).catch(() => null);
+    return null;
+}
+
+export async function queryFeeState(poolAddress: string): Promise<PoolFeeStateResponse | null> {
+    if (await onChain()) return chain.chainQueryFeeState(poolAddress).catch(() => null);
+    return null;
+}
+
+export async function queryCommitStatus(poolAddress: string): Promise<CommitStatus | null> {
+    if (await onChain()) return chain.chainQueryCommitStatus(poolAddress).catch(() => null);
+    return null;
+}
+
+export async function queryTokenInfo(tokenAddress: string): Promise<CW20TokenInfo | null> {
+    if (await onChain()) return chain.chainQueryTokenInfo(tokenAddress).catch(() => null);
+    return null;
+}
+
+export async function queryFactoryConfig(_factoryAddr: string): Promise<FactoryConfig | null> {
+    if (await onChain()) return chain.chainQueryFactoryConfig();
+    return null;
+}
+
+export async function discoverPoolContracts(_codeId: number): Promise<string[]> {
+    if (await onChain()) return chain.chainDiscoverPoolContracts().catch(() => []);
+    return [];
+}
+
+export function getCosmWasmClient() {
+    return chain.getCosmWasmClient();
+}
+
+// ---- Factory oracle price (drives the commit staleness banner) ----
+
+export type { BluechipPriceInfo } from './chainQueries';
+
+export async function queryBluechipOraclePrice(): Promise<chain.BluechipPriceInfo | null> {
+    if (await onChain()) return chain.chainQueryBluechipOraclePrice().catch(() => null);
+    // Demo mode: a fresh, healthy oracle reading ($0.125 per bluechip).
+    return { price: '125000', timestamp: Math.floor(Date.now() / 1000) - 5, is_cached: false };
 }

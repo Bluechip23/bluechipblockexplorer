@@ -79,8 +79,22 @@ export interface StatementLine {
     amount_1: string | null;
 }
 
+export interface IndexedPool {
+    address: string;
+    pool_id: number | null;
+    kind: 'commit' | 'standard';
+    created_height: number;
+    created_at: number;                 // unix seconds
+    threshold_crossed_at: number | null;
+    token_address: string | null;
+}
+
 export function indexerHealth(): Promise<IndexerHealth | null> {
     return fetchJson<IndexerHealth>('/health', 3000);
+}
+
+export function fetchIndexedPools(): Promise<IndexedPool[] | null> {
+    return fetchJson<IndexedPool[]>('/pools', 5000);
 }
 
 export function fetchPriceSeries(pool: string, bucket: number, from: number, to: number): Promise<PricePoint[] | null> {
