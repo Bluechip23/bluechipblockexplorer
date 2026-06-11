@@ -1176,3 +1176,16 @@ export async function simulateMultiHop(
         price_impact: (0.005 * operations.length).toFixed(4),
     };
 }
+
+// ---- Expand-economy reserve (ops monitoring) ----
+
+export type { ExpandEconomyReserve } from './chainQueries';
+
+export async function queryExpandEconomyReserve(): Promise<chain.ExpandEconomyReserve | null> {
+    if (await onChain()) return chain.chainQueryExpandEconomyReserve().catch(() => null);
+    return {
+        address: 'bluechip1expand_economy_mock_address_for_preview',
+        denom: 'ubluechip',
+        amount: '12500000000',   // 12,500 bluechip — comfortably funded
+    };
+}

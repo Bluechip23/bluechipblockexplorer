@@ -4,6 +4,7 @@ import { Layout } from '../ui';
 import BlockExpTopBar from '../navigation/BlockExpTopBar';
 import BlockExpSideBar from '../navigation/BlockExpSideBar';
 import GeneralStats from '../navigation/GeneralStats';
+import OpsStatusStrip from '../components/universal/OpsStatusStrip';
 import RecentBlocksTable from '../components/table-pages/RecentBlocksTable';
 import RecentTransactionsTable from '../components/table-pages/RecentTransactionsTable';
 import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
@@ -67,6 +68,9 @@ const FrontPage: React.FC = () => {
             <Grid container alignItems='center' justifyContent='center' spacing={2}>
                 <Grid item xs={12} md={10}>
                     <GeneralStats />
+                </Grid>
+                <Grid item xs={12} md={10}>
+                    <OpsStatusStrip />
                 </Grid>
                 <Grid item xs={12} md={6}>
                     <RecentBlocksTable />

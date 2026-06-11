@@ -474,3 +474,24 @@ export function chainSimulateMultiHop(
         simulate_multi_hop: { operations, offer_amount: offerAmount },
     });
 }
+
+// ---------------------------------------------------------------------------
+// Expand-economy reserve (threshold-crossing rewards are paid from it)
+// ---------------------------------------------------------------------------
+
+export interface ExpandEconomyReserve {
+    address: string;
+    denom: string;
+    amount: string;   // micro
+}
+
+export async function chainQueryExpandEconomyReserve(): Promise<ExpandEconomyReserve | null> {
+    const cfg = await chainQueryFactoryConfig();
+    const addr = cfg?.bluechip_mint_contract_address;
+    if (!addr) return null;
+    const denom = cfg?.bluechip_denom || 'ubluechip';
+    const bal = await smart<{ denom: string; amount: string }>(addr, {
+        get_balance: { denom },
+    });
+    return { address: addr, denom, amount: bal.amount };
+}
