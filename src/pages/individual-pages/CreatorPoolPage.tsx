@@ -19,6 +19,7 @@ import { Link, useParams } from 'react-router-dom';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
 import PoolHistoryPanel from '../../components/PoolHistoryPanel';
+import PoolStatusBanners from '../../components/universal/PoolStatusBanners';
 import {
     fetchPoolSummary,
     queryPoolCommits,
@@ -466,6 +467,11 @@ const CreatorPoolPage: React.FC = () => {
                                     </Grid>
                                 )}
                             </Grid>
+                        </Grid>
+
+                        {/* Operational state: paused / payout distribution */}
+                        <Grid item xs={12} md={8}>
+                            <PoolStatusBanners poolAddress={pool.poolAddress} tokenSymbol={pool.tokenSymbol} />
                         </Grid>
 
                         {/* Time-series history (price/volume/trades) via the indexer */}

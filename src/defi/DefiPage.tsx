@@ -9,6 +9,8 @@ import BlockExpSideBar from '../navigation/BlockExpSideBar';
 import BlockExplorerNavBar from '../navigation/BlockExplorerNavBar';
 import GeneralStats from '../navigation/GeneralStats';
 import CommitTracker from './CommitTracker';
+import OracleStatusBanner from '../components/universal/OracleStatusBanner';
+import CrossTokenSwapTab from './CrossTokenSwapTab';
 import { NATIVE_DENOM, COIN_DECIMALS } from './types';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 import { useWallet } from '../context/WalletContext';
@@ -345,6 +347,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             </Tabs>
             {subTab === 0 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <OracleStatusBanner />
                     <TextField label="Pool Contract Address" value={poolAddress} onChange={(e) => setPoolAddress(e.target.value)} placeholder="bluechip1..." />
                     <TextField label="Amount (bluechip)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
                     <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5%" />
@@ -770,7 +773,7 @@ const DefiPage: React.FC = () => {
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        const map: Record<string, number> = { create: 0, commit: 1, swap: 2, liquidity: 3, fees: 4 };
+        const map: Record<string, number> = { create: 0, commit: 1, swap: 2, crosstoken: 3, liquidity: 4, fees: 5 };
         if (tab && tab in map) setMainTab(map[tab]);
     }, [location.search]);
 
@@ -806,6 +809,7 @@ const DefiPage: React.FC = () => {
                                 <Tab label="Create Pool" />
                                 <Tab label="Commit" />
                                 <Tab label="Swap" />
+                                <Tab label="Cross-Token" />
                                 <Tab label="Liquidity" />
                                 <Tab label="Collect Fees" />
                             </Tabs>
@@ -820,9 +824,12 @@ const DefiPage: React.FC = () => {
                                 <SwapTab client={client} address={address} />
                             </TabPanel>
                             <TabPanel value={mainTab} index={3}>
-                                <LiquidityTab client={client} address={address} />
+                                <CrossTokenSwapTab client={client} address={address} />
                             </TabPanel>
                             <TabPanel value={mainTab} index={4}>
+                                <LiquidityTab client={client} address={address} />
+                            </TabPanel>
+                            <TabPanel value={mainTab} index={5}>
                                 <FeesTab client={client} address={address} />
                             </TabPanel>
                         </CardContent>

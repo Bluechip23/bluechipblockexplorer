@@ -79,12 +79,27 @@ export const MAINNET_CONFIG: ChainConfig = {
     },
 };
 
+// Keplr-compatible injected wallet API. Leap implements the same
+// surface (suggest chain, enable, per-provider getOfflineSigner), so a
+// single interface covers both extensions.
+export interface InjectedWallet {
+    experimentalSuggestChain: (config: ChainConfig) => Promise<void>;
+    enable: (chainId: string) => Promise<void>;
+    getOfflineSigner?: (chainId: string) => import('@cosmjs/proto-signing').OfflineSigner;
+}
+
 declare global {
     interface Window {
-        keplr?: {
-            experimentalSuggestChain: (config: ChainConfig) => Promise<void>;
-            enable: (chainId: string) => Promise<void>;
-        };
+        keplr?: InjectedWallet;
+        leap?: InjectedWallet;
         getOfflineSigner?: (chainId: string) => import('@cosmjs/proto-signing').OfflineSigner;
     }
+}
+
+// Prefer Keplr when both extensions are installed (it registers the
+// window-level getOfflineSigner fallback older code relies on).
+export function detectInjectedWallet(): { name: 'Keplr' | 'Leap'; wallet: InjectedWallet } | null {
+    if (window.keplr) return { name: 'Keplr', wallet: window.keplr };
+    if (window.leap) return { name: 'Leap', wallet: window.leap };
+    return null;
 }

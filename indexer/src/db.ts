@@ -397,3 +397,17 @@ export function windowStats(db: Db, pool: string, windowSec: number, now: number
         previous: one(now - 2 * windowSec, now - windowSec),
     };
 }
+
+// Cross-pool commit history for one wallet (newest first) — powers the
+// explorer's wallet-page commit history.
+export function listCommitsByWallet(db: Db, opts: {
+    wallet: string; limit: number; beforeTs: number | null;
+}) {
+    return db.prepare(`
+        SELECT txhash, height, ts, pool, phase, amount_bluechip, amount_usd, tokens_received
+        FROM commits
+        WHERE committer = @wallet
+          AND (@beforeTs IS NULL OR ts < @beforeTs)
+        ORDER BY ts DESC, height DESC, event_index DESC
+        LIMIT @limit`).all(opts);
+}

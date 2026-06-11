@@ -79,8 +79,22 @@ export interface StatementLine {
     amount_1: string | null;
 }
 
+export interface IndexedPool {
+    address: string;
+    pool_id: number | null;
+    kind: 'commit' | 'standard';
+    created_height: number;
+    created_at: number;                 // unix seconds
+    threshold_crossed_at: number | null;
+    token_address: string | null;
+}
+
 export function indexerHealth(): Promise<IndexerHealth | null> {
     return fetchJson<IndexerHealth>('/health', 3000);
+}
+
+export function fetchIndexedPools(): Promise<IndexedPool[] | null> {
+    return fetchJson<IndexedPool[]>('/pools', 5000);
 }
 
 export function fetchPriceSeries(pool: string, bucket: number, from: number, to: number): Promise<PricePoint[] | null> {
@@ -102,6 +116,22 @@ export function fetchRecentTrades(pool: string, limit = 25): Promise<IndexedTrad
 export function fetchRecentCommits(pool: string, limit = 25, wallet?: string): Promise<IndexedCommit[] | null> {
     const w = wallet ? `&wallet=${encodeURIComponent(wallet)}` : '';
     return fetchJson<IndexedCommit[]>(`/pools/${pool}/commits?limit=${limit}${w}`);
+}
+
+export interface WalletCommit {
+    txhash: string;
+    height: number;
+    ts: number;
+    pool: string;
+    phase: string;
+    amount_bluechip: string | null;
+    amount_usd: string | null;
+    tokens_received: string | null;
+}
+
+// Cross-pool commit history for one wallet, newest first.
+export function fetchWalletCommits(wallet: string, limit = 50): Promise<WalletCommit[] | null> {
+    return fetchJson<WalletCommit[]>(`/wallets/${wallet}/commits?limit=${limit}`);
 }
 
 export function fetchCreatorStatement(pool: string, from = 0, to?: number, feeBps = 500): Promise<StatementLine[] | null> {
