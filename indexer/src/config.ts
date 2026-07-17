@@ -26,7 +26,7 @@ export function loadConfig(): Config {
         apiPort: envInt('API_PORT', 4316),
         dbPath: process.env.DB_PATH || './bluechip-indexer.db',
         startHeight: envInt('START_HEIGHT', 1),
-        nativeDenom: process.env.NATIVE_DENOM || 'ubluechip',
+        nativeDenom: process.env.NATIVE_DENOM || 'uosmo',
         pollIntervalMs: envInt('POLL_INTERVAL_MS', 1500),
         batchSize: envInt('BATCH_SIZE', 20),
         factoryAddress: process.env.FACTORY_ADDRESS || null,

@@ -1,6 +1,5 @@
 import { safeBigInt } from './bigintMath';
 import { sanitizeOnChainString } from './security';
-import { NATIVE_DENOM } from '../defi/types';
 import * as chain from './chainQueries';
 
 const MOCK_WALLET = 'osmo1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
@@ -22,8 +21,10 @@ export interface AllPoolsResponse {
     pools: [string, PoolStateResponseForFactory][];
 }
 
+// Post-Osmosis-migration the creator side carries a native TokenFactory
+// DENOM (factory/{pool_addr}/{subdenom}), not a CW20 contract address.
 export interface TokenType {
-    creator_token?: { contract_addr: string };
+    creator_token?: { denom: string };
     bluechip?: { denom: string };
 }
 
@@ -94,29 +95,25 @@ export interface PoolCommitResponse {
     committers: CommitterInfo[];
 }
 
-export interface CW20TokenInfo {
+// Display metadata for a creator token. Post-migration the creator token
+// is a native TokenFactory denom, so this is DERIVED (symbol from the
+// subdenom, supply from the bank module) rather than read from a CW20
+// `token_info` query.
+export interface TokenDisplayInfo {
     name: string;
     symbol: string;
     decimals: number;
     total_supply: string;
 }
-
-// Per-pool threshold-payout splits (creator-token mints applied when a
-// commit pool crosses its threshold). Mirrors the factory's
-// `ThresholdPayoutAmounts` struct — Uint128 micro-token amounts as strings.
-export interface ThresholdPayoutAmounts {
-    creator_reward_amount: string;
-    bluechip_reward_amount: string;
-    pool_seed_amount: string;
-    commit_return_amount: string;
-}
+// Back-compat alias — several call sites still import CW20TokenInfo.
+export type CW20TokenInfo = TokenDisplayInfo;
 
 // Mirrors the factory's FactoryInstantiate struct (returned by the
-// `factory {}` query wrapped as `{ factory: {...} }`).
+// `factory {}` query wrapped as `{ factory: {...} }`). Osmosis-native:
+// pricing comes from x/twap, so there are no Pyth/oracle fields, and
+// there are no standard pools.
 export interface FactoryConfig {
     factory_admin_address: string;
-    // Commit threshold, USD-denominated with 6 decimals
-    // (testnet: 20000000 = $20; mainnet: 25000000000 = $25,000).
     commit_threshold_limit_usd: string;
     cw20_token_contract_id: number;
     cw721_nft_contract_id: number;
@@ -126,18 +123,23 @@ export interface FactoryConfig {
     commit_fee_creator: string;
     max_bluechip_lock_per_pool: string;
     creator_excess_liquidity_lock_days: number;
-    // Canonical native bank denom pools pair against (uosmo on Osmosis).
+    // Canonical native denom pools pair against (uosmo).
     bluechip_denom: string;
-    // Osmosis x/twap pricing route: pool id + USD-stable quote denom +
-    // arithmetic-TWAP lookback window (seconds, default 600).
+    // Osmosis pool id + quote denom the factory prices bluechip_denom
+    // against via x/twap.
     pricing_pool_id: number;
     usd_quote_denom: string;
     twap_window_seconds: number;
-    // Flat fee charged on every `create` call, Uint128 string in base
-    // units of bluechip_denom (uosmo). Enforced via must_pay when > 0;
-    // zero disables the fee (attach no funds then).
+    // FLAT creation fee in base units of bluechip_denom (uosmo). "0" = disabled.
     pool_creation_fee: string;
-    threshold_payout_amounts: ThresholdPayoutAmounts;
+    // GAMM pool-creation fee the pool holds until threshold crossing.
+    gamm_pool_creation_fee: { denom: string; amount: string };
+    threshold_payout_amounts: {
+        creator_reward_amount: string;
+        bluechip_reward_amount: string;
+        pool_seed_amount: string;
+        commit_return_amount: string;
+    };
     emergency_withdraw_delay_seconds: number;
     [key: string]: unknown;
 }
@@ -148,11 +150,6 @@ export interface FactoryInstantiateResponse {
 
 // ---- Creator earnings (creator-pool `creator_earnings {}` query) ----
 
-export interface CreatorFeePotWire {
-    amount_0: string;   // claimable bluechip (micro)
-    amount_1: string;   // claimable creator token (micro)
-}
-
 export interface CreatorExcessEarnings {
     bluechip_amount: string;
     token_amount: string;
@@ -162,9 +159,9 @@ export interface CreatorExcessEarnings {
 
 export interface CreatorEarningsResponse {
     creator_wallet_address: string;
-    // Claimable clip-slice fee pot, emptied by `claim_creator_fees`.
-    fee_pot: CreatorFeePotWire;
     // Locked excess-liquidity claim; null when none exists or already claimed.
+    // (There is no clip-slice fee pot anymore — LP fees accrue on the native
+    // Osmosis pool, not to the contract.)
     excess: CreatorExcessEarnings | null;
     is_threshold_hit: boolean;
     threshold_crossed_at: string | null;   // nanoseconds string, null pre-threshold
@@ -377,7 +374,7 @@ const MOCK_COMMITTERS: CommitterInfo[] = [
 const MOCK_POOLS: PoolSummary[] = [
     {
         poolAddress: 'osmo1pool_alpha_7k3jx9f7tn2m4qp6rz0sdvwcy5e72',
-        creatorTokenAddress: 'osmo1token_alpha_cw20_contract_addr_placeholder',
+        creatorTokenAddress: 'factory/osmo1pool_alpha/ualpha',
         tokenName: 'Alpha Creator Token',
         tokenSymbol: 'ALPHA',
         tokenDecimals: 6,
@@ -412,7 +409,7 @@ const MOCK_POOLS: PoolSummary[] = [
     },
     {
         poolAddress: 'osmo1pool_beta_4m2n7xp8wk5dv3qt6rj0yfscalh9z',
-        creatorTokenAddress: 'osmo1token_beta_cw20_contract_addr_placeholder',
+        creatorTokenAddress: 'factory/osmo1pool_beta/ubeta',
         tokenName: 'Beta Stream',
         tokenSymbol: 'BETA',
         tokenDecimals: 6,
@@ -447,7 +444,7 @@ const MOCK_POOLS: PoolSummary[] = [
     },
     {
         poolAddress: 'osmo1pool_gamma_9p4r6t2n7xm3k5wqv8jf0ychlsa',
-        creatorTokenAddress: 'osmo1token_gamma_cw20_contract_addr_placeholder',
+        creatorTokenAddress: 'factory/osmo1pool_gamma/ugamma',
         tokenName: 'Gamma Gaming',
         tokenSymbol: 'GAMMA',
         tokenDecimals: 6,
@@ -482,7 +479,7 @@ const MOCK_POOLS: PoolSummary[] = [
     },
     {
         poolAddress: 'osmo1pool_delta_2k8f5n3m7wp4xr6qt9jv0ydclhga',
-        creatorTokenAddress: 'osmo1token_delta_cw20_contract_addr_placeholder',
+        creatorTokenAddress: 'factory/osmo1pool_delta/udelta',
         tokenName: 'Delta Music',
         tokenSymbol: 'DELTA',
         tokenDecimals: 6,
@@ -517,7 +514,7 @@ const MOCK_POOLS: PoolSummary[] = [
     },
     {
         poolAddress: 'osmo1pool_epsilon_6n3m8k2f5wp4xr7qt0jv9ydclhs',
-        creatorTokenAddress: 'osmo1token_epsilon_cw20_contract_addr_placeholder',
+        creatorTokenAddress: 'factory/osmo1pool_epsilon/ueps',
         tokenName: 'Epsilon Art',
         tokenSymbol: 'EPS',
         tokenDecimals: 6,
@@ -750,8 +747,8 @@ async function mockQueryPoolPair(poolAddress: string): Promise<PoolPairInfo | nu
     const pool = findPool(poolAddress);
     return {
         asset_infos: [
-            { bluechip: { denom: NATIVE_DENOM } },
-            { creator_token: { contract_addr: pool?.creatorTokenAddress || 'osmo1mock_token' } },
+            { bluechip: { denom: 'uosmo' } },
+            { creator_token: { denom: pool?.creatorTokenAddress || 'factory/osmo1mock_pool/umock' } },
         ],
         contract_addr: poolAddress,
         pool_type: { xyk: {} },
@@ -907,9 +904,8 @@ async function mockQueryCreatorEarnings(poolAddress: string): Promise<CreatorEar
     if (pool.tokenSymbol === 'ALPHA') {
         return {
             creator_wallet_address: MOCK_WALLET,
-            fee_pot: { amount_0: '850000000', amount_1: '1200000000' },   // 850 bluechip + 1,200 ALPHA
             excess: {
-                bluechip_amount: '15000000000',   // 15,000 bluechip
+                bluechip_amount: '15000000000',   // 15,000 OSMO
                 token_amount: '30000000000',      // 30,000 ALPHA
                 unlock_time: ((now + 12 * day) * 1000000).toString(),
                 claimable_now: false,
@@ -923,7 +919,6 @@ async function mockQueryCreatorEarnings(poolAddress: string): Promise<CreatorEar
         creator_wallet_address: pool.tokenSymbol === 'DELTA'
             ? MOCK_WALLET
             : 'osmo1othercreator_not_you_random_addr_placeholder',
-        fee_pot: { amount_0: '0', amount_1: '0' },
         excess: null,
         is_threshold_hit: pool.thresholdReached,
         threshold_crossed_at: pool.thresholdReached
@@ -1107,13 +1102,7 @@ export function getCosmWasmClient() {
     return chain.getCosmWasmClient();
 }
 
-// ---- Factory TWAP price (native/USD, drives the commit price banner) ----
-//
-// The factory values commits via the chain's x/twap module over its
-// configured native/USD-stable pricing pool. The TWAP is computed live
-// on-chain at query time — there is no keeper, cache, or staleness
-// concept. A null result means the query itself failed, in which case
-// commits fail closed on-chain too.
+// ---- Native/USD rate (drives the commit pricing banner) ----
 
 export type { ConversionResponse } from './chainQueries';
 
@@ -1136,14 +1125,15 @@ export async function queryFactoryConfig(): Promise<FactoryConfig | null> {
         create_pool_wasm_contract_id: 3,
         bluechip_wallet_address: MOCK_WALLET,
         commit_fee_bluechip: '0.01',
-        commit_fee_creator: '0.04',
+        commit_fee_creator: '0.05',
         max_bluechip_lock_per_pool: '100000000000',
         creator_excess_liquidity_lock_days: 365,
-        bluechip_denom: NATIVE_DENOM,
+        bluechip_denom: 'uosmo',
         pricing_pool_id: 1,
         usd_quote_denom: 'ibc/mock_usdc_denom',
         twap_window_seconds: 600,
         pool_creation_fee: '1000000',             // 1 OSMO flat fee
+        gamm_pool_creation_fee: { denom: 'uosmo', amount: '1000000' },
         threshold_payout_amounts: {
             creator_reward_amount: '325000000000',
             bluechip_reward_amount: '25000000000',
@@ -1160,7 +1150,7 @@ export type { RouterConfig, SimulateMultiHopResponse, SwapOperationWire } from '
 
 export async function queryRouterConfig(routerAddr: string): Promise<chain.RouterConfig | null> {
     if (await onChain()) return chain.chainQueryRouterConfig(routerAddr).catch(() => null);
-    return { factory_addr: 'osmo1factory_mock_address_for_ui_preview', bluechip_denom: NATIVE_DENOM, admin: MOCK_WALLET };
+    return { factory_addr: 'osmo1factory_mock_address_for_ui_preview', bluechip_denom: 'uosmo', admin: MOCK_WALLET };
 }
 
 export async function simulateMultiHop(

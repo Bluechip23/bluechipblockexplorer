@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useWallet } from '../../context/WalletContext';
-import { NATIVE_DENOM, NATIVE_SYMBOL } from '../../defi/types';
+import { NATIVE_DENOM } from '../../defi/types';
 import { factoryAddress } from '../universal/IndividualPage.const';
 import {
     validateBech32Address,
@@ -44,11 +44,14 @@ const TOKEN_NAME_MAX = 50;
 const TOKEN_SYMBOL_MIN = 3;
 const TOKEN_SYMBOL_MAX = 12;
 
-// The factory rewrites this sentinel with the freshly-minted CW20
-// contract address. Must match `CREATOR_TOKEN_SENTINEL` in
-// `factory/src/execute/pool_lifecycle/create.rs`.
+// Placeholder the factory's create handler requires in the CreatorToken
+// slot of pool_token_info. The pool mints its own native TokenFactory
+// denom (factory/{pool_addr}/{subdenom}) at instantiate and rewrites
+// this slot with the real denom.
 const CREATOR_TOKEN_SENTINEL = 'WILL_BE_CREATED_BY_FACTORY';
 
+// The factory only creates commit (creator) pools now — standard pools
+// were removed along with the CW20 token model.
 const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSuccess }) => {
     const { client, address } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
@@ -57,7 +60,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [inputError, setInputError] = useState('');
-    // uosmo attached as the flat creation fee: '0' = fee disabled (attach
+    // uosmo to attach as the creation fee: '0' = fee disabled (attach
     // nothing), null = quote not loaded / failed.
     const [creationFeeMicro, setCreationFeeMicro] = useState<string | null>(null);
 
@@ -70,7 +73,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         ? 'unavailable'
         : creationFeeMicro === '0'
             ? 'disabled'
-            : `${(Number(creationFeeMicro) / 1_000_000).toLocaleString()} ${NATIVE_SYMBOL}`;
+            : `${(Number(creationFeeMicro) / 1_000_000).toLocaleString()} OSMO`;
 
     const resetAndClose = () => {
         setStage('input');
@@ -83,16 +86,15 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         onClose();
     };
 
-    // The factory charges a flat `pool_creation_fee` on every `create`
-    // call, denominated in base units of its bluechip_denom (uosmo;
-    // testnet value 1000000 = 1 OSMO) and validated with must_pay when
-    // non-zero — the exact amount MUST be attached to the execute. When
-    // the fee is zero the factory rejects any attached funds, so send
-    // nothing.
+    // The factory charges a FLAT creation fee (`pool_creation_fee`,
+    // denominated in the chain's native asset, OSMO) validated with
+    // must_pay — the funds MUST be attached to the execute or it reverts;
+    // surplus is refunded on-chain. When the fee is zero the factory
+    // instead rejects any attached funds, so send nothing.
     const quoteCreationFee = async (): Promise<string> => {
         if (!client) throw new Error('Wallet not connected');
         const { factory } = await client.queryContractSmart(FACTORY, { factory: {} });
-        return BigInt(factory?.pool_creation_fee ?? '0').toString();
+        return factory?.pool_creation_fee ?? '0';
     };
 
     const handleReview = async () => {
@@ -106,7 +108,6 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
             }
         }
 
-        // The factory mints a new CW20 from name/symbol.
         // Mirrors on-chain `validate_creator_token_info`.
         if (!tokenName.trim()) {
             setInputError('Token name is required.');
@@ -138,15 +139,15 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
             return;
         }
 
-        // Read the flat creation fee before showing the confirm step so
-        // the user sees exactly what will be attached. A failed read is
-        // surfaced as an input error rather than a doomed transaction.
+        // Quote the creation fee before showing the confirm step so the
+        // user sees what will be attached. A failed quote is surfaced as
+        // an input error rather than a doomed transaction later.
         if (client && FACTORY) {
             try {
                 setCreationFeeMicro(await quoteCreationFee());
             } catch (err) {
                 setCreationFeeMicro(null);
-                setInputError(`Could not read the pool creation fee: ${(err as Error).message}`);
+                setInputError(`Could not quote the pool creation fee: ${(err as Error).message}`);
                 return;
             }
         }
@@ -159,7 +160,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
             pool_msg: {
                 pool_token_info: [
                     { bluechip: { denom: NATIVE_DENOM } },
-                    { creator_token: { contract_addr: CREATOR_TOKEN_SENTINEL } },
+                    { creator_token: { denom: CREATOR_TOKEN_SENTINEL } },
                 ],
             },
             token_info: {
@@ -186,7 +187,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         }
 
         if (creationFeeMicro === null) {
-            setErrorMsg('Pool creation fee missing — go back and review again.');
+            setErrorMsg('Pool creation fee quote missing — go back and review again.');
             setStage('error');
             return;
         }
@@ -245,8 +246,10 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                 {stage === 'input' && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            Create your own creator token and liquidity pool. Subscribers commit {NATIVE_SYMBOL}
-                            {' '}to fund the pool. Once the threshold is reached, trading goes live.
+                            Create your own creator token and pool. Your token is minted as a native
+                            Osmosis TokenFactory denom. Subscribers commit OSMO to fund the pool;
+                            once the threshold is reached, a native Osmosis liquidity pool is seeded
+                            and trading goes live.
                         </Typography>
                         <TextField
                             label="Token Name"
@@ -274,9 +277,9 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                             </Typography>
                             <Typography variant="body2">Decimals: 6 (required by contract)</Typography>
                             <Typography variant="body2">
-                                Threshold, fee splits, lock caps and pricing config are read from the
-                                factory's stored configuration. The factory charges a flat creation
-                                fee in {NATIVE_SYMBOL}, shown on the confirmation step.
+                                Threshold, fee splits, lock caps and x/twap pricing config are read
+                                from the factory's stored configuration. The flat OSMO creation fee
+                                is quoted live and attached automatically.
                             </Typography>
                         </Box>
 
@@ -298,15 +301,16 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                             Confirm Pool Creation
                         </Typography>
                         <Alert severity="info" sx={{ mb: 2 }}>
-                            {`Creating a creator pool with token "${sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}" (${sanitizeOnChainString(tokenName, TOKEN_NAME_MAX)}). Subscribers commit ${NATIVE_SYMBOL} toward the funding threshold before trading goes live.`}
+                            {`Creating a creator pool with token "${sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX)}" (${sanitizeOnChainString(tokenName, TOKEN_NAME_MAX)}). Subscribers commit OSMO toward the funding threshold before trading goes live.`}
                         </Alert>
                         <Box sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 2, mb: 2 }}>
                             {[
+                                { label: 'Pool Type', value: 'Creator (commit-based)' },
                                 { label: 'Token Name', value: sanitizeOnChainString(tokenName, TOKEN_NAME_MAX) },
                                 { label: 'Token Symbol', value: sanitizeOnChainString(tokenSymbol, TOKEN_SYMBOL_MAX) },
                                 { label: 'Decimals', value: '6' },
                                 { label: 'Creator Wallet', value: `${address.slice(0, 12)}...${address.slice(-6)}` },
-                                { label: 'Creation Fee (flat)', value: feeDisplay },
+                                { label: 'Creation Fee (surplus refunded)', value: feeDisplay },
                             ].map((d, i) => (
                                 <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.5 }}>
                                     <Typography variant="body2" color="text.secondary">{d.label}</Typography>

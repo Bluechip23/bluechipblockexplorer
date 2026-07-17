@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+    beliefPriceFromSimulation,
     buildCommitMsg,
     commitFunds,
     committingInfoQuery,
     deadlineNs,
     evaluateGate,
     fromMicro,
+    simulationQuery,
     smartQueryUrl,
     toMicro,
     type CommitRecord,
@@ -39,13 +41,11 @@ test('deadlineNs is nanoseconds 20 minutes out', () => {
     assert.equal(deadlineNs(20, nowMs), ((nowMs + 20 * 60_000) * 1_000_000).toString());
 });
 
-test('pre-threshold commit msg has null max_spread and the exact contract shape', () => {
+test('pre-threshold commit msg has null belief_price/max_spread and the exact contract shape', () => {
     const nowMs = 1_700_000_000_000;
     const msg = buildCommitMsg({ denom: 'uosmo', amountMicro: '25000000', thresholdHit: false, nowMs });
     assert.deepEqual(msg, {
         commit: {
-            // Native side is wire-tagged "bluechip" (legacy serde rename)
-            // even though the denom is uosmo on Osmosis.
             asset: { info: { bluechip: { denom: 'uosmo' } }, amount: '25000000' },
             transaction_deadline: deadlineNs(20, nowMs),
             belief_price: null,
@@ -54,9 +54,49 @@ test('pre-threshold commit msg has null max_spread and the exact contract shape'
     });
 });
 
-test('post-threshold commit msg carries a spread guard', () => {
-    const msg = buildCommitMsg({ denom: 'uosmo', amountMicro: '1000000', thresholdHit: true });
+test('post-threshold commit msg carries the belief_price and a spread guard', () => {
+    const msg = buildCommitMsg({
+        denom: 'uosmo',
+        amountMicro: '1000000',
+        thresholdHit: true,
+        beliefPrice: '0.500000000000000000',
+    });
+    assert.equal(msg.commit.belief_price, '0.500000000000000000');
     assert.equal(msg.commit.max_spread, '0.05');
+});
+
+test('post-threshold commit msg without a belief_price is refused', () => {
+    assert.throws(
+        () => buildCommitMsg({ denom: 'uosmo', amountMicro: '1000000', thresholdHit: true }),
+        /belief_price is required/,
+    );
+    assert.throws(
+        () => buildCommitMsg({ denom: 'uosmo', amountMicro: '1000000', thresholdHit: true, beliefPrice: null }),
+        /belief_price is required/,
+    );
+});
+
+test('simulationQuery has the exact pool wire shape', () => {
+    assert.deepEqual(simulationQuery('uosmo', '25000000'), {
+        simulation: {
+            offer_asset: { info: { bluechip: { denom: 'uosmo' } }, amount: '25000000' },
+        },
+    });
+});
+
+test('beliefPriceFromSimulation is offer-per-ask with 18 decimals', () => {
+    assert.equal(beliefPriceFromSimulation('25000000', '50000000'), '0.500000000000000000');
+    assert.equal(beliefPriceFromSimulation('1000000', '1000000'), '1.000000000000000000');
+});
+
+test('beliefPriceFromSimulation refuses a zero/missing return_amount', () => {
+    for (const bad of ['0', '', null, undefined, 'not-a-number']) {
+        assert.throws(
+            () => beliefPriceFromSimulation('25000000', bad),
+            /return_amount/,
+            `expected throw for ${JSON.stringify(bad)}`,
+        );
+    }
 });
 
 test('commit funds are exactly one coin of the native denom', () => {
@@ -72,7 +112,7 @@ test('smartQueryUrl base64-encodes the query into the LCD path', () => {
 const RECORD: CommitRecord = {
     committer: 'osmo1fan',
     total_paid_usd: '7500000',       // $7.50
-    total_paid_bluechip: '60000000', // legacy field name; uosmo micro-units
+    total_paid_bluechip: '60000000',
     last_committed: '1700000000000000000',
     last_payment_usd: '5000000',
     last_payment_bluechip: '40000000',

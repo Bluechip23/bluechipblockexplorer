@@ -14,7 +14,6 @@ import {
     Typography,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
-import PaidIcon from '@mui/icons-material/Paid';
 import LockClockIcon from '@mui/icons-material/LockClock';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useWallet } from '../../context/WalletContext';
@@ -134,10 +133,6 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
         ? 325_000 * parseFloat(pool.currentPrice1to0)
         : null;
 
-    const potBluechip = safeBigInt(earnings?.fee_pot.amount_0);
-    const potToken = safeBigInt(earnings?.fee_pot.amount_1);
-    const hasClaimableFees = potBluechip > 0n || potToken > 0n;
-
     const excess = earnings?.excess ?? null;
     const excessUnlockDate = excess ? nsToDate(excess.unlock_time) : null;
     const excessDaysLeft = excessUnlockDate
@@ -146,7 +141,10 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
 
     // ---- Claim actions (same security gates as the action modals) ----
 
-    const executeClaim = async (kind: 'fees' | 'excess') => {
+    // Only the time-locked excess-liquidity claim exists on the contract now;
+    // there is no clip-slice fee pot (LP fees accrue on the native Osmosis
+    // pool, not to the contract).
+    const executeClaim = async () => {
         if (!client || !address) { setClaimStatus('Error: Connect your wallet first'); return; }
 
         // SECURITY: Assert chain ID before signing.
@@ -154,18 +152,16 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
         if (!chainCheck.ok) { setClaimStatus(`Error: ${chainCheck.error}`); return; }
 
         setClaiming(true);
-        setClaimStatus(kind === 'fees' ? 'Claiming fees...' : 'Claiming excess liquidity...');
+        setClaimStatus('Claiming excess liquidity...');
         try {
             const deadlineNs = ((Date.now() + 20 * 60000) * 1000000).toString();
-            const msg = kind === 'fees'
-                ? { claim_creator_fees: { transaction_deadline: deadlineNs } }
-                : { claim_creator_excess_liquidity: { transaction_deadline: deadlineNs } };
+            const msg = { claim_creator_excess_liquidity: { transaction_deadline: deadlineNs } };
             const result = await client.execute(
                 address,
                 pool.poolAddress,
                 msg,
                 { amount: [], gas: '400000' },
-                kind === 'fees' ? 'Claim Creator Fees' : 'Claim Creator Excess Liquidity',
+                'Claim Creator Excess Liquidity',
             );
             setClaimStatus(`Success! Tx: ${result.transactionHash}`);
         } catch (err) {
@@ -190,8 +186,6 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     microToCsvDecimal(p.totalUsdRaised),
                     microToCsvDecimal(commitFeeRevenueMicroUsd(p)),
                     p.thresholdReached ? '325000' : '0',
-                    microToCsvDecimal(earn?.fee_pot.amount_0),
-                    microToCsvDecimal(earn?.fee_pot.amount_1),
                     microToCsvDecimal(earn?.excess?.bluechip_amount),
                     microToCsvDecimal(earn?.excess?.token_amount),
                     earn?.excess ? (nsToDate(earn.excess.unlock_time)?.toISOString() ?? '') : '',
@@ -203,8 +197,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 [
                     'token_symbol', 'pool_address', 'status',
                     'total_usd_raised', 'commit_fee_revenue_usd_est', 'threshold_grant_tokens',
-                    'claimable_fees_bluechip', 'claimable_fees_token',
-                    'locked_excess_bluechip', 'locked_excess_token', 'excess_unlock_utc',
+                    'locked_excess_osmo', 'locked_excess_token', 'excess_unlock_utc',
                     'subscribers',
                 ],
                 rows,
@@ -358,16 +351,11 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 <Grid item xs={12} sm={6} md={3}>
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
-                            <Typography variant="caption" color="text.secondary">Claimable Now</Typography>
-                            <Typography variant="h6" fontWeight="bold">
-                                {hasClaimableFees
-                                    ? `${formatMicroAmount(potBluechip.toString())} OSMO`
-                                    : '0'}
-                            </Typography>
+                            <Typography variant="caption" color="text.secondary">Trading Fees</Typography>
+                            <Typography variant="h6" fontWeight="bold">On Osmosis</Typography>
                             <Typography variant="caption" color="text.secondary">
-                                {hasClaimableFees
-                                    ? `+ ${formatMicroAmount(potToken.toString())} ${symbol} in LP fee clips`
-                                    : 'No unclaimed creator fees'}
+                                LP fees for {symbol} accrue on the native Osmosis pool — collect them at
+                                app.osmosis.zone
                             </Typography>
                         </CardContent>
                     </Card>
@@ -419,23 +407,6 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 )}
                 <Stack spacing={1}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                        <PaidIcon color={hasClaimableFees ? 'success' : 'disabled'} />
-                        <Box sx={{ flex: 1, minWidth: 220 }}>
-                            <Typography variant="body2" fontWeight="bold">Creator fee pot</Typography>
-                            <Typography variant="caption" color="text.secondary">
-                                {formatMicroAmount(potBluechip.toString())} OSMO + {formatMicroAmount(potToken.toString())} {symbol}
-                            </Typography>
-                        </Box>
-                        <Button
-                            size="small"
-                            variant="contained"
-                            disabled={!hasClaimableFees || claiming || !client}
-                            onClick={() => executeClaim('fees')}
-                        >
-                            Claim Fees
-                        </Button>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                         <LockClockIcon color={excess?.claimable_now ? 'success' : 'disabled'} />
                         <Box sx={{ flex: 1, minWidth: 220 }}>
                             <Typography variant="body2" fontWeight="bold">Excess liquidity</Typography>
@@ -454,7 +425,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                                     size="small"
                                     variant="contained"
                                     disabled={!excess || !excess.claimable_now || claiming || !client}
-                                    onClick={() => executeClaim('excess')}
+                                    onClick={() => executeClaim()}
                                 >
                                     Claim Excess
                                 </Button>

@@ -25,24 +25,22 @@ describe('describeWasmExecute', () => {
         expect(info?.detail).toContain('OSMO for creator tokens');
     });
 
-    it('recognizes the CW20 send + swap hook as a sell', () => {
-        const info = describeWasmExecute(b64({
-            send: {
-                contract: 'osmo1pool',
-                amount: '4000000',
-                msg: b64({ swap: { max_spread: '0.005' } }),
+    it('labels a creator-token simple_swap as a sell', () => {
+        const info = describeWasmExecute({
+            simple_swap: {
+                offer_asset: { info: { creator_token: { denom: 'factory/osmo1pool/ubrand' } }, amount: '4000000' },
             },
-        }));
+        });
         expect(info?.label).toBe('Swap');
-        expect(info?.detail).toContain('Sold');
+        expect(info?.detail).toContain('creator tokens for OSMO');
     });
 
-    it('labels liquidity and claim actions', () => {
+    it('labels legacy liquidity and claim actions', () => {
         expect(describeWasmExecute({ deposit_liquidity: { amount0: '1000000', amount1: '2000000' } })?.label)
-            .toBe('Provide Liquidity');
+            .toBe('Provide Liquidity (legacy)');
         expect(describeWasmExecute({ remove_partial_liquidity_by_percent: { position_id: '3', percentage: 50 } })?.detail)
             .toContain('50%');
-        expect(describeWasmExecute({ claim_creator_fees: {} })?.label).toBe('Claim Creator Fees');
+        expect(describeWasmExecute({ claim_creator_fees: {} })?.label).toBe('Claim Creator Fees (legacy)');
     });
 
     it('labels pool creation with the token symbol', () => {
@@ -52,7 +50,7 @@ describe('describeWasmExecute', () => {
                 token_info: { name: 'Brand Token', symbol: 'BRAND', decimal: 6 },
             },
         });
-        expect(info?.label).toBe('Create Creator Pool');
+        expect(info?.label).toBe('Create Commit Pool');
         expect(info?.detail).toContain('BRAND');
     });
 

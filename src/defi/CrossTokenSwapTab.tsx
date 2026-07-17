@@ -11,7 +11,7 @@ import {
 } from '@mui/material';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { NATIVE_DENOM, NATIVE_SYMBOL, COIN_DECIMALS } from './types';
+import { NATIVE_DENOM, COIN_DECIMALS } from './types';
 import { factoryAddress, routerAddress } from '../components/universal/IndividualPage.const';
 import {
     fetchAllPoolSummaries,
@@ -31,34 +31,37 @@ import { deadlineNs } from '../utils/datetime';
 import { minAmountAfterSlippage } from '../utils/poolActions';
 
 // Cross-token swaps through the router contract. Creator tokens never
-// share a pool with each other — every pair routes through OSMO —
-// so TOKEN_A -> TOKEN_B is a two-hop route (A-pool then B-pool) the
-// router executes atomically. End-to-end slippage is enforced by
+// share a pool with each other — every pair routes through OSMO — so
+// TOKEN_A -> TOKEN_B is a two-hop route (A-pool then B-pool) the router
+// executes atomically. End-to-end slippage is enforced by
 // `minimum_receive` on the FINAL ask token (the router takes no per-hop
-// spread parameters), sized here from the simulation result.
+// spread parameters), sized here from the simulation result. Creator
+// tokens are native TokenFactory denoms, so whatever the first hop
+// offers is attached to execute_multi_hop as plain bank funds — there
+// is no CW20 send path.
 
 interface TokenOption {
-    key: string;               // 'native' or the cw20 address
+    key: string;               // 'native' or the creator token's factory/... denom
     label: string;
-    tokenAddress: string | null;   // null = native OSMO
+    tokenDenom: string | null;     // null = native OSMO
     poolAddress: string | null;    // pool that pairs this token with OSMO
 }
 
 function buildRoute(from: TokenOption, to: TokenOption): SwapOperationWire[] {
     const native = { bluechip: { denom: NATIVE_DENOM } };
     const ops: SwapOperationWire[] = [];
-    if (from.tokenAddress && from.poolAddress) {
+    if (from.tokenDenom && from.poolAddress) {
         ops.push({
             pool_addr: from.poolAddress,
-            offer_asset_info: { creator_token: { contract_addr: from.tokenAddress } },
+            offer_asset_info: { creator_token: { denom: from.tokenDenom } },
             ask_asset_info: native,
         });
     }
-    if (to.tokenAddress && to.poolAddress) {
+    if (to.tokenDenom && to.poolAddress) {
         ops.push({
             pool_addr: to.poolAddress,
             offer_asset_info: native,
-            ask_asset_info: { creator_token: { contract_addr: to.tokenAddress } },
+            ask_asset_info: { creator_token: { denom: to.tokenDenom } },
         });
     }
     return ops;
@@ -88,11 +91,13 @@ const CrossTokenSwapTab: React.FC<{ client: SigningCosmWasmClient | null; addres
     }, []);
 
     const options: TokenOption[] = useMemo(() => [
-        { key: 'native', label: NATIVE_SYMBOL, tokenAddress: null, poolAddress: null },
+        { key: 'native', label: 'OSMO', tokenDenom: null, poolAddress: null },
         ...pools.map((p) => ({
             key: p.creatorTokenAddress as string,
             label: `${p.tokenSymbol} — ${p.tokenName}`,
-            tokenAddress: p.creatorTokenAddress,
+            // PoolSummary.creatorTokenAddress carries the creator token's
+            // native TokenFactory denom post-migration.
+            tokenDenom: p.creatorTokenAddress,
             poolAddress: p.poolAddress,
         })),
     ], [pools]);
@@ -148,34 +153,17 @@ const CrossTokenSwapTab: React.FC<{ client: SigningCosmWasmClient | null; addres
                 recipient: null as string | null,
             };
 
-            let result;
-            if (!from.tokenAddress) {
-                // Native-offered route: attach the OSMO funds.
-                result = await client.execute(
-                    address,
-                    routerAddress,
-                    { execute_multi_hop: hopArgs },
-                    { amount: [], gas: '900000' },
-                    'Cross-Token Swap',
-                    [{ denom: NATIVE_DENOM, amount: micro }],
-                );
-            } else {
-                // CW20-offered route: cw20 send to the router with the hook.
-                result = await client.execute(
-                    address,
-                    from.tokenAddress,
-                    {
-                        send: {
-                            contract: routerAddress,
-                            amount: micro,
-                            msg: btoa(JSON.stringify({ execute_multi_hop: hopArgs })),
-                        },
-                    },
-                    { amount: [], gas: '900000' },
-                    'Cross-Token Swap',
-                    [],
-                );
-            }
+            // Whatever the first hop offers — OSMO or a creator token's
+            // factory/... denom — is a native bank coin attached as funds.
+            const offerDenom = from.tokenDenom ?? NATIVE_DENOM;
+            const result = await client.execute(
+                address,
+                routerAddress,
+                { execute_multi_hop: hopArgs },
+                { amount: [], gas: '900000' },
+                'Cross-Token Swap',
+                [{ denom: offerDenom, amount: micro }],
+            );
             setTxHash(result.transactionHash);
             setStatus('Success!');
             setQuote(null);
@@ -192,7 +180,7 @@ const CrossTokenSwapTab: React.FC<{ client: SigningCosmWasmClient | null; addres
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Alert severity="info">
                 Swap any two listed tokens in one transaction. Creator-token pairs route through
-                {' '}{NATIVE_SYMBOL} (max 3 hops); slippage protection applies to the final amount received.
+                OSMO (max 3 hops); slippage protection applies to the final amount received.
             </Alert>
 
             <TextField select label="From" value={fromKey} onChange={(e) => { setFromKey(e.target.value); setQuote(null); }}>
@@ -233,7 +221,7 @@ const CrossTokenSwapTab: React.FC<{ client: SigningCosmWasmClient | null; addres
                     {route.map((_, i) => (
                         <React.Fragment key={i}>
                             <Typography variant="caption">→</Typography>
-                            {i < route.length - 1 && <Chip size="small" variant="outlined" label={NATIVE_SYMBOL} />}
+                            {i < route.length - 1 && <Chip size="small" variant="outlined" label="OSMO" />}
                         </React.Fragment>
                     ))}
                     <Chip size="small" variant="outlined" label={to?.label.split(' — ')[0] ?? ''} />

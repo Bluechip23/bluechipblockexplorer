@@ -1,34 +1,58 @@
 import { ClaimRow, CommitRow, LiquidityRow, PoolRow, TradeRow } from './db';
 import { decodeEventAttrs, RawEvent } from './rpc';
 
-// Pure event -> row mapping. Attribute keys mirror the contracts exactly:
+// Pure event -> row mapping. Attribute keys mirror the Osmosis-native
+// contracts exactly:
 //
 //   commit (creator-pool/src/commit.rs + commit/*.rs):
-//     action=commit, phase, committer, pool_contract, block_height,
-//     block_time, total_commit_count + per-phase amount attributes.
-//     phase is one of:
-//       funding             – pre-threshold commit
-//       active              – post-threshold commit (routed through the AMM)
-//       threshold_crossing  – the commit that pushed past the threshold
-//       threshold_hit_exact – hit the threshold exactly (no excess swap)
+//     action=commit, phase, committer, total_commit_count, pool_contract,
+//     block_height, block_time + per-phase amount attributes:
+//       funding             – pre-threshold commit:
+//                             commit_amount_bluechip (micro-OSMO),
+//                             total_raised_after (running total, micro-USD),
+//                             total_bluechip_raised_after (net micro-OSMO)
+//       active              – post-threshold commit routed through the
+//                             Osmosis AMM: commit_amount_bluechip,
+//                             swap_amount_bluechip, token_out_min_amount,
+//                             pool_id
+//       threshold_crossing  – the commit that pushed past the threshold:
+//                             total_amount_bluechip,
+//                             threshold_amount_bluechip,
+//                             bluechip_excess_refunded
+//       threshold_hit_exact – hit the threshold exactly (no excess swap):
+//                             commit_amount_bluechip, total_raised_after
+//     Legacy (pre-Osmosis) commits also carried per-commit USD attributes
+//     (commit_amount_usd, total_usd_raised_after, threshold_amount_usd,
+//     swap_amount_usd) — no longer emitted, still parsed when present so
+//     historical backfills keep their USD figures.
 //   swap (pool-core/src/swap.rs):
 //     action=swap, sender, receiver, offer_asset, ask_asset, offer_amount,
-//     return_amount, spread_amount, commission_amount, effective_price,
-//     reserve0_after, reserve1_after, pool_contract, ...
-//   liquidity (pool-core/src/liquidity/*.rs):
-//     action=deposit_liquidity | add_to_position | remove_liquidity |
-//     remove_partial_liquidity | collect_fees
+//     token_out_min_amount, pool_id, pool_contract, ... — legacy swaps
+//     also carried return_amount, spread_amount, commission_amount,
+//     reserve0_after, reserve1_after.
 //   creator claims (creator-pool/src/liquidity_helpers.rs):
-//     action=claim_creator_fees (amount_0/amount_1) |
-//     claim_creator_excess (bluechip_amount/token_amount)
+//     action=claim_creator_excess (bluechip_amount/token_amount)
 //   factory pool discovery (factory/src/pool_creation_reply.rs):
-//     action=pool_created_successfully | standard_pool_created_successfully
-//     (pool_address, pool_id) and token_created_successfully
-//     (token_address, pool_id)
+//     action=pool_created_successfully (pool_address, pool_id). The
+//     creator token is a native TokenFactory denom
+//     (factory/{pool}/{subdenom}); the pool's own instantiate event —
+//     same tx as the factory reply — carries it as token_denom.
+//
+//   Legacy actions (pre-Osmosis contracts; will not occur on current
+//   chains, kept only so historical backfills still index):
+//     liquidity: deposit_liquidity | add_to_position | remove_liquidity |
+//       remove_partial_liquidity | collect_fees
+//     claim_creator_fees (amount_0/amount_1)
+//     standard_pool_created_successfully (standard pools no longer exist)
+//     token_created_successfully (token_address = CW20 contract address,
+//       from when creator tokens were CW20s)
 
 export interface ParsedTx {
     pools: PoolRow[];
-    poolTokens: { pool_id: number; token_address: string }[];
+    // token_denom is the creator token's native TokenFactory denom
+    // (factory/{pool}/{subdenom}); for legacy pools it is the CW20
+    // contract address.
+    poolTokens: { pool_id: number; token_denom: string }[];
     thresholdCrossings: { pool: string; ts: number }[];
     commits: CommitRow[];
     trades: TradeRow[];
@@ -40,12 +64,15 @@ export interface TxContext {
     txhash: string;
     height: number;
     ts: number;            // block time, unix seconds
-    nativeDenom: string;   // canonical bluechip denom, e.g. "ubluechip"
+    nativeDenom: string;   // canonical native denom, e.g. "uosmo"
     // When set, pool-discovery events are only accepted from this
     // contract address (the factory).
     factoryAddress: string | null;
 }
 
+// Legacy (pre-Osmosis) pool-managed liquidity actions. The current
+// contracts have no liquidity entry points (liquidity lives in Osmosis
+// pools), so these only appear when backfilling historical chains.
 const LIQUIDITY_ACTIONS = new Set([
     'deposit_liquidity',
     'add_to_position',
@@ -71,7 +98,7 @@ function sumMicro(a: string | undefined, b: string | undefined): string | null {
     }
 }
 
-// bluechip-per-token price from micro amounts (decimals cancel: both
+// OSMO-per-token price from micro amounts (decimals cancel: both
 // sides are 6-decimal assets). Display-grade only.
 function ratioPrice(bluechipMicro: string | undefined, tokenMicro: string | undefined): number | null {
     const b = num(bluechipMicro);
@@ -86,6 +113,12 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
         commits: [], trades: [], liquidity: [], claims: [],
     };
 
+    // Creator-token TokenFactory denoms announced by pool instantiate
+    // events in this tx, keyed by pool address. Joined to the factory's
+    // pool_id after the event walk (the factory's
+    // pool_created_successfully reply lands in the same tx).
+    const denomByPool = new Map<string, string>();
+
     for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         if (ev.type !== 'wasm') continue;
@@ -98,6 +131,8 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
 
         switch (action) {
             // ---- factory: pool discovery -------------------------------
+            // standard_pool_created_successfully is legacy: the Osmosis-
+            // native factory only creates commit pools.
             case 'pool_created_successfully':
             case 'standard_pool_created_successfully': {
                 if (ctx.factoryAddress && contract !== ctx.factoryAddress) break;
@@ -112,12 +147,24 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 });
                 break;
             }
+            // The pool announces its creator token's TokenFactory denom
+            // (factory/{pool}/{subdenom}) on its own instantiate event;
+            // it is only accepted once joined to a factory-verified
+            // pool_created_successfully event below.
+            case 'instantiate': {
+                const pool = a['pool_contract'] || contract;
+                const denom = a['token_denom'];
+                if (pool && denom) denomByPool.set(pool, denom);
+                break;
+            }
+            // Legacy: pre-Osmosis creator tokens were CW20 contracts and
+            // the factory announced their address as token_address.
             case 'token_created_successfully': {
                 if (ctx.factoryAddress && contract !== ctx.factoryAddress) break;
-                const tokenAddress = a['token_address'];
+                const tokenDenom = a['token_denom'] ?? a['token_address'];
                 const poolId = a['pool_id'] !== undefined ? parseInt(a['pool_id'], 10) : NaN;
-                if (tokenAddress && Number.isFinite(poolId)) {
-                    out.poolTokens.push({ pool_id: poolId, token_address: tokenAddress });
+                if (tokenDenom && Number.isFinite(poolId)) {
+                    out.poolTokens.push({ pool_id: poolId, token_denom: tokenDenom });
                 }
                 break;
             }
@@ -132,12 +179,18 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                     pool,
                     committer: a['committer'],
                     phase,
-                    // funding/active/threshold_hit_exact report commit_amount_*;
-                    // the threshold_crossing (with excess) path reports
-                    // total_amount_bluechip plus a threshold/swap USD split.
+                    // funding/active/threshold_hit_exact report
+                    // commit_amount_bluechip; the threshold_crossing
+                    // (with excess) path reports total_amount_bluechip.
                     amount_bluechip: a['commit_amount_bluechip'] ?? a['total_amount_bluechip'] ?? null,
+                    // Per-commit USD is legacy-only (pre-Osmosis events);
+                    // current events carry no commit_amount_usd, so this
+                    // is null on the live chain. Kept for historical txs.
                     amount_usd: a['commit_amount_usd'] ?? sumMicro(a['threshold_amount_usd'], a['swap_amount_usd']),
-                    usd_raised_after: a['total_usd_raised_after'] ?? null,
+                    // Running USD total: total_raised_after (micro-USD,
+                    // funding-phase commits) on current events, with the
+                    // legacy total_usd_raised_after as fallback.
+                    usd_raised_after: a['total_raised_after'] ?? a['total_usd_raised_after'] ?? null,
                     bluechip_raised_after: a['total_bluechip_raised_after'] ?? null,
                     tokens_received: a['tokens_received'] ?? null,
                 });
@@ -146,6 +199,10 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 }
                 // A post-threshold ("active") commit is economically a buy
                 // through the AMM — surface it in the trade feed too.
+                // Only legacy events report tokens_received on the commit
+                // itself; current contracts swap via the Osmosis pool and
+                // only know token_out_min_amount at emit time, so no
+                // trade row is derived for them.
                 if (phase === 'active' && a['swap_amount_bluechip'] && a['tokens_received']) {
                     out.trades.push({
                         ...base,
@@ -169,8 +226,11 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
             case 'swap': {
                 const pool = a['pool_contract'] || contract;
                 if (!pool) break;
-                // offer_asset renders via TokenType Display: the bank denom
-                // for the native side, the CW20 address for the token side.
+                // offer_asset is a bank denom on both sides now: the
+                // native denom (uosmo) or the creator token's TokenFactory
+                // denom (factory/{pool}/{subdenom}). Legacy events carried
+                // a CW20 address for the token side — either way, anything
+                // that isn't the native denom is the creator-token side.
                 const side: 'buy' | 'sell' = a['offer_asset'] === ctx.nativeDenom ? 'buy' : 'sell';
                 out.trades.push({
                     ...base,
@@ -192,6 +252,8 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
             }
 
             // ---- creator claims ---------------------------------------
+            // Legacy: claim_creator_fees was removed with the pool-managed
+            // liquidity entry points; parsed only for historical backfills.
             case 'claim_creator_fees': {
                 const pool = a['pool_contract'] || contract;
                 if (!pool) break;
@@ -219,7 +281,7 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 break;
             }
 
-            // ---- liquidity ---------------------------------------------
+            // ---- liquidity (legacy, pre-Osmosis) ------------------------
             default: {
                 if (!LIQUIDITY_ACTIONS.has(action)) break;
                 const pool = a['pool_contract'] || contract;
@@ -243,6 +305,16 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 break;
             }
         }
+    }
+
+    // Join instantiate-announced TokenFactory denoms to the pool_id the
+    // factory assigned in the same tx. Denoms from contracts that were
+    // not registered through a (factory-verified) pool-creation event
+    // are dropped.
+    for (const p of out.pools) {
+        if (p.pool_id === null) continue;
+        const denom = denomByPool.get(p.address);
+        if (denom) out.poolTokens.push({ pool_id: p.pool_id, token_denom: denom });
     }
     return out;
 }

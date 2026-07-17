@@ -1,6 +1,5 @@
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { factoryAddress, rpcEndpoint } from '../components/universal/IndividualPage.const';
-import { NATIVE_DENOM } from '../defi/types';
+import { factoryAddress, rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
 import { fetchIndexedPools, IndexedPool } from './indexerApi';
 import { safeBigInt } from './bigintMath';
 import type {
@@ -100,9 +99,6 @@ export function chainQueryFactoryConfig(): Promise<FactoryConfig | null> {
     return factoryConfigCache;
 }
 
-// One registry entry from the factory's paginated `pools` query
-// (factory/src/query.rs PoolListEntry). Every pool is a commit/creator
-// pool — there is no pool-kind discriminator on this deployment.
 interface PoolListEntry {
     pool_id: number;
     pool_addr: string;
@@ -131,8 +127,10 @@ export async function chainListPools(): Promise<PoolListEntry[]> {
             pool_id: p.pool_id ?? 0,
             pool_addr: p.address,
             pool_token_info: [
-                { bluechip: { denom: NATIVE_DENOM } },
-                { creator_token: { contract_addr: p.token_address ?? '' } },
+                { bluechip: { denom: 'uosmo' } },
+                // The indexer stores the creator token's TokenFactory denom
+                // (column name `token_address` kept for schema stability).
+                { creator_token: { denom: p.token_address ?? '' } },
             ] as [TokenType, TokenType],
         }));
     }
@@ -165,8 +163,32 @@ export function chainQueryPoolAnalytics(poolAddress: string): Promise<PoolAnalyt
     return smart<PoolAnalyticsResponse>(poolAddress, { analytics: {} });
 }
 
-export function chainQueryTokenInfo(tokenAddress: string): Promise<CW20TokenInfo> {
-    return smart<CW20TokenInfo>(tokenAddress, { token_info: {} });
+// Symbol derived from a TokenFactory denom: factory/{pool}/{subdenom}.
+function symbolFromDenom(denom: string): string {
+    const parts = denom.split('/');
+    const sub = parts.length === 3 ? parts[2] : denom;
+    // Subdenoms are conventionally `u<symbol>` (6-dec micro prefix); strip it.
+    const bare = sub.startsWith('u') && sub.length > 1 ? sub.slice(1) : sub;
+    return bare.toUpperCase();
+}
+
+// The creator token is a native TokenFactory denom now — there is no CW20
+// `token_info` query. Derive the display info: symbol from the subdenom,
+// total supply from the bank module over LCD (0 on failure).
+export async function chainQueryTokenInfo(tokenDenom: string): Promise<CW20TokenInfo> {
+    let total_supply = '0';
+    try {
+        const url = `${apiEndpoint}/cosmos/bank/v1beta1/supply/by_denom?denom=${encodeURIComponent(tokenDenom)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+            const body = await res.json();
+            total_supply = body?.amount?.amount ?? '0';
+        }
+    } catch {
+        // Leave supply at 0 — display info stays usable.
+    }
+    const symbol = symbolFromDenom(tokenDenom);
+    return { name: symbol, symbol, decimals: 6, total_supply };
 }
 
 export function chainQueryCreatorEarnings(poolAddress: string): Promise<CreatorEarningsResponse> {
@@ -186,22 +208,12 @@ export function chainQueryFactoryNotifyStatus(poolAddress: string): Promise<Fact
     return smart<FactoryNotifyStatusResponse>(poolAddress, { factory_notify_status: {} });
 }
 
-// The pool clamps the `positions` page size to 30 (pool-core
-// query_positions: `limit.unwrap_or(10).min(30)`), so walk pages instead
-// of asking for one oversized one. Capped at 600 positions so one pool
-// can't make the UI walk an unbounded range.
-export async function chainQueryPositions(poolAddress: string): Promise<PositionsResponse> {
-    const positions: PositionsResponse['positions'] = [];
-    let startAfter: string | null = null;
-    for (let page = 0; page < 20; page++) {
-        const res: PositionsResponse = await smart(poolAddress, {
-            positions: { start_after: startAfter, limit: 30 },
-        });
-        positions.push(...res.positions);
-        if (res.positions.length < 30) break;
-        startAfter = res.positions[res.positions.length - 1].position_id;
-    }
-    return { positions };
+// The creator pool no longer tracks LP positions — liquidity lives in the
+// native Osmosis GAMM pool, so there is no `positions` query. Always
+// resolves to an empty set; the field/type are retained so callers keep
+// compiling. LP data for a creator token lives on Osmosis directly.
+export async function chainQueryPositions(_poolAddress: string): Promise<PositionsResponse> {
+    return { positions: [] };
 }
 
 export async function chainQueryPoolCreator(poolAddress: string): Promise<string | null> {
@@ -237,7 +249,7 @@ export async function chainQueryPoolCommits(poolAddress: string): Promise<PoolCo
 
 function creatorTokenOf(assetInfos: [TokenType, TokenType] | undefined): string | null {
     for (const a of assetInfos ?? []) {
-        if ('creator_token' in a && a.creator_token) return a.creator_token.contract_addr;
+        if ('creator_token' in a && a.creator_token) return a.creator_token.denom;
     }
     return null;
 }
@@ -306,7 +318,8 @@ export async function chainFetchPoolSummary(poolAddress: string): Promise<PoolSu
     }
 }
 
-// Creator-pool summaries for the whole registry.
+// Creator-pool summaries for the whole registry. Every registered pool is
+// a commit (creator) pool now — standard pools were removed.
 export async function chainFetchAllPoolSummaries(): Promise<PoolSummary[]> {
     const entries = await chainListPools();
     const summaries = await mapLimited(entries, 4, (e) => chainFetchPoolSummary(e.pool_addr));
@@ -322,19 +335,20 @@ export async function chainFindPoolsByCreator(pools: PoolSummary[], walletAddres
 }
 
 export async function chainQueryWalletHoldings(walletAddress: string, pools: PoolSummary[]): Promise<WalletHolding[]> {
+    const client = await getCosmWasmClient();
     const balances = await mapLimited(pools, 6, async (pool) => {
+        // pool.creatorTokenAddress carries the creator token's TokenFactory
+        // denom now — a holder's balance is a plain bank query.
         if (!pool.creatorTokenAddress || !pool.thresholdReached) return null;
         try {
-            const res = await smart<{ balance: string }>(pool.creatorTokenAddress, {
-                balance: { address: walletAddress },
-            });
-            if (safeBigInt(res.balance) === 0n) return null;
+            const coin = await client.getBalance(walletAddress, pool.creatorTokenAddress);
+            if (safeBigInt(coin.amount) === 0n) return null;
             return {
                 tokenAddress: pool.creatorTokenAddress,
                 tokenSymbol: pool.tokenSymbol,
                 tokenName: pool.tokenName,
                 tokenDecimals: pool.tokenDecimals,
-                balance: res.balance,
+                balance: coin.amount,
                 poolAddress: pool.poolAddress,
             };
         } catch {
@@ -344,26 +358,28 @@ export async function chainQueryWalletHoldings(walletAddress: string, pools: Poo
     return balances.filter((b): b is WalletHolding => b !== null);
 }
 
-// cw20-base caps all_accounts pages at 30; walk up to 300 holders and
-// fetch balances in parallel batches. Plenty for the distribution
-// buckets and top-5 display; counts saturate beyond the cap.
-export async function chainQueryHolderDistribution(tokenAddress: string): Promise<HolderDistribution | null> {
+// The creator token is a native TokenFactory denom, so holders come from
+// the bank module's `denom_owners` endpoint over LCD (returns address +
+// balance in one page). Walk up to 300 holders; counts saturate beyond.
+export async function chainQueryHolderDistribution(tokenDenom: string): Promise<HolderDistribution | null> {
     try {
-        const accounts: string[] = [];
-        let startAfter: string | null = null;
+        const holders: TokenHolderEntry[] = [];
+        let nextKey: string | null = null;
         for (let page = 0; page < 10; page++) {
-            const res: { accounts: string[] } = await smart(tokenAddress, {
-                all_accounts: { start_after: startAfter, limit: 30 },
-            });
-            accounts.push(...res.accounts);
-            if (res.accounts.length < 30) break;
-            startAfter = res.accounts[res.accounts.length - 1];
+            let url = `${apiEndpoint}/cosmos/bank/v1beta1/denom_owners/${encodeURIComponent(tokenDenom)}?pagination.limit=30`;
+            if (nextKey) url += `&pagination.key=${encodeURIComponent(nextKey)}`;
+            const res = await fetch(url);
+            if (!res.ok) break;
+            const body = await res.json();
+            const owners: Array<{ address: string; balance: { amount: string } }> = body?.denom_owners ?? [];
+            for (const o of owners) {
+                if (safeBigInt(o.balance?.amount) > 0n) {
+                    holders.push({ address: o.address, balance: o.balance.amount });
+                }
+            }
+            nextKey = body?.pagination?.next_key ?? null;
+            if (!nextKey || owners.length < 30) break;
         }
-
-        const holders: TokenHolderEntry[] = (await mapLimited(accounts, 15, async (address) => {
-            const res = await smart<{ balance: string }>(tokenAddress, { balance: { address } });
-            return { address, balance: res.balance };
-        })).filter((h) => safeBigInt(h.balance) > 0n);
 
         const WHALE = 60_000_000_000n;   // 60,000 tokens (6 decimals)
         const SMALL = 100_000_000n;      // 100 tokens
@@ -379,7 +395,7 @@ export async function chainQueryHolderDistribution(tokenAddress: string): Promis
             topHolders: holders.slice(0, 5),
         };
     } catch (err) {
-        console.error(`[chain] holder distribution failed for ${tokenAddress}:`, err);
+        console.error(`[chain] holder distribution failed for ${tokenDenom}:`, err);
         return null;
     }
 }
@@ -419,7 +435,7 @@ export async function chainQueryThresholdAnalytics(
 }
 
 // ---------------------------------------------------------------------------
-// Factory TWAP price (native/USD via Osmosis x/twap)
+// USD pricing (Osmosis x/twap, via the factory's convert_native_to_usd)
 // ---------------------------------------------------------------------------
 
 // Mirrors pool-factory-interfaces `ConversionResponse`. `rate_used` is

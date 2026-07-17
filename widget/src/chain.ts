@@ -4,19 +4,24 @@
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { getConfig, keplrChainInfo } from './config.ts';
 import {
+    beliefPriceFromSimulation,
     buildCommitMsg,
     COMMIT_GAS,
     commitFunds,
     committingInfoQuery,
     evaluateGate,
     IS_FULLY_COMMITED_QUERY,
+    simulationQuery,
     smartQueryUrl,
     toMicro,
     type CommitRecord,
     type GateResult,
 } from './messages.ts';
 
-// Minimal Keplr surface the widget uses.
+// Minimal Keplr surface the widget uses. The default deployment is the
+// osmo-test-5 testnet, which is not in Keplr's built-in registry, so the
+// chain is suggested before enabling (a no-op for chains Keplr already
+// knows, like osmosis-1).
 interface KeplrLike {
     experimentalSuggestChain(info: unknown): Promise<void>;
     enable(chainId: string): Promise<void>;
@@ -85,10 +90,8 @@ export interface SubscribeResult {
     address: string;
 }
 
-/** Commit native OSMO to a creator pool ("subscribe"). Amount is in
- * whole OSMO (e.g. "25" or 25), converted to uosmo micro-units. The
- * contract values commits in USD via on-chain TWAP and enforces a $5
- * minimum pre-threshold / $1 minimum post-threshold. */
+/** Commit OSMO to a creator pool ("subscribe"). Amount is in whole OSMO
+ * (e.g. "25" or 25). */
 export async function subscribe(opts: { pool?: string; amount: string | number }): Promise<SubscribeResult> {
     const cfg = getConfig();
     const pool = opts.pool ?? cfg.pool;
@@ -97,8 +100,8 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
     const amountMicro = toMicro(opts.amount, cfg.coinDecimals);
     const { address, client } = await connect();
 
-    // Post-threshold commits are AMM swaps and need a spread guard;
-    // pre-threshold commits must NOT set one.
+    // Post-threshold commits are AMM swaps and need a belief_price + spread
+    // guard; pre-threshold commits must NOT set either.
     let thresholdHit = false;
     try {
         const status = await client.queryContractSmart(pool, IS_FULLY_COMMITED_QUERY);
@@ -109,7 +112,19 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
         // a wrong guess fails loudly at execution rather than silently.
     }
 
-    const msg = buildCommitMsg({ denom: cfg.nativeDenom, amountMicro, thresholdHit });
+    // The contract REQUIRES a non-null belief_price on post-threshold
+    // commits: derive it from the pool's own swap simulation (offer per
+    // ask). Pre-threshold commits keep belief_price null.
+    let beliefPrice: string | null = null;
+    if (thresholdHit) {
+        const sim = (await client.queryContractSmart(
+            pool,
+            simulationQuery(cfg.nativeDenom, amountMicro),
+        )) as { return_amount?: string } | null;
+        beliefPrice = beliefPriceFromSimulation(amountMicro, sim?.return_amount);
+    }
+
+    const msg = buildCommitMsg({ denom: cfg.nativeDenom, amountMicro, thresholdHit, beliefPrice });
     const funds = commitFunds(cfg.nativeDenom, amountMicro);
     const result = await client.execute(
         address,
