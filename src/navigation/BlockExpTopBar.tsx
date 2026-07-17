@@ -105,7 +105,7 @@ const BlockExpTopBar: React.FC = () => {
                     <>
                         {balance && (
                             <Typography variant="body2" sx={{ mr: 1 }}>
-                                {formatMicroAmount(balance.amount)} bluechip
+                                {formatMicroAmount(balance.amount)} OSMO
                             </Typography>
                         )}
                         <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>

@@ -90,7 +90,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                     <StatCard label="Total TVL" value={formatMicroAmount(totalPoolLiquidity.toString())} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Fees Earned (bluechip)" value={formatMicroAmount(totalFeesEarned0.toString())} />
+                    <StatCard label="Fees Earned (OSMO)" value={formatMicroAmount(totalFeesEarned0.toString())} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
                     <StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} />
@@ -105,7 +105,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                                 <TableCell>Pool</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>TVL</TableCell>
-                                <TableCell>Fees (bluechip)</TableCell>
+                                <TableCell>Fees (OSMO)</TableCell>
                                 <TableCell>Fees (Token)</TableCell>
                                 <TableCell>Subscribers</TableCell>
                                 <TableCell>LP Positions</TableCell>

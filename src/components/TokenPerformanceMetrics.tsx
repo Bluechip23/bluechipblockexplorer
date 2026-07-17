@@ -607,7 +607,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                         />
                         <MetricRow
                             icon={<TrendingUpIcon color="action" />}
-                            label="Volume (bluechip)"
+                            label="Volume (OSMO)"
                             value={formatMicroAmount(onChainAnalytics.analytics.total_volume_0)}
                             subtext="Cumulative bluechip volume through swaps"
                         />

@@ -6,9 +6,11 @@ who want to paste it into their own website.
 
 What it does:
 
-- **Subscribe button** — connects Keplr, registers the BlueChip chain,
-  and commits native bluechip to your creator pool (a "subscription").
-  Handles pre- vs post-threshold commits correctly.
+- **Subscribe button** — connects Keplr (Osmosis is built in — no chain
+  registration step) and commits OSMO to your creator pool (a
+  "subscription"). Handles pre- vs post-threshold commits correctly,
+  including the simulation-derived `belief_price` post-threshold commits
+  require.
 - **Subscription gate** — hides a block of your page until the viewer's
   wallet has a qualifying on-chain commit record for your pool.
 - **JS API** — the same primitives (`connect`, `subscribe`,
@@ -26,12 +28,12 @@ src="unpkg/...">` approaches do not work). ~300 KB gzipped.
 
 <!-- 2. Drop a subscribe button anywhere -->
 <div data-bluechip-subscribe
-     data-pool="bluechip1YOUR_POOL_ADDRESS"
+     data-pool="osmo1YOUR_POOL_ADDRESS"
      data-amount="25"></div>
 
 <!-- 3. Optionally gate content behind a subscription -->
 <div data-bluechip-gate
-     data-pool="bluechip1YOUR_POOL_ADDRESS"
+     data-pool="osmo1YOUR_POOL_ADDRESS"
      data-min-usd="5">
     Subscriber-only content here.
 </div>
@@ -39,7 +41,10 @@ src="unpkg/...">` approaches do not work). ~300 KB gzipped.
 
 That's the whole integration. The **only value you must supply is your
 pool address** (`data-pool`) — chain ID, RPC/REST endpoints, denom, and
-gas settings default to BlueChip mainnet. You can also self-host the file:
+gas settings default to Osmosis mainnet (`osmosis-1`,
+`rpc.osmosis.zone` / `lcd.osmosis.zone`, `uosmo`). Creator tokens minted
+by the pools are native TokenFactory denoms (`factory/{pool}/{sub}`),
+not CW20 contracts. You can also self-host the file:
 copy `dist/bluechip-widget.min.js` next to your site and load it from
 there.
 
@@ -51,7 +56,7 @@ tag) to change endpoints or set a site-wide default pool:
 ```html
 <script>
 BluechipWidget.init({
-    pool: "bluechip1YOUR_POOL_ADDRESS",   // default pool for all mounts
+    pool: "osmo1YOUR_POOL_ADDRESS",   // default pool for all mounts
     rpc:  "https://your.rpc.example",      // optional overrides
     rest: "https://your.lcd.example",
 });
@@ -63,7 +68,7 @@ BluechipWidget.init({
 | Attribute | Applies to | Meaning |
 |---|---|---|
 | `data-pool` | both | Creator pool address (falls back to `init({pool})`) |
-| `data-amount` | subscribe | Pre-filled amount in whole BLUECHIP |
+| `data-amount` | subscribe | Pre-filled amount in whole OSMO |
 | `data-fixed-amount` | subscribe | Hide the input; always use `data-amount` |
 | `data-label` | both | Button text |
 | `data-min-usd` | gate | Minimum lifetime USD committed to unlock |

@@ -3,7 +3,9 @@
 //
 //  1. the gate flow unlocks content from a committing_info LCD response,
 //  2. the subscribe flow builds a transaction whose body carries the
-//     exact `commit` execute msg + funds the contracts expect.
+//     exact `commit` execute msg + funds the contracts expect — both
+//     pre-threshold (belief_price/max_spread null) and post-threshold
+//     (belief_price derived from the pool `simulation` query).
 //
 // Run `npm run build` first (npm run check does both).
 
@@ -16,10 +18,11 @@ const CHROMIUM =
     process.env.CHROMIUM_PATH ??
     '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
-const RPC = 'https://bluechip.rpc.bluechip.link';
-const REST = 'https://bluechip.api.bluechip.link';
-const POOL = 'bluechip1pool00000000000000000000000000000000';
-const WALLET = 'bluechip1fan000000000000000000000000000000000';
+const RPC = 'https://rpc.osmosis.zone';
+const REST = 'https://lcd.osmosis.zone';
+const POOL = 'osmo1pool0000000000000000000000000000000000';   // pre-threshold
+const POOL_FULL = 'osmo1poolfull00000000000000000000000000000'; // post-threshold
+const WALLET = 'osmo1fan00000000000000000000000000000000000';
 
 // ---------------------------------------------------------------------------
 // Tiny protobuf writers — just enough for the two ABCI responses we fake.
@@ -62,7 +65,7 @@ const STATUS_RESULT = {
         protocol_version: { p2p: '8', block: '11', app: '0' },
         id: 'ab'.repeat(20),
         listen_addr: 'tcp://0.0.0.0:26656',
-        network: 'bluechip-3',
+        network: 'osmosis-1',
         version: '0.37.2',
         channels: '40202122233038606100',
         moniker: 'smoke-node',
@@ -84,11 +87,21 @@ const STATUS_RESULT = {
 
 function abciValueFor(path, dataHex) {
     if (path === '/cosmwasm.wasm.v1.Query/SmartContractState') {
-        // Both smart queries the widget makes over RPC hit this path; the
-        // request embeds the JSON query, so key off its bytes.
+        // All smart queries the widget makes over RPC hit this path; the
+        // request embeds the contract address + JSON query, so key off
+        // its bytes.
         const reqAscii = Buffer.from(dataHex, 'hex').toString('latin1');
         if (reqAscii.includes('is_fully_commited')) {
-            return smartStateResponse({ in_progress: { raised: '1000000000', target: '25000000000' } });
+            return smartStateResponse(reqAscii.includes(POOL_FULL)
+                ? 'fully_committed'
+                : { in_progress: { raised: '1000000000', target: '25000000000' } });
+        }
+        if (reqAscii.includes('simulation')) {
+            // Post-threshold only: 25 OSMO offered -> 50 creator tokens
+            // back, so belief_price (offer/ask) must come out as 0.5.
+            assert.ok(reqAscii.includes(POOL_FULL), 'simulation only expected for the fully committed pool');
+            assert.ok(reqAscii.includes('uosmo'), 'simulation offer asset uses the native denom');
+            return smartStateResponse({ return_amount: '50000000', spread_amount: '0', commission_amount: '0' });
         }
         throw new Error(`unexpected smart query: ${reqAscii}`);
     }
@@ -127,7 +140,8 @@ const KEPLR_STUB = `
     const pubkey = new Uint8Array(33); pubkey[0] = 2; pubkey[32] = 9;
     window.__signedBodies = [];
     window.keplr = {
-        async experimentalSuggestChain(info) { window.__suggestedChain = info; },
+        // No experimentalSuggestChain: Osmosis ships built into Keplr, and
+        // the widget must not call it (a call here would throw).
         async enable(chainId) { window.__enabledChain = chainId; },
         async getKey(chainId) { return { bech32Address: WALLET }; },
         getOfflineSigner(chainId) {
@@ -182,7 +196,8 @@ async function main() {
     });
 
     await page.setContent(`
-        <div data-bluechip-subscribe data-pool="${POOL}" data-amount="25"></div>
+        <div id="pre" data-bluechip-subscribe data-pool="${POOL}" data-amount="25"></div>
+        <div id="post" data-bluechip-subscribe data-pool="${POOL_FULL}" data-amount="25"></div>
         <div id="secret" data-bluechip-gate data-pool="${POOL}" data-min-usd="5">MEMBERS ONLY</div>
     `);
     // setContent rewrites the existing document without a navigation, so
@@ -194,7 +209,8 @@ async function main() {
     // Bundle exposes the API and auto-mounts declarative embeds.
     assert.equal(await page.evaluate(() => typeof window.BluechipWidget), 'object');
     assert.equal(await page.evaluate(() => window.BluechipWidget.version), '0.1.0');
-    await page.waitForSelector('[data-bluechip-subscribe] .bcw-btn');
+    await page.waitForSelector('#pre .bcw-btn');
+    await page.waitForSelector('#post .bcw-btn');
     await page.waitForSelector('.bcw-btn:text("Unlock with your subscription")');
 
     // --- Gate flow: unlocks on a qualifying committing_info record ------
@@ -203,27 +219,38 @@ async function main() {
     await page.waitForSelector('#secret:visible');
     assert.equal(await page.locator('#secret').innerText(), 'MEMBERS ONLY');
 
-    // --- Subscribe flow: the signed tx body carries the exact commit msg -
-    await page.click('[data-bluechip-subscribe] .bcw-btn');
-    await page.waitForSelector('[data-bluechip-subscribe] .bcw-status.bcw-err');
-    const errText = await page.locator('[data-bluechip-subscribe] .bcw-status').innerText();
+    // --- Subscribe flow, pre-threshold: null belief_price/max_spread -----
+    await page.click('#pre .bcw-btn');
+    await page.waitForSelector('#pre .bcw-status.bcw-err');
+    const errText = await page.locator('#pre .bcw-status').innerText();
     assert.match(errText, /smoke-abort-after-capture/, 'signer stub abort surfaces in the UI');
 
-    const signed = await page.evaluate(() => window.__signedBodies);
+    let signed = await page.evaluate(() => window.__signedBodies);
     assert.equal(signed.length, 1);
-    assert.equal(signed[0].chainId, 'bluechip-3');
+    assert.equal(signed[0].chainId, 'osmosis-1');
     const body = signed[0].bodyAscii;
     // The execute msg JSON is embedded verbatim in the tx body. The fake
-    // node reported the pool in_progress, so max_spread must be null.
-    const expectedMsg = /"commit":\{"asset":\{"info":\{"bluechip":\{"denom":"ubluechip"\}\},"amount":"25000000"\},"transaction_deadline":"\d+","belief_price":null,"max_spread":null\}/;
+    // node reported the pool in_progress, so belief_price and max_spread
+    // must both be null.
+    const expectedMsg = /"commit":\{"asset":\{"info":\{"bluechip":\{"denom":"uosmo"\}\},"amount":"25000000"\},"transaction_deadline":"\d+","belief_price":null,"max_spread":null\}/;
     assert.match(body, expectedMsg, 'tx body carries the exact commit execute msg');
     assert.ok(body.includes(POOL), 'tx body targets the pool contract');
-    assert.ok(body.includes('ubluechip'), 'funds denom present');
+    assert.ok(body.includes('uosmo'), 'funds denom present');
 
-    // Keplr got the right chain registration.
-    const suggested = await page.evaluate(() => window.__suggestedChain);
-    assert.equal(suggested.chainId, 'bluechip-3');
-    assert.equal(suggested.currencies[0].coinMinimalDenom, 'ubluechip');
+    // --- Subscribe flow, post-threshold: simulation-derived belief_price -
+    await page.click('#post .bcw-btn');
+    await page.waitForSelector('#post .bcw-status.bcw-err');
+    signed = await page.evaluate(() => window.__signedBodies);
+    assert.equal(signed.length, 2);
+    const postBody = signed[1].bodyAscii;
+    // 25000000 uosmo offered / 50000000 returned = 0.5, offer-per-ask.
+    const expectedPostMsg = /"commit":\{"asset":\{"info":\{"bluechip":\{"denom":"uosmo"\}\},"amount":"25000000"\},"transaction_deadline":"\d+","belief_price":"0\.500000000000000000","max_spread":"0\.05"\}/;
+    assert.match(postBody, expectedPostMsg, 'post-threshold tx body carries the simulation-derived belief_price');
+    assert.ok(postBody.includes(POOL_FULL), 'tx body targets the fully committed pool');
+
+    // Keplr was enabled for Osmosis (and never asked to suggest a chain —
+    // the stub has no experimentalSuggestChain, a call would have thrown).
+    assert.equal(await page.evaluate(() => window.__enabledChain), 'osmosis-1');
 
     await browser.close();
     console.log('smoke: all assertions passed');

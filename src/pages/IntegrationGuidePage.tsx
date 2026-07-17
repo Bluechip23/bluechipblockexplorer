@@ -18,21 +18,24 @@ import {
     TableRow,
     Paper,
     Alert,
-    Chip,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CodeBlock from '../components/universal/CodeBlock';
 import SectionCard from '../components/universal/DocSectionCard';
 
+// The BlueChip contracts run on Osmosis: payments are OSMO (uosmo),
+// addresses are osmo1..., and creator tokens are native TokenFactory
+// denoms (factory/{pool_addr}/{subdenom}) — plain bank coins, not CW20
+// contracts. Every snippet below reflects that wire format.
 
 const widgetQuickStartCode = `<!-- 1. Load the BlueChip widget (self-contained, no other scripts needed) -->
 <script src="https://cdn.jsdelivr.net/gh/Bluechip23/bluechipblockexplorer@main/widget/dist/bluechip-widget.min.js"><\/script>
 
 <!-- 2. Subscribe button — the ONLY thing you edit is your pool address -->
-<div data-bluechip-subscribe data-pool="bluechip1YOUR_POOL_ADDRESS" data-amount="25"></div>
+<div data-bluechip-subscribe data-pool="osmo1YOUR_POOL_ADDRESS" data-amount="25"></div>
 
 <!-- 3. Optional: gate content behind a subscription -->
-<div data-bluechip-gate data-pool="bluechip1YOUR_POOL_ADDRESS" data-min-usd="5">
+<div data-bluechip-gate data-pool="osmo1YOUR_POOL_ADDRESS" data-min-usd="5">
     Subscriber-only content.
 </div>`;
 
@@ -41,8 +44,8 @@ const widgetQuickStartCode = `<!-- 1. Load the BlueChip widget (self-contained, 
 const widgetInitCode = `<script src="https://cdn.jsdelivr.net/gh/Bluechip23/bluechipblockexplorer@main/widget/dist/bluechip-widget.min.js"><\/script>
 <script>
   BluechipWidget.init({
-    pool: "bluechip1YOUR_POOL_ADDRESS",   // default pool for every widget on the page
-    // rpc / rest / chainId default to BlueChip mainnet — override only if you self-host a node
+    pool: "osmo1YOUR_POOL_ADDRESS",   // default pool for every widget on the page
+    // rpc / rest / chainId default to Osmosis mainnet — override only if you self-host a node
   });
 <\/script>
 
@@ -51,18 +54,18 @@ const widgetInitCode = `<script src="https://cdn.jsdelivr.net/gh/Bluechip23/blue
 
 // Build your own UI with the same primitives the buttons use.
 const widgetJsApiCode = `<script>
-  // Connect Keplr (registers the BlueChip chain automatically)
+  // Connect Keplr (Osmosis ships with Keplr — no chain registration step)
   const { address } = await BluechipWidget.connect();
 
-  // Subscribe: commit bluechip to a pool. Returns the tx hash.
+  // Subscribe: commit OSMO to a pool. Returns the tx hash.
   const { txHash } = await BluechipWidget.subscribe({
-    pool: "bluechip1YOUR_POOL_ADDRESS",
-    amount: 25,                    // whole BLUECHIP; converted to micro-units for you
+    pool: "osmo1YOUR_POOL_ADDRESS",
+    amount: 25,                    // whole OSMO; converted to micro-units for you
   });
 
   // Check a wallet's subscription (read-only — no signing needed).
   const gate = await BluechipWidget.checkSubscription({
-    pool: "bluechip1YOUR_POOL_ADDRESS",
+    pool: "osmo1YOUR_POOL_ADDRESS",
     address,                       // omit to use the connected wallet
     minUsd: 5,                     // threshold in lifetime USD committed
   });
@@ -84,51 +87,26 @@ const scriptTagsCode = `<!-- CosmJS — required for the hand-rolled snippets be
 
 const configCode = `<script>
 // ============================================================
-//  bluechip CONFIGURATION — EDIT THESE VALUES
+//  bluechip CONFIGURATION — EDIT THE ADDRESSES
 // ============================================================
 const bluechip_CONFIG = {
-    // Chain settings
-    chainId:        "bluechip-3",
-    chainName:      "Bluechip Mainnet",
-    rpc:            "https://bluechip.rpc.bluechip.link",
-    rest:           "https://bluechip.api.bluechip.link",
-    nativeDenom:    "ubluechip",
+    // Chain settings — Osmosis mainnet.
+    // (Testnet: chainId "osmo-test-5", rpc https://rpc.osmotest5.osmosis.zone,
+    //  rest https://lcd.osmotest5.osmosis.zone)
+    chainId:        "osmosis-1",
+    chainName:      "Osmosis",
+    rpc:            "https://rpc.osmosis.zone",
+    rest:           "https://lcd.osmosis.zone",
+    nativeDenom:    "uosmo",
     coinDecimals:   6,
 
     // Your contract addresses — REPLACE THESE
-    factoryAddress: "bluechip1factory_address_here",
-    poolAddress:    "bluechip1your_pool_address_here",
-
-    // Keplr chain registration
-    bip44:          { coinType: 118 },
-    bech32Config: {
-        bech32PrefixAccAddr:  "bluechip",
-        bech32PrefixAccPub:   "bluechippub",
-        bech32PrefixValAddr:  "bluechipvaloper",
-        bech32PrefixValPub:   "bluechipvaloperpub",
-        bech32PrefixConsAddr: "bluechipvalcons",
-        bech32PrefixConsPub:  "bluechipvalconspub",
-    },
-    currencies: [{
-        coinDenom:        "bluechip",
-        coinMinimalDenom: "ubluechip",
-        coinDecimals:     6,
-        coinGeckoId:      "bluechip",
-    }],
-    feeCurrencies: [{
-        coinDenom:        "bluechip",
-        coinMinimalDenom: "ubluechip",
-        coinDecimals:     6,
-        coinGeckoId:      "bluechip",
-        gasPriceStep:     { low: 0.01, average: 0.025, high: 0.04 },
-    }],
-    stakeCurrency: {
-        coinDenom:        "bluechip",
-        coinMinimalDenom: "ubluechip",
-        coinDecimals:     6,
-        coinGeckoId:      "bluechip",
-    },
+    factoryAddress: "osmo1factory_address_here",
+    poolAddress:    "osmo1your_pool_address_here",
+    routerAddress:  "osmo1router_address_here",   // for cross-token swaps (Section 7)
 };
+// Keplr ships with Osmosis built in — no experimentalSuggestChain step
+// and no bech32/currency config to copy.
 </script>`;
 
 const walletConnectionCode = `<script>
@@ -159,20 +137,7 @@ async function connectKeplrWallet() {
     }
 
     try {
-        // Register the BlueChip chain with Keplr
-        await window.keplr.experimentalSuggestChain({
-            chainId:        bluechip_CONFIG.chainId,
-            chainName:      bluechip_CONFIG.chainName,
-            rpc:            bluechip_CONFIG.rpc,
-            rest:           bluechip_CONFIG.rest,
-            bip44:          bluechip_CONFIG.bip44,
-            bech32Config:   bluechip_CONFIG.bech32Config,
-            currencies:     bluechip_CONFIG.currencies,
-            feeCurrencies:  bluechip_CONFIG.feeCurrencies,
-            stakeCurrency:  bluechip_CONFIG.stakeCurrency,
-        });
-
-        // Enable the chain
+        // Osmosis ships with Keplr — enable it directly.
         await window.keplr.enable(bluechip_CONFIG.chainId);
 
         // Get signer and address
@@ -204,7 +169,7 @@ async function connectKeplrWallet() {
         var balanceEl = document.getElementById("bluechip-balance");
         if (balanceEl) {
             var human = (parseInt(balance.amount) / Math.pow(10, bluechip_CONFIG.coinDecimals)).toFixed(6);
-            balanceEl.textContent = human + " bluechip";
+            balanceEl.textContent = human + " OSMO";
         }
 
         return true;
@@ -256,7 +221,7 @@ async function handleSubscribe() {
     statusEl.innerHTML = '<div style="color:#1565c0;">Subscribing...</div>';
 
     try {
-        // Convert to micro-units (1 bluechip = 1,000,000 ubluechip)
+        // Convert to micro-units (1 OSMO = 1,000,000 uosmo)
         var microAmount = Math.floor(amount * 1000000).toString();
 
         // Check pool threshold status
@@ -265,6 +230,29 @@ async function handleSubscribe() {
             { is_fully_commited: {} }
         );
         var isThresholdCrossed = (thresholdStatus === "fully_committed");
+
+        // Post-threshold, the commit swaps through the native Osmosis pool
+        // and the contract REQUIRES an explicit belief_price (it rejects
+        // null). Derive it from a live quote: if the price moves against
+        // the user before the tx lands, the swap reverts instead of
+        // filling at the worse price. Pre-threshold commits don't swap.
+        var beliefPrice = null;
+        if (isThresholdCrossed) {
+            var sim = await window.bluechipClient.queryContractSmart(
+                bluechip_CONFIG.poolAddress,
+                { simulation: { offer_asset: {
+                    info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
+                    amount: microAmount
+                } } }
+            );
+            var expectedOut = parseInt(sim.return_amount);
+            if (!expectedOut || expectedOut <= 0) {
+                statusEl.innerHTML = '<div style="color:red;">Could not quote this commit — try again.</div>';
+                return;
+            }
+            // belief_price = offer / expected_out (offer-per-ask).
+            beliefPrice = (parseInt(microAmount) / expectedOut).toFixed(18);
+        }
 
         // Deadline: 20 minutes from now, in nanoseconds
         var deadlineNs = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
@@ -277,12 +265,12 @@ async function handleSubscribe() {
                     amount: microAmount
                 },
                 transaction_deadline: deadlineNs,
-                belief_price:         null,
+                belief_price:         beliefPrice,
                 max_spread:           (isThresholdCrossed && spreadInput) ? spreadInput : null
             }
         };
 
-        // Attach native tokens as funds
+        // Attach the OSMO as funds
         var funds = [{ denom: bluechip_CONFIG.nativeDenom, amount: microAmount }];
 
         var result = await window.bluechipClient.execute(
@@ -332,13 +320,29 @@ async function handleBuy() {
         var microAmount = Math.floor(amount * 1000000).toString();
         var deadlineNs  = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
 
+        var offerAsset = {
+            info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
+            amount: microAmount
+        };
+
+        // Take a live quote and fix belief_price from it. simple_swap
+        // accepts null, but setting it is what actually bounds
+        // sandwiching — a front-run that moves the pool reverts the
+        // swap instead of filling at the worse price.
+        var beliefPrice = null;
+        var sim = await window.bluechipClient.queryContractSmart(
+            bluechip_CONFIG.poolAddress,
+            { simulation: { offer_asset: offerAsset } }
+        );
+        var expectedOut = parseInt(sim.return_amount);
+        if (expectedOut > 0) {
+            beliefPrice = (parseInt(microAmount) / expectedOut).toFixed(18);
+        }
+
         var msg = {
             simple_swap: {
-                offer_asset: {
-                    info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
-                    amount: microAmount
-                },
-                belief_price:          null,
+                offer_asset:           offerAsset,
+                belief_price:          beliefPrice,
                 max_spread:            spreadInput || null,
                 // Set to true to bypass the pool's spread safety cap. Leave
                 // null in the standard buy flow; only flip on if the user
@@ -385,12 +389,12 @@ async function handleSell() {
         if (!connected) return;
     }
 
-    var tokenAddress = document.getElementById("sell-token-address").value.trim();
-    var amount       = parseFloat(document.getElementById("sell-amount").value);
-    var spreadInput  = document.getElementById("sell-spread").value;
+    var tokenDenom  = document.getElementById("sell-token-denom").value.trim();
+    var amount      = parseFloat(document.getElementById("sell-amount").value);
+    var spreadInput = document.getElementById("sell-spread").value;
 
-    if (!tokenAddress) {
-        statusEl.innerHTML = '<div style="color:red;">Please enter the creator token address.</div>';
+    if (!tokenDenom) {
+        statusEl.innerHTML = '<div style="color:red;">Please enter the creator token denom (factory/...).</div>';
         return;
     }
     if (isNaN(amount) || amount <= 0) {
@@ -404,39 +408,48 @@ async function handleSell() {
         var microAmount = Math.floor(amount * 1000000).toString();
         var deadlineNs  = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
 
-        // Build the inner swap hook message
-        var hookMsg = {
-            swap: {
-                belief_price:          null,
+        var offerAsset = {
+            info:   { creator_token: { denom: tokenDenom } },
+            amount: microAmount
+        };
+
+        // Live quote → belief_price, same anti-sandwich guard as the buy.
+        var beliefPrice = null;
+        var sim = await window.bluechipClient.queryContractSmart(
+            bluechip_CONFIG.poolAddress,
+            { simulation: { offer_asset: offerAsset } }
+        );
+        var expectedOut = parseInt(sim.return_amount);
+        if (expectedOut > 0) {
+            beliefPrice = (parseInt(microAmount) / expectedOut).toFixed(18);
+        }
+
+        // The creator token is a NATIVE TokenFactory coin, so a sell is
+        // the exact same simple_swap as a buy — executed on the POOL with
+        // the creator denom attached as funds. (The old CW20 send-hook
+        // path no longer exists.)
+        var msg = {
+            simple_swap: {
+                offer_asset:           offerAsset,
+                belief_price:          beliefPrice,
                 max_spread:            spreadInput || null,
-                // Same semantics as simple_swap.allow_high_max_spread; leave
-                // null unless you've surfaced an explicit override to the user.
+                // Same semantics as the buy path; leave null unless you've
+                // surfaced an explicit override to the user.
                 allow_high_max_spread: null,
                 to:                    null,
                 transaction_deadline:  deadlineNs
             }
         };
 
-        // Base64-encode the hook message
-        var encodedMsg = btoa(JSON.stringify(hookMsg));
+        var funds = [{ denom: tokenDenom, amount: microAmount }];
 
-        // CW20 Send: send creator tokens to the pool with the swap instruction
-        var msg = {
-            send: {
-                contract: bluechip_CONFIG.poolAddress,
-                amount:   microAmount,
-                msg:      encodedMsg
-            }
-        };
-
-        // Execute on the CW20 token contract (NOT the pool contract)
         var result = await window.bluechipClient.execute(
             window.bluechipAddress,
-            tokenAddress,
+            bluechip_CONFIG.poolAddress,   // the pool contract, NOT a token contract
             msg,
             { amount: [], gas: "500000" },
             "Sell Token",
-            []
+            funds
         );
 
         statusEl.innerHTML = '<div style="color:#2e7d32;font-weight:bold;">Success! Tokens sold.</div>';
@@ -456,30 +469,35 @@ const crossTokenSwapCode = `<script>
 // ============================================================
 //  CROSS-TOKEN SWAP via the router contract.
 //  Creator tokens never share a pool with each other — every
-//  cross-token pair routes through bluechip. The router runs the
+//  cross-token pair routes through OSMO. The router runs the
 //  whole route atomically (max 3 hops) and enforces slippage on
 //  the FINAL amount received via minimum_receive. It takes no
 //  per-hop spread parameters; size minimum_receive from the
 //  simulation below. Every hop's pool is validated against the
 //  factory registry on-chain.
+//
+//  Creator tokens are native TokenFactory denoms, so whatever
+//  the first hop offers (uosmo or a factory/... denom) is
+//  attached to execute_multi_hop as plain bank funds — there is
+//  no CW20 send path.
 // ============================================================
 
-// Add to bluechip_CONFIG:  routerAddress: "bluechip1router_address_here",
+// Add to bluechip_CONFIG:  routerAddress: "osmo1router_address_here",
 
-async function crossTokenSwap(fromToken, fromPool, toToken, toPool, amountMicro, slippagePct) {
-    // 1. Build the route: TOKEN_A -> bluechip -> TOKEN_B.
-    //    (For bluechip -> TOKEN_B, keep only the second hop;
-    //     for TOKEN_A -> bluechip, keep only the first.)
+async function crossTokenSwap(fromDenom, fromPool, toDenom, toPool, amountMicro, slippagePct) {
+    // 1. Build the route: TOKEN_A -> OSMO -> TOKEN_B.
+    //    (For OSMO -> TOKEN_B, keep only the second hop;
+    //     for TOKEN_A -> OSMO, keep only the first.)
     var route = [
         {
             pool_addr:        fromPool,
-            offer_asset_info: { creator_token: { contract_addr: fromToken } },
+            offer_asset_info: { creator_token: { denom: fromDenom } },
             ask_asset_info:   { bluechip: { denom: bluechip_CONFIG.nativeDenom } }
         },
         {
             pool_addr:        toPool,
             offer_asset_info: { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
-            ask_asset_info:   { creator_token: { contract_addr: toToken } }
+            ask_asset_info:   { creator_token: { denom: toDenom } }
         }
     ];
 
@@ -496,310 +514,44 @@ async function crossTokenSwap(fromToken, fromPool, toToken, toPool, amountMicro,
     var minReceive  = (BigInt(sim.final_amount) * BigInt(10000 - slipBps) / BigInt(10000)).toString();
     var deadlineNs  = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
 
-    var hopArgs = {
-        operations:      route,
-        minimum_receive: minReceive,
-        deadline:        deadlineNs,
-        recipient:       null
-    };
-
-    // 3a. First hop offers a CW20: send the tokens to the router with
-    //     the hook embedded (the router takes custody per hop).
+    // 3. Execute — attach whatever the FIRST hop offers as funds.
     var result = await window.bluechipClient.execute(
         window.bluechipAddress,
-        fromToken,                              // execute on the CW20
+        bluechip_CONFIG.routerAddress,
         {
-            send: {
-                contract: bluechip_CONFIG.routerAddress,
-                amount:   amountMicro,
-                msg:      btoa(JSON.stringify({ execute_multi_hop: hopArgs }))
+            execute_multi_hop: {
+                operations:      route,
+                minimum_receive: minReceive,
+                deadline:        deadlineNs,
+                recipient:       null
             }
         },
         { amount: [], gas: "900000" },
         "Cross-Token Swap",
-        []
+        [{ denom: fromDenom, amount: amountMicro }]
     );
-
-    // 3b. If the first hop offers native bluechip instead, call the
-    //     router directly and attach the funds:
-    //
-    //   await window.bluechipClient.execute(
-    //       window.bluechipAddress,
-    //       bluechip_CONFIG.routerAddress,
-    //       { execute_multi_hop: hopArgs },
-    //       { amount: [], gas: "900000" },
-    //       "Cross-Token Swap",
-    //       [{ denom: bluechip_CONFIG.nativeDenom, amount: amountMicro }]
-    //   );
 
     return result.transactionHash;
 }
 </script>`;
 
-const addLiquidityCode = `<script>
-async function handleAddLiquidity() {
-    var statusEl = document.getElementById("liq-add-status");
-    var txEl     = document.getElementById("liq-add-tx");
-    statusEl.textContent = "";
-    txEl.innerHTML       = "";
-
-    if (!window.bluechipClient || !window.bluechipAddress) {
-        var connected = await connectKeplrWallet();
-        if (!connected) return;
-    }
-
-    var amount0 = parseFloat(document.getElementById("liq-amount0").value);
-    var amount1 = parseFloat(document.getElementById("liq-amount1").value);
-    var slip    = parseFloat(document.getElementById("liq-slippage").value) || 1;
-
-    if (isNaN(amount0) || amount0 <= 0 || isNaN(amount1) || amount1 <= 0) {
-        statusEl.innerHTML = '<div style="color:red;">Please enter valid amounts for both tokens.</div>';
-        return;
-    }
-
-    statusEl.innerHTML = '<div style="color:#1565c0;">Step 1: Fetching pool info...</div>';
-
-    try {
-        var amount0Micro = Math.ceil(amount0 * 1000000).toString();
-        var amount1Micro = Math.ceil(amount1 * 1000000).toString();
-
-        // Step 1: Get the creator token address from the pool
-        var pairInfo = await window.bluechipClient.queryContractSmart(
-            bluechip_CONFIG.poolAddress, { pair: {} }
-        );
-
-        var tokenAddress   = null;
-        var bluechipDenom  = bluechip_CONFIG.nativeDenom;
-        // The pair query returns PoolDetails — its asset list field is
-        // \`asset_infos\`. (\`pool_token_info\` is the *input* field on the
-        // factory's create messages, not this response; it is read second
-        // purely as a defensive fallback.)
-        var assets = pairInfo.asset_infos || pairInfo.pool_token_info || [];
-        for (var i = 0; i < assets.length; i++) {
-            if (assets[i].creator_token) {
-                tokenAddress = assets[i].creator_token.contract_addr;
-            }
-            if (assets[i].bluechip) {
-                bluechipDenom = assets[i].bluechip.denom;
-            }
-        }
-
-        if (!tokenAddress) {
-            statusEl.innerHTML = '<div style="color:red;">Error: Could not find creator token.</div>';
-            return;
-        }
-
-        // Step 2: Check & set CW20 allowance
-        statusEl.innerHTML = '<div style="color:#1565c0;">Step 2: Checking token allowance...</div>';
-
-        var allowanceInfo = await window.bluechipClient.queryContractSmart(tokenAddress, {
-            allowance: { owner: window.bluechipAddress, spender: bluechip_CONFIG.poolAddress }
-        });
-
-        if (parseInt(allowanceInfo.allowance) < parseInt(amount1Micro)) {
-            statusEl.innerHTML = '<div style="color:#1565c0;">Step 2: Approving tokens...</div>';
-            await window.bluechipClient.execute(
-                window.bluechipAddress,
-                tokenAddress,
-                { increase_allowance: { spender: bluechip_CONFIG.poolAddress, amount: amount1Micro } },
-                { amount: [], gas: "200000" },
-                "Approve Pool",
-                []
-            );
-        }
-
-        // Step 3: Deposit liquidity
-        statusEl.innerHTML = '<div style="color:#1565c0;">Step 3: Depositing liquidity...</div>';
-
-        var slipFactor = 1 - (slip / 100);
-        var minAmount0 = Math.floor(parseFloat(amount0Micro) * slipFactor).toString();
-        var minAmount1 = Math.floor(parseFloat(amount1Micro) * slipFactor).toString();
-        var deadlineNs = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
-
-        var msg = {
-            deposit_liquidity: {
-                amount0:              amount0Micro,
-                amount1:              amount1Micro,
-                min_amount0:          minAmount0,
-                min_amount1:          minAmount1,
-                transaction_deadline: deadlineNs
-            }
-        };
-
-        var result = await window.bluechipClient.execute(
-            window.bluechipAddress,
-            bluechip_CONFIG.poolAddress,
-            msg,
-            { amount: [], gas: "500000" },
-            "Deposit Liquidity",
-            [{ denom: bluechipDenom, amount: amount0Micro }]
-        );
-
-        statusEl.innerHTML = '<div style="color:#2e7d32;font-weight:bold;">Liquidity added!</div>';
-        txEl.innerHTML =
-            '<div style="padding:10px;background:#f3e5f5;border:1px solid #7b1fa2;' +
-            'border-radius:6px;font-family:monospace;word-break:break-all;">' +
-            '<strong>Tx Hash:</strong><br>' + result.transactionHash + '</div>';
-
-    } catch (err) {
-        console.error("Add liquidity error:", err);
-        statusEl.innerHTML = '<div style="color:red;">Error: ' + err.message + '</div>';
-    }
-}
-</script>`;
-
-const removeLiquidityCode = `<script>
-var currentRemoveMode = "amount";
-
-function setRemoveMode(mode) {
-    currentRemoveMode = mode;
-    document.getElementById("remove-amount-section").style.display  = (mode === "amount")  ? "block" : "none";
-    document.getElementById("remove-percent-section").style.display = (mode === "percent") ? "block" : "none";
-}
-
-async function handleRemoveLiquidity() {
-    var statusEl = document.getElementById("remove-status");
-    var txEl     = document.getElementById("remove-tx");
-    statusEl.textContent = "";
-    txEl.innerHTML       = "";
-
-    if (!window.bluechipClient || !window.bluechipAddress) {
-        var connected = await connectKeplrWallet();
-        if (!connected) return;
-    }
-
-    var positionId = document.getElementById("remove-position-id").value.trim();
-    if (!positionId) {
-        statusEl.innerHTML = '<div style="color:red;">Please enter your position ID.</div>';
-        return;
-    }
-
-    try {
-        // Verify ownership
-        var positionInfo = await window.bluechipClient.queryContractSmart(
-            bluechip_CONFIG.poolAddress,
-            { position: { position_id: positionId } }
-        );
-        if (positionInfo.owner !== window.bluechipAddress) {
-            statusEl.innerHTML = '<div style="color:red;">You do not own this position.</div>';
-            return;
-        }
-
-        var deviation = parseFloat(document.getElementById("remove-deviation").value) || 1;
-        var deviationBps = Math.floor(deviation * 100);
-        var deadlineNs   = ((Date.now() + 20 * 60 * 1000) * 1000000).toString();
-
-        var msg;
-        if (currentRemoveMode === "all") {
-            msg = { remove_all_liquidity: {
-                position_id: positionId, min_amount0: null, min_amount1: null,
-                max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs
-            }};
-        } else if (currentRemoveMode === "percent") {
-            var pct = parseInt(document.getElementById("remove-percent").value);
-            msg = { remove_partial_liquidity_by_percent: {
-                position_id: positionId, percentage: pct, min_amount0: null, min_amount1: null,
-                max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs
-            }};
-        } else {
-            var removeAmt = parseFloat(document.getElementById("remove-amount").value);
-            msg = { remove_partial_liquidity: {
-                position_id: positionId, liquidity_to_remove: Math.floor(removeAmt).toString(),
-                min_amount0: null, min_amount1: null,
-                max_ratio_deviation_bps: deviationBps, transaction_deadline: deadlineNs
-            }};
-        }
-
-        var result = await window.bluechipClient.execute(
-            window.bluechipAddress, bluechip_CONFIG.poolAddress, msg,
-            { amount: [], gas: "500000" }, "Remove Liquidity"
-        );
-
-        statusEl.innerHTML = '<div style="color:#2e7d32;font-weight:bold;">Liquidity removed!</div>';
-        txEl.innerHTML =
-            '<div style="padding:10px;background:#fff3e0;border:1px solid #e65100;' +
-            'border-radius:6px;font-family:monospace;word-break:break-all;">' +
-            '<strong>Tx Hash:</strong><br>' + result.transactionHash + '</div>';
-
-    } catch (err) {
-        console.error("Remove liquidity error:", err);
-        statusEl.innerHTML = '<div style="color:red;">Error: ' + err.message + '</div>';
-    }
-}
-</script>`;
-
-const collectFeesCode = `<script>
-async function handleCollectFees() {
-    var statusEl = document.getElementById("fees-status");
-    var txEl     = document.getElementById("fees-tx");
-    statusEl.textContent = "";
-    txEl.innerHTML       = "";
-
-    if (!window.bluechipClient || !window.bluechipAddress) {
-        var connected = await connectKeplrWallet();
-        if (!connected) return;
-    }
-
-    var positionId = document.getElementById("fees-position-id").value.trim();
-    if (!positionId) {
-        statusEl.innerHTML = '<div style="color:red;">Please enter your position ID.</div>';
-        return;
-    }
-
-    try {
-        var positionInfo = await window.bluechipClient.queryContractSmart(
-            bluechip_CONFIG.poolAddress,
-            { position: { position_id: positionId } }
-        );
-        if (positionInfo.owner !== window.bluechipAddress) {
-            statusEl.innerHTML = '<div style="color:red;">You do not own this position.</div>';
-            return;
-        }
-
-        var unclaimed0 = (parseInt(positionInfo.unclaimed_fees_0) / 1000000).toFixed(6);
-        var unclaimed1 = (parseInt(positionInfo.unclaimed_fees_1) / 1000000).toFixed(6);
-        statusEl.innerHTML =
-            '<div style="color:#1565c0;">Collecting fees...<br>' +
-            'Unclaimed: ' + unclaimed0 + ' bluechip + ' + unclaimed1 + ' Creator Tokens</div>';
-
-        var msg = { collect_fees: { position_id: positionId } };
-
-        var result = await window.bluechipClient.execute(
-            window.bluechipAddress, bluechip_CONFIG.poolAddress, msg,
-            { amount: [], gas: "400000" }, "Collect Fees"
-        );
-
-        statusEl.innerHTML = '<div style="color:#2e7d32;font-weight:bold;">Fees collected!</div>';
-        txEl.innerHTML =
-            '<div style="padding:10px;background:#e0f2f1;border:1px solid #00897b;' +
-            'border-radius:6px;font-family:monospace;word-break:break-all;">' +
-            '<strong>Tx Hash:</strong><br>' + result.transactionHash + '</div>';
-
-    } catch (err) {
-        console.error("Collect fees error:", err);
-        statusEl.innerHTML = '<div style="color:red;">Error: ' + err.message + '</div>';
-    }
-}
-</script>`;
-
 const createPoolCode = `<script>
 // =====================================================================
-// Pool creation — two distinct factory entry points.
+// Pool creation — the factory's single entry point: the commit
+// (creator) pool.
 //
-// Commit (creator) pool: factory \`create\` message. Mints a new CW20
-//   creator token via the factory; pool starts in funding (commit)
-//   phase and flips to active trading once the USD threshold is crossed.
-//   The factory's own stored config is the source of truth for the
-//   commit threshold, fee splits, threshold-payout amounts, and lock
-//   caps — \`pool_msg\` only carries the token pair.
+// The new pool mints its own native TokenFactory denom
+// (factory/{pool_address}/{subdenom}) and starts in a funding (commit)
+// phase; once the USD threshold is crossed it seeds a NATIVE Osmosis
+// GAMM pool and flips to active trading. The factory's own stored
+// config is the source of truth for the commit threshold, fee splits,
+// threshold-payout amounts, and lock caps — pool_msg only carries the
+// token pair.
 //
-// Standard pool: factory \`create_standard_pool\` message. Wraps two
-//   pre-existing assets (one of which must be the canonical bluechip
-//   denom) into a plain xyk pool. No commit phase, no distribution.
-//
-// Both paths charge a USD-denominated creation fee paid in the
-// canonical bluechip denom; surplus is refunded to the caller in the
-// same tx. Attach the funds via the 7th argument to \`execute\`.
+// A flat OSMO creation fee (factory config pool_creation_fee) is
+// charged; attach it via the 7th argument to execute. Surplus is
+// refunded to the caller in the same tx; if the fee is zero, attach
+// nothing. The snippet reads the live fee from factory config.
 // =====================================================================
 
 async function handleCreatePool() {
@@ -813,112 +565,65 @@ async function handleCreatePool() {
         if (!connected) return;
     }
 
-    var isStandard = document.getElementById("pool-standard").checked;
-    // Caller-attached creation fee in ubluechip (the canonical bluechip
-    // denom). The factory verifies the attached funds cover the
-    // USD-denominated fee converted via the oracle and refunds any
-    // surplus on-chain. Leave blank to attach nothing (only works when
-    // the factory has the fee disabled).
-    var creationFeeMicro =
-        (document.getElementById("pool-creation-fee").value || "").trim();
-    var funds = (creationFeeMicro && creationFeeMicro !== "0")
-        ? [{ denom: bluechip_CONFIG.nativeDenom, amount: creationFeeMicro }]
-        : [];
-
     statusEl.innerHTML = '<div style="color:#1565c0;">Creating your pool...</div>';
 
     try {
-        var msg;
-        var memo;
-
-        if (!isStandard) {
-            // --- Commit (creator) pool ---
-            var tokenName   = document.getElementById("pool-token-name").value.trim();
-            var tokenSymbol = document.getElementById("pool-token-symbol").value.trim().toUpperCase();
-            if (!tokenName || !tokenSymbol) {
-                statusEl.innerHTML = '<div style="color:red;">Enter token name and symbol.</div>';
-                return;
-            }
-            // Mirror the factory's validate_creator_token_info bounds.
-            if (tokenName.length < 3 || tokenName.length > 50) {
-                statusEl.innerHTML = '<div style="color:red;">Token name must be 3-50 printable ASCII characters.</div>';
-                return;
-            }
-            if (!/^[A-Z0-9]{3,12}$/.test(tokenSymbol) || !/[A-Z]/.test(tokenSymbol)) {
-                statusEl.innerHTML = '<div style="color:red;">Token symbol must be 3-12 chars (A-Z, 0-9) with at least one letter.</div>';
-                return;
-            }
-
-            msg = {
-                create: {
-                    pool_msg: {
-                        // pool_token_info is the only field the factory
-                        // consumes here — bluechip at index 0, the
-                        // creator-token sentinel at index 1. Order matters.
-                        pool_token_info: [
-                            { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
-                            { creator_token: { contract_addr: "WILL_BE_CREATED_BY_FACTORY" } }
-                        ]
-                    },
-                    token_info: {
-                        name:    tokenName,
-                        symbol:  tokenSymbol,
-                        // Decimals are pinned to 6 by validate_creator_token_info;
-                        // threshold-payout amounts and the mint cap are
-                        // calibrated for this exact value.
-                        decimal: 6
-                    }
-                }
-            };
-            memo = "Create Commit Pool";
-        } else {
-            // --- Standard (xyk) pool ---
-            var asset0 = document.getElementById("pool-asset0").value.trim();
-            var asset1 = document.getElementById("pool-asset1").value.trim();
-            var label  = document.getElementById("pool-label").value.trim();
-            if (!asset0 || !asset1 || !label) {
-                statusEl.innerHTML = '<div style="color:red;">Enter both assets and a label for the standard pool.</div>';
-                return;
-            }
-            // Heuristic: contract addresses are bech32 (bluechip1.../cosmos1...)
-            // and longer than typical native denoms. Anything else is treated
-            // as a native bank denom (ubluechip, an ibc/... wrapped asset, etc.).
-            function buildEntry(s) {
-                var looksLikeAddress = s.length > 20 && (s.indexOf("bluechip") === 0 || s.indexOf("cosmos") === 0);
-                return looksLikeAddress
-                    ? { creator_token: { contract_addr: s } }
-                    : { bluechip:      { denom:         s } };
-            }
-            var entry0 = buildEntry(asset0);
-            var entry1 = buildEntry(asset1);
-
-            // Factory enforces that one leg equal the canonical bluechip
-            // denom — surface this client-side for a faster error.
-            var hasCanonical =
-                (entry0.bluechip && entry0.bluechip.denom === bluechip_CONFIG.nativeDenom) ||
-                (entry1.bluechip && entry1.bluechip.denom === bluechip_CONFIG.nativeDenom);
-            if (!hasCanonical) {
-                statusEl.innerHTML =
-                    '<div style="color:red;">One asset must be the canonical bluechip denom (' +
-                    bluechip_CONFIG.nativeDenom + ').</div>';
-                return;
-            }
-
-            msg = {
-                create_standard_pool: {
-                    pool_token_info: [entry0, entry1],
-                    label: label
-                }
-            };
-            memo = "Create Standard Pool";
+        var tokenName   = document.getElementById("pool-token-name").value.trim();
+        var tokenSymbol = document.getElementById("pool-token-symbol").value.trim().toUpperCase();
+        if (!tokenName || !tokenSymbol) {
+            statusEl.innerHTML = '<div style="color:red;">Enter token name and symbol.</div>';
+            return;
         }
+        // Mirror the factory's validate_creator_token_info bounds.
+        if (tokenName.length < 3 || tokenName.length > 50) {
+            statusEl.innerHTML = '<div style="color:red;">Token name must be 3-50 printable ASCII characters.</div>';
+            return;
+        }
+        if (!/^[A-Z0-9]{3,12}$/.test(tokenSymbol) || !/[A-Z]/.test(tokenSymbol)) {
+            statusEl.innerHTML = '<div style="color:red;">Token symbol must be 3-12 chars (A-Z, 0-9) with at least one letter.</div>';
+            return;
+        }
+
+        // Read the flat OSMO creation fee from live factory config and
+        // attach exactly that. Zero fee = attach nothing (the handler
+        // rejects funds in that case).
+        var factoryConfig = await window.bluechipClient.queryContractSmart(
+            bluechip_CONFIG.factoryAddress, { factory: {} }
+        );
+        var creationFee = (factoryConfig.factory && factoryConfig.factory.pool_creation_fee) || "0";
+        var funds = (creationFee !== "0")
+            ? [{ denom: bluechip_CONFIG.nativeDenom, amount: creationFee }]
+            : [];
+
+        var msg = {
+            create: {
+                pool_msg: {
+                    // pool_token_info is the only field the factory
+                    // consumes here — OSMO at index 0, the creator-token
+                    // placeholder at index 1 (the pool overwrites it with
+                    // its real factory/... denom). Order matters.
+                    pool_token_info: [
+                        { bluechip: { denom: bluechip_CONFIG.nativeDenom } },
+                        { creator_token: { denom: "WILL_BE_CREATED_BY_FACTORY" } }
+                    ]
+                },
+                token_info: {
+                    name:    tokenName,
+                    symbol:  tokenSymbol,
+                    // Decimals are pinned to 6 by validate_creator_token_info;
+                    // threshold-payout amounts and the mint cap are
+                    // calibrated for this exact value.
+                    decimal: 6
+                }
+            }
+        };
 
         var result = await window.bluechipClient.execute(
             window.bluechipAddress,
             bluechip_CONFIG.factoryAddress,
             msg,
             { amount: [], gas: "2000000" },
-            memo,
+            "Create Commit Pool",
             funds
         );
 
@@ -957,11 +662,14 @@ const queryPoolStatusCode = `async function checkPoolStatus(poolAddress) {
 const queryPoolStateCode = `async function getPoolState(poolAddress) {
     var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
+    // Post-migration the reserves are read LIVE from the native Osmosis
+    // GAMM pool (zero until the threshold crossing seeds it).
+    // total_liquidity / nft_ownership_accepted are wire-compat legacy
+    // fields — check the GAMM pool itself for LP-share data.
     var state = await client.queryContractSmart(poolAddress, { pool_state: {} });
 
-    console.log("Reserve 0 (Bluechip):", parseInt(state.reserve0) / 1000000);
-    console.log("Reserve 1 (Creator):",  parseInt(state.reserve1) / 1000000);
-    console.log("Total Liquidity:",      parseInt(state.total_liquidity) / 1000000);
+    console.log("Reserve 0 (OSMO):",    parseInt(state.reserve0) / 1000000);
+    console.log("Reserve 1 (Creator):", parseInt(state.reserve1) / 1000000);
 
     return state;
 }`;
@@ -976,8 +684,8 @@ const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, w
     });
 
     if (info) {
-        console.log("Total paid (USD):", parseInt(info.total_paid_usd) / 1000000);
-        console.log("Total paid (bluechip):", parseInt(info.total_paid_bluechip) / 1000000);
+        console.log("Total paid (USD):",  parseInt(info.total_paid_usd) / 1000000);
+        console.log("Total paid (OSMO):", parseInt(info.total_paid_bluechip) / 1000000);
     } else {
         console.log("User has not subscribed yet.");
     }
@@ -985,38 +693,80 @@ const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, w
     return info;
 }`;
 
-const queryPositionsCode = `async function getMyPositions(poolAddress, walletAddress) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
-
-    var result = await client.queryContractSmart(poolAddress, {
-        positions_by_owner: { owner: walletAddress }
-    });
-
-    result.positions.forEach(function(pos) {
-        console.log("Position ID:", pos.position_id);
-        console.log("  Liquidity:", parseInt(pos.liquidity) / 1000000);
-        console.log("  Unclaimed Fees 0:", parseInt(pos.unclaimed_fees_0) / 1000000);
-        console.log("  Unclaimed Fees 1:", parseInt(pos.unclaimed_fees_1) / 1000000);
-    });
-
-    return result.positions;
-}`;
-
-const queryTokenAddressCode = `async function getCreatorTokenAddress(poolAddress) {
+const queryTokenDenomCode = `async function getCreatorTokenDenom(poolAddress) {
     var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
 
     var pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
 
-    // \`asset_infos\` is the field on the PoolDetails response;
-    // \`pool_token_info\` (the factory-side input field) is read second
-    // purely as a defensive fallback.
-    var assets = pairInfo.asset_infos || pairInfo.pool_token_info || [];
+    // asset_infos is the field on the PoolDetails response. The creator
+    // side carries a native TokenFactory DENOM (factory/{pool}/{sub}) —
+    // there is no token contract address anymore.
+    var assets = pairInfo.asset_infos || [];
     for (var i = 0; i < assets.length; i++) {
         if (assets[i].creator_token) {
-            return assets[i].creator_token.contract_addr;
+            return assets[i].creator_token.denom;
         }
     }
     return null;
+}
+
+// A holder's balance is then a plain bank query — no CW20 involved:
+async function getCreatorTokenBalance(walletAddress, tokenDenom) {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+    var coin = await client.getBalance(walletAddress, tokenDenom);
+    return parseInt(coin.amount) / 1000000;
+}`;
+
+const queryEarningsCode = `// Creator-facing rollup: threshold status and the time-locked "excess
+// liquidity" claim (created when the pool raised more OSMO than the
+// per-pool lock cap). Claim it once unlocked with
+// { claim_creator_excess_liquidity: { transaction_deadline: null } }.
+async function getCreatorEarnings(poolAddress) {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+    var e = await client.queryContractSmart(poolAddress, { creator_earnings: {} });
+    // { creator_wallet_address, excess: { bluechip_amount, token_amount,
+    //   unlock_time, claimable_now } | null, is_threshold_hit,
+    //   threshold_crossed_at }
+    return e;
+}
+
+// Live state of the 500k-token committer airdrop after crossing.
+// Returns null when no distribution is active.
+async function getDistributionState(poolAddress) {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+    var d = await client.queryContractSmart(poolAddress, { distribution_state: {} });
+    if (d) {
+        console.log("Remaining recipients:", d.distributions_remaining,
+                    "stalled:", d.is_stalled);
+    }
+    return d;
+}`;
+
+const queryListPoolsCode = `// THE way to answer "what pools exist?" without an indexer. Page with
+// start_after = last pool_id; a page shorter than limit is the end.
+async function listPools() {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+    var all = [], startAfter = null, LIMIT = 100;
+    for (;;) {
+        var page = await client.queryContractSmart(bluechip_CONFIG.factoryAddress, {
+            pools: { start_after: startAfter, limit: LIMIT }
+        });
+        all = all.concat(page.pools);
+        if (page.pools.length < LIMIT) break;
+        startAfter = page.pools[page.pools.length - 1].pool_id;
+    }
+    // each entry: { pool_id, pool_addr, pool_token_info: [bluechip, creator_token] }
+    return all;
+}
+
+// Convert an OSMO amount to USD with the exact same x/twap conversion the
+// pools use (micro-units in, micro-USD out):
+async function osmoToUsd(microOsmo) {
+    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
+    var res = await client.queryContractSmart(bluechip_CONFIG.factoryAddress, {
+        pool_factory_query: { convert_native_to_usd: { amount: microOsmo } }
+    });
+    return res;   // { amount, rate_used, timestamp }
 }`;
 
 const privClientGateCode = `<script>
@@ -1151,9 +901,9 @@ async function loginWithWallet() {
 // ============================================================
 const { verifyADR36Amino } = require("@keplr-wallet/cosmos");
 
-const REST_ENDPOINT = "https://bluechip.api.bluechip.link";
-const POOL_ADDRESS  = "bluechip1your_pool_address_here";
-const BECH32_PREFIX = "bluechip";
+const REST_ENDPOINT = "https://lcd.osmosis.zone";
+const POOL_ADDRESS  = "osmo1your_pool_address_here";
+const BECH32_PREFIX = "osmo";
 
 // Smart-query a contract over REST: the query JSON is base64-encoded
 // into the URL. Works from any backend language — only the base64
@@ -1204,8 +954,14 @@ const privEventWatchCode = `// =================================================
 //    phase:     "funding" (pre-threshold) | "active" (post-threshold) |
 //               "threshold_crossing" | "threshold_hit_exact"
 //    committer: wallet address that committed
-//    commit_amount_bluechip / commit_amount_usd (micro-units)
+//    commit_amount_bluechip: OSMO committed (micro-units)
 //    total_commit_count, pool_contract, block_height, block_time
+//    total_raised_after / total_bluechip_raised_after:
+//               pool totals after a funding-phase commit
+//               (micro-USD and net micro-OSMO)
+//  NOTE: commit_amount_usd is NO LONGER emitted — for a USD value,
+//  query committing_info (last_payment_usd) or convert via the
+//  factory's convert_native_to_usd.
 //  Subscribe over the RPC websocket and grant perks instantly
 //  (unlock a chat, ping Discord, send a thank-you email...).
 // ============================================================
@@ -1229,15 +985,15 @@ function watchCommits(onCommit) {
     ws.onmessage = function (msgEvent) {
         var msg = JSON.parse(msgEvent.data);
         // Tendermint flattens attributes into result.events:
-        // { "wasm.committer": ["bluechip1..."], "wasm.commit_amount_usd": ["1000000"], ... }
+        // { "wasm.committer": ["osmo1..."], "wasm.commit_amount_bluechip": ["1000000"], ... }
         var events = msg.result && msg.result.events;
         if (!events || !events["wasm.committer"]) return;
 
         onCommit({
-            committer: events["wasm.committer"][0],
-            phase:     (events["wasm.phase"] || [])[0],
-            amountUsd: parseInt((events["wasm.commit_amount_usd"] || ["0"])[0]) / 1000000,
-            txHash:    (events["tx.hash"] || [])[0]
+            committer:  events["wasm.committer"][0],
+            phase:      (events["wasm.phase"] || [])[0],
+            amountOsmo: parseInt((events["wasm.commit_amount_bluechip"] || ["0"])[0]) / 1000000,
+            txHash:     (events["tx.hash"] || [])[0]
         });
     };
 
@@ -1248,7 +1004,7 @@ function watchCommits(onCommit) {
 
 // Example: grant a perk the moment someone commits.
 watchCommits(function (commit) {
-    console.log(commit.committer + " committed $" + commit.amountUsd + " (" + commit.phase + ")");
+    console.log(commit.committer + " committed " + commit.amountOsmo + " OSMO (" + commit.phase + ")");
     // -> POST to your backend, flip a UI flag, fire a Discord webhook, etc.
 });
 
@@ -1308,7 +1064,6 @@ const fullExampleCode = `<!DOCTYPE html>
         .btn-green  { background: #4CAF50; }
         .btn-blue   { background: #1976d2; }
         .btn-red    { background: #d32f2f; }
-        .btn-teal   { background: #00897b; }
         .btn:hover  { opacity: 0.9; }
     </style>
 </head>
@@ -1328,7 +1083,7 @@ const fullExampleCode = `<!DOCTYPE html>
     <!-- Subscribe -->
     <div class="card">
         <h3>Subscribe</h3>
-        <input id="subscribe-amount" type="number" placeholder="Amount (bluechip)" />
+        <input id="subscribe-amount" type="number" placeholder="Amount (OSMO)" />
         <input id="subscribe-spread" type="text" value="0.005" placeholder="Max spread" />
         <button class="btn btn-green" onclick="handleSubscribe()">Subscribe</button>
         <div id="subscribe-status"></div>
@@ -1338,7 +1093,7 @@ const fullExampleCode = `<!DOCTYPE html>
     <!-- Buy -->
     <div class="card">
         <h3>Buy Creator Tokens</h3>
-        <input id="buy-amount" type="number" placeholder="Amount (bluechip)" />
+        <input id="buy-amount" type="number" placeholder="Amount (OSMO)" />
         <input id="buy-spread" type="text" value="0.005" placeholder="Max spread" />
         <button class="btn btn-blue" onclick="handleBuy()">Buy</button>
         <div id="buy-status"></div>
@@ -1348,21 +1103,12 @@ const fullExampleCode = `<!DOCTYPE html>
     <!-- Sell -->
     <div class="card">
         <h3>Sell Creator Tokens</h3>
-        <input id="sell-token-address" type="text" placeholder="Creator token address" />
+        <input id="sell-token-denom" type="text" placeholder="Creator token denom (factory/...)" />
         <input id="sell-amount" type="number" placeholder="Amount" />
         <input id="sell-spread" type="text" value="0.005" placeholder="Max spread" />
         <button class="btn btn-red" onclick="handleSell()">Sell</button>
         <div id="sell-status"></div>
         <div id="sell-tx"></div>
-    </div>
-
-    <!-- Collect Fees -->
-    <div class="card">
-        <h3>Collect Fees</h3>
-        <input id="fees-position-id" type="text" placeholder="Position ID" />
-        <button class="btn btn-teal" onclick="handleCollectFees()">Collect Fees</button>
-        <div id="fees-status"></div>
-        <div id="fees-tx"></div>
     </div>
 
     <!--
@@ -1378,18 +1124,16 @@ const tocItems = [
     { num: '2', title: 'Quick Start — The Embeddable Widget', id: 'quick-start' },
     { num: '3', title: 'Connecting to Keplr Wallet', id: 'keplr-wallet' },
     { num: '4', title: 'Subscribe Button (Commit)', id: 'subscribe' },
-    { num: '5', title: 'Buy Button (Swap Bluechips for Creator Tokens)', id: 'buy' },
-    { num: '6', title: 'Sell Button (Swap Creator Tokens for Bluechips)', id: 'sell' },
+    { num: '5', title: 'Buy Button (Swap OSMO for Creator Tokens)', id: 'buy' },
+    { num: '6', title: 'Sell Button (Swap Creator Tokens for OSMO)', id: 'sell' },
     { num: '7', title: 'Cross-Token Swaps (Router)', id: 'cross-token' },
-    { num: '8', title: 'Add Liquidity', id: 'add-liquidity' },
-    { num: '9', title: 'Remove Liquidity', id: 'remove-liquidity' },
-    { num: '10', title: 'Collect Fees', id: 'collect-fees' },
-    { num: '11', title: 'Create a Pool', id: 'create-pool' },
-    { num: '12', title: 'Querying Pool Info (Read-Only)', id: 'query-pool' },
-    { num: '13', title: 'Granting Special Privileges to Committed Users', id: 'special-privileges' },
-    { num: '14', title: 'Full Working Example Page', id: 'full-example' },
-    { num: '15', title: 'Troubleshooting', id: 'troubleshooting' },
-    { num: '16', title: 'Contract Address Reference', id: 'contract-reference' },
+    { num: '8', title: "Liquidity — It's a Native Osmosis Pool", id: 'liquidity' },
+    { num: '9', title: 'Create a Pool', id: 'create-pool' },
+    { num: '10', title: 'Querying Pool Info (Read-Only)', id: 'query-pool' },
+    { num: '11', title: 'Granting Special Privileges to Committed Users', id: 'special-privileges' },
+    { num: '12', title: 'Full Working Example Page', id: 'full-example' },
+    { num: '13', title: 'Troubleshooting', id: 'troubleshooting' },
+    { num: '14', title: 'Contract Address Reference', id: 'contract-reference' },
 ];
 
 
@@ -1410,6 +1154,15 @@ const IntegrationGuidePage: React.FC = () => {
                                     You do <strong>not</strong> need to be a programmer — just copy and paste
                                     the code blocks below.
                                 </Typography>
+                                <Alert severity="info">
+                                    BlueChip runs on <strong>Osmosis</strong>: payments are made in{' '}
+                                    <strong>OSMO</strong> (<code>uosmo</code>), addresses look like{' '}
+                                    <code>osmo1...</code>, and creator tokens are native Osmosis{' '}
+                                    <strong>TokenFactory</strong> denoms (<code>factory/osmo1pool.../utoken</code>) —
+                                    ordinary bank coins, not token contracts. Once a pool crosses its funding
+                                    threshold, its liquidity lives in a native Osmosis pool, so creator tokens
+                                    can also be traded directly on app.osmosis.zone.
+                                </Alert>
                             </CardContent>
                         </Card>
 
@@ -1446,7 +1199,8 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <Typography paragraph>
                                 Your visitors will need the <strong>Keplr Wallet</strong> browser extension
-                                to interact with BlueChip buttons on your site.
+                                to interact with BlueChip buttons on your site. Keplr supports Osmosis out
+                                of the box — no custom chain registration required.
                             </Typography>
                             <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
                                 Install Keplr:
@@ -1466,7 +1220,7 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <Box component="ol">
                                 <li><Typography>A website where you can add HTML and JavaScript (WordPress, Squarespace with code injection, a custom site, etc.)</Typography></li>
-                                <li><Typography>Your <strong>Pool Contract Address</strong> — the address of the creator pool on the BlueChip chain (looks like <code>bluechip1abc...xyz</code>)</Typography></li>
+                                <li><Typography>Your <strong>Pool Contract Address</strong> — the address of the creator pool on Osmosis (looks like <code>osmo1abc...xyz</code>)</Typography></li>
                                 <li><Typography>Your <strong>Factory Contract Address</strong> — only needed if you want to create new pools</Typography></li>
                             </Box>
                         </SectionCard>
@@ -1482,7 +1236,7 @@ const IntegrationGuidePage: React.FC = () => {
                                 The widget is a single self-contained script (the wallet library is compiled in — nothing
                                 else to load). Paste the script tag once, then drop a tagged <code>&lt;div&gt;</code>
                                 wherever you want a button. The <strong>only value you must supply is your pool address</strong>;
-                                the chain, endpoints, denom, and gas settings all default to BlueChip mainnet.
+                                the chain, endpoints, denom, and gas settings all default to Osmosis mainnet.
                             </Typography>
                             <CodeBlock code={widgetQuickStartCode} language="HTML" />
 
@@ -1527,7 +1281,7 @@ const IntegrationGuidePage: React.FC = () => {
                                         <TableRow>
                                             <TableCell><code>data-amount</code></TableCell>
                                             <TableCell>subscribe</TableCell>
-                                            <TableCell>Pre-filled amount, in whole BLUECHIP.</TableCell>
+                                            <TableCell>Pre-filled amount, in whole OSMO.</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell><code>data-fixed-amount</code></TableCell>
@@ -1575,7 +1329,7 @@ const IntegrationGuidePage: React.FC = () => {
                                 The <code>data-bluechip-gate</code> / <code>checkSubscription</code> gate is a
                                 <strong> client-side convenience</strong> — it hides DOM until the check passes, which is
                                 perfect for perks and soft-gating, but anyone can bypass it with browser dev tools. To
-                                protect content that truly matters, verify wallet ownership server-side (Section 13) and run
+                                protect content that truly matters, verify wallet ownership server-side (Section 11) and run
                                 the subscription lookup from your backend.
                             </Alert>
 
@@ -1587,7 +1341,7 @@ const IntegrationGuidePage: React.FC = () => {
                                 </AccordionSummary>
                                 <AccordionDetails>
                                     <Typography paragraph>
-                                        Sections 4–13 show fully hand-written buttons that talk to the chain directly through
+                                        Sections 4–11 show fully hand-written buttons that talk to the chain directly through
                                         CosmJS, for developers who want complete control. Those snippets need CosmJS loaded
                                         and a config block — the widget above needs neither.
                                     </Typography>
@@ -1599,7 +1353,7 @@ const IntegrationGuidePage: React.FC = () => {
                                     </Alert>
                                     <CodeBlock code={scriptTagsCode} language="HTML" />
                                     <Typography paragraph sx={{ mt: 2 }}>
-                                        Then add this configuration block. <strong>Replace the placeholder values</strong> with
+                                        Then add this configuration block. <strong>Replace the placeholder addresses</strong> with
                                         your actual addresses:
                                     </Typography>
                                     <CodeBlock code={configCode} language="HTML" />
@@ -1611,7 +1365,9 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="keplr-wallet" number="3" title="Connecting to Keplr Wallet">
                             <Typography paragraph>
                                 Every BlueChip interaction starts by connecting the user's Keplr wallet.
-                                Add this script <strong>once</strong> on any page where you have BlueChip buttons:
+                                Osmosis ships with Keplr, so there is no chain-registration step — just{' '}
+                                <code>enable(&quot;osmosis-1&quot;)</code>. Add this script{' '}
+                                <strong>once</strong> on any page where you have BlueChip buttons:
                             </Typography>
                             <CodeBlock code={walletConnectionCode} language="JavaScript" />
 
@@ -1624,38 +1380,51 @@ const IntegrationGuidePage: React.FC = () => {
                         {/* Section 4: Subscribe */}
                         <SectionCard id="subscribe" number="4" title="Subscribe Button (Commit)">
                             <Typography paragraph>
-                                The <strong>Subscribe</strong> button lets your fans commit Bluechip tokens to your creator pool.
-                                This is how people support you. Before the pool reaches $25,000 USD, commits are recorded
-                                in a ledger. After the threshold is crossed, commits are swapped through the AMM and
-                                your supporter receives your creator tokens.
+                                The <strong>Subscribe</strong> button lets your fans commit OSMO to your creator pool.
+                                This is how people support you. Before the pool reaches its USD threshold ($25,000
+                                by default), commits are recorded in a ledger. After the threshold is crossed,
+                                commits are swapped through the native Osmosis pool and your supporter receives your
+                                creator tokens.
                             </Typography>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 A 6% fee is deducted: 1% goes to the BlueChip protocol, 5% goes to you the creator.
+                            </Alert>
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                <strong>Post-threshold commits require a <code>belief_price</code>.</strong> Once the
+                                pool is active, a commit is a market buy — and the contract rejects{' '}
+                                <code>belief_price: null</code> on that path (it is the anti-sandwich floor). The
+                                handler below takes a live <code>simulation</code> quote at submit time and derives{' '}
+                                <code>belief_price = offer / expected_out</code>. Pre-threshold commits don't swap,
+                                so they leave it null.
                             </Alert>
                             <CodeBlock code={subscribeCode} language="JavaScript" />
                         </SectionCard>
 
                         {/* Section 5: Buy */}
-                        <SectionCard id="buy" number="5" title="Buy Button (Swap Bluechips for Creator Tokens)">
+                        <SectionCard id="buy" number="5" title="Buy Button (Swap OSMO for Creator Tokens)">
                             <Typography paragraph>
-                                The <strong>Buy</strong> button lets people swap their Bluechip tokens for your
+                                The <strong>Buy</strong> button lets people swap their OSMO for your
                                 creator tokens. This only works <strong>after</strong> the pool has crossed the
-                                $25,000 threshold and has active liquidity.
+                                USD threshold and its native Osmosis pool exists. (Since it's a normal Osmosis
+                                pool, buyers can also just trade it on app.osmosis.zone — the contract's{' '}
+                                <code>simple_swap</code> is a convenience venue with the same result.)
                             </Typography>
                             <CodeBlock code={buyCode} language="JavaScript" />
                         </SectionCard>
 
                         {/* Section 6: Sell */}
-                        <SectionCard id="sell" number="6" title="Sell Button (Swap Creator Tokens for Bluechips)">
+                        <SectionCard id="sell" number="6" title="Sell Button (Swap Creator Tokens for OSMO)">
                             <Typography paragraph>
                                 The <strong>Sell</strong> button lets people swap their creator tokens back into
-                                Bluechip tokens. This uses the CW20 <code>send</code> mechanism — the tokens are
-                                sent to the pool contract with an embedded swap instruction.
+                                OSMO. Creator tokens are <strong>native TokenFactory coins</strong>, so a sell is
+                                the exact same <code>simple_swap</code> message as a buy — just with the creator
+                                token's denom attached as funds instead of OSMO. There is no CW20{' '}
+                                <code>send</code> step and no token contract address anymore.
                             </Typography>
-                            <Alert severity="warning" sx={{ mb: 2 }}>
-                                Selling creator tokens requires the CW20 token contract address, which is different
-                                from the pool address. You can find this by querying the pool's <code>pair</code> endpoint
-                                (see Section 12).
+                            <Alert severity="info" sx={{ mb: 2 }}>
+                                You need the creator token's <strong>denom</strong> (looks like{' '}
+                                <code>factory/osmo1pool.../utoken</code>), which you can read from the pool's{' '}
+                                <code>pair</code> query (see Section 10).
                             </Alert>
                             <CodeBlock code={sellCode} language="JavaScript" />
                         </SectionCard>
@@ -1664,7 +1433,7 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="cross-token" number="7" title="Cross-Token Swaps (Router)">
                             <Typography paragraph>
                                 Creator tokens never share a pool with each other — every pair trades
-                                through bluechip. To let a fan swap <em>another creator's token</em>{' '}
+                                through OSMO. To let a fan swap <em>another creator's token</em>{' '}
                                 directly into yours, use the <strong>router contract</strong>: it executes
                                 the whole route (up to 3 hops) in a single atomic transaction and validates
                                 every hop's pool against the factory registry before moving funds.
@@ -1673,88 +1442,79 @@ const IntegrationGuidePage: React.FC = () => {
                                 The router has <strong>no per-hop slippage parameters</strong>. Protection
                                 comes from <code>minimum_receive</code> on the final token: simulate first
                                 with <code>simulate_multi_hop</code>, then set{' '}
-                                <code>minimum_receive</code> a tolerance below the simulated output. If any
-                                hop moves the price so the final amount lands short, the entire route
-                                reverts — partial swaps cannot strand funds mid-route.
+                                <code>minimum_receive</code> a tolerance below the simulated output (zero is
+                                rejected). If any hop moves the price so the final amount lands short, the
+                                entire route reverts — partial swaps cannot strand funds mid-route.
                             </Alert>
                             <CodeBlock code={crossTokenSwapCode} language="JavaScript" />
                             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                                 Get the router address from the BlueChip team alongside the factory
-                                address. Both pools in the route must be past their threshold (active AMMs).
+                                address. Both pools in the route must be past their threshold (active pools).
                             </Typography>
                         </SectionCard>
 
-                        {/* Section 8: Add Liquidity */}
-                        <SectionCard id="add-liquidity" number="8" title="Add Liquidity">
+                        {/* Section 8: Liquidity */}
+                        <SectionCard id="liquidity" number="8" title="Liquidity — It's a Native Osmosis Pool">
                             <Typography paragraph>
-                                Liquidity providers earn trading fees. When you add liquidity, you receive an NFT that
-                                represents your position. You must provide <strong>both</strong> Bluechip tokens and
-                                creator tokens in the correct ratio.
+                                Earlier versions of the protocol had their own liquidity-position system
+                                (deposit, withdraw, position NFTs, fee collection). <strong>That system is
+                                gone.</strong> When a creator pool crosses its threshold, the contract creates
+                                and seeds a <strong>native Osmosis GAMM pool</strong>, and:
                             </Typography>
-                            <Alert severity="info" sx={{ mb: 2 }}>
-                                Adding liquidity only works <strong>after</strong> the pool threshold has been
-                                crossed ($25,000 USD in commits). There are two steps: approve the pool to spend
-                                your creator tokens (CW20 allowance), then deposit both tokens into the pool.
+                            <Box component="ul" sx={{ mb: 2 }}>
+                                <li>
+                                    <Typography>
+                                        The <strong>seed liquidity belongs to no one</strong> — the pool contract
+                                        holds the <code>gamm/pool/{'{id}'}</code> LP shares itself, permanently. It
+                                        cannot be pulled, rugged, or transferred, and there are no{' '}
+                                        <code>deposit_liquidity</code>, <code>remove_liquidity</code>, or{' '}
+                                        <code>collect_fees</code> entry points on the contract.
+                                    </Typography>
+                                </li>
+                                <li>
+                                    <Typography>
+                                        <strong>Anyone can LP the normal Osmosis way.</strong> Visit
+                                        app.osmosis.zone, find the pool (OSMO / your creator token), and add or
+                                        remove liquidity there like any other Osmosis pool. Positions and LP
+                                        rewards are managed entirely by Osmosis.
+                                    </Typography>
+                                </li>
+                                <li>
+                                    <Typography>
+                                        <strong>Trading fees accrue to LPs</strong> per Osmosis GAMM rules (the
+                                        pool is created with the protocol's configured swap fee, 0.3% by default).
+                                    </Typography>
+                                </li>
+                            </Box>
+                            <Alert severity="warning">
+                                If your old integration called <code>deposit_liquidity</code>,{' '}
+                                <code>add_to_position</code>, <code>remove_all_liquidity</code>,{' '}
+                                <code>remove_partial_liquidity</code>, <code>collect_fees</code>, or the{' '}
+                                <code>position</code> / <code>positions_by_owner</code> queries — delete that
+                                code and point your users at Osmosis instead.
                             </Alert>
-                            <CodeBlock code={addLiquidityCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 9: Remove Liquidity */}
-                        <SectionCard id="remove-liquidity" number="9" title="Remove Liquidity">
+                        {/* Section 9: Create a Pool */}
+                        <SectionCard id="create-pool" number="9" title="Create a Pool">
                             <Typography paragraph>
-                                You can remove liquidity three ways:
+                                Anyone can create a new pool through the factory. There is a single creation
+                                path — the <strong>commit (creator) pool</strong>: the new pool mints its own
+                                native TokenFactory denom and starts in a funding (commit) phase. Once the
+                                configured USD threshold is crossed, 1,200,000 creator tokens are minted
+                                and distributed (500k to subscribers, 325k to the creator, 25k to BlueChip,
+                                350k seeded into the native Osmosis pool as initial liquidity).
                             </Typography>
-                            <Box component="ul" sx={{ mb: 2 }}>
-                                <li><Typography><strong>By Amount</strong> — Remove a specific amount of liquidity units</Typography></li>
-                                <li><Typography><strong>By Percentage</strong> — Remove a percentage (e.g., 50%) of your position</Typography></li>
-                                <li><Typography><strong>Remove All</strong> — Withdraw everything</Typography></li>
-                            </Box>
-                            <Typography paragraph>
-                                You will need your <strong>Position ID</strong> (the NFT token ID you received when adding liquidity).
-                            </Typography>
-                            <CodeBlock code={removeLiquidityCode} language="JavaScript" />
-                        </SectionCard>
-
-                        {/* Section 10: Collect Fees */}
-                        <SectionCard id="collect-fees" number="10" title="Collect Fees">
-                            <Typography paragraph>
-                                If you have a liquidity position (NFT), you can collect your accumulated trading
-                                fees <strong>without</strong> removing your liquidity. Fees are paid out in both
-                                Bluechip and creator tokens.
-                            </Typography>
-                            <CodeBlock code={collectFeesCode} language="JavaScript" />
-                        </SectionCard>
-
-                        {/* Section 11: Create a Pool */}
-                        <SectionCard id="create-pool" number="11" title="Create a Pool">
-                            <Typography paragraph>
-                                Anyone can create a new pool through the factory. Two flavors are supported:
-                            </Typography>
-                            <Box component="ul" sx={{ mb: 2 }}>
-                                <li>
-                                    <Typography>
-                                        <strong>Commit (creator) pool</strong> — the factory mints a fresh CW20
-                                        creator token and the pool starts in a funding (commit) phase. Once the
-                                        configured USD threshold is crossed, 1,200,000 creator tokens are minted
-                                        and distributed (500k to subscribers, 325k to the creator, 25k to BlueChip,
-                                        350k seeded as initial liquidity).
-                                    </Typography>
-                                </li>
-                                <li>
-                                    <Typography>
-                                        <strong>Standard pool</strong> — wraps two pre-existing assets in a plain
-                                        xyk pool. No commit phase, no distribution. One leg of the pair must be the
-                                        canonical bluechip denom.
-                                    </Typography>
-                                </li>
-                            </Box>
                             <Alert severity="info" sx={{ mb: 2 }}>
-                                Both creation paths charge a <strong>USD-denominated creation fee paid in canonical
-                                bluechip</strong>. Attach the funds to the call; the factory verifies, forwards the
-                                fee to the bluechip wallet, and refunds any surplus on-chain.
+                                Pool creation charges a <strong>flat OSMO fee</strong>{' '}
+                                (<code>pool_creation_fee</code> in factory config). Attach the funds to the
+                                call; the factory verifies with <code>must_pay</code> (exactly one{' '}
+                                <code>uosmo</code> coin entry), forwards the fee to the protocol wallet, and
+                                refunds any surplus on-chain. If the fee is zero, attach nothing — funds are
+                                rejected in that case.
                             </Alert>
                             <Alert severity="warning" sx={{ mb: 2 }}>
-                                For commit pools, the wallet that creates the pool becomes the creator wallet.
+                                The wallet that creates the pool becomes the creator wallet.
                                 <strong> Do not lose your seed phrase</strong> — BlueChip cannot recover it.
                                 Token name must be 3-50 printable ASCII characters; symbol must be 3-12 chars
                                 (A-Z, 0-9) with at least one letter; decimals are pinned to 6.
@@ -1762,8 +1522,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={createPoolCode} language="JavaScript" />
                         </SectionCard>
 
-                        {/* Section 12: Querying Pool Info */}
-                        <SectionCard id="query-pool" number="12" title="Querying Pool Info (Read-Only)">
+                        {/* Section 10: Querying Pool Info */}
+                        <SectionCard id="query-pool" number="10" title="Querying Pool Info (Read-Only)">
                             <Typography paragraph>
                                 These queries don't require a wallet connection — they're read-only.
                                 You can use them to show pool status on your site.
@@ -1780,7 +1540,7 @@ const IntegrationGuidePage: React.FC = () => {
 
                             <Accordion>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography sx={{ fontWeight: 'bold' }}>Get Pool Reserves and Liquidity</Typography>
+                                    <Typography sx={{ fontWeight: 'bold' }}>Get Pool Reserves</Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
                                     <CodeBlock code={queryPoolStateCode} language="JavaScript" />
@@ -1798,28 +1558,37 @@ const IntegrationGuidePage: React.FC = () => {
 
                             <Accordion>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography sx={{ fontWeight: 'bold' }}>Get User's Liquidity Positions</Typography>
+                                    <Typography sx={{ fontWeight: 'bold' }}>Get the Creator Token Denom (and Balances)</Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
-                                    <CodeBlock code={queryPositionsCode} language="JavaScript" />
+                                    <CodeBlock code={queryTokenDenomCode} language="JavaScript" />
                                 </AccordionDetails>
                             </Accordion>
 
                             <Accordion>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography sx={{ fontWeight: 'bold' }}>Get Creator Token Address from Pool</Typography>
+                                    <Typography sx={{ fontWeight: 'bold' }}>Creator Earnings & Airdrop Progress</Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
-                                    <CodeBlock code={queryTokenAddressCode} language="JavaScript" />
+                                    <CodeBlock code={queryEarningsCode} language="JavaScript" />
+                                </AccordionDetails>
+                            </Accordion>
+
+                            <Accordion>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                    <Typography sx={{ fontWeight: 'bold' }}>List Every Pool + USD Conversion</Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                    <CodeBlock code={queryListPoolsCode} language="JavaScript" />
                                 </AccordionDetails>
                             </Accordion>
                         </SectionCard>
 
-                        {/* Section 13: Special Privileges */}
-                        <SectionCard id="special-privileges" number="13" title="Granting Special Privileges to Committed Users">
+                        {/* Section 11: Special Privileges */}
+                        <SectionCard id="special-privileges" number="11" title="Granting Special Privileges to Committed Users">
                             <Typography paragraph>
                                 Every commit writes a permanent, public record to your pool's ledger:
-                                who committed, how much (in USD and bluechip), and when. After the
+                                who committed, how much (in USD and OSMO), and when. After the
                                 threshold, supporters also receive your creator tokens. Your website
                                 can read either of these to give supporters <strong>special privileges</strong> —
                                 subscriber-only pages, download links, badges, Discord roles, early access,
@@ -1877,22 +1646,24 @@ const IntegrationGuidePage: React.FC = () => {
                                 <code>last_committed</code> is in nanoseconds; commit records never expire
                                 on-chain, so "active subscriber" windows (e.g. committed within 30 days) are
                                 your site's policy, enforced from <code>last_committed</code>. For
-                                token-balance-based perks instead, query the creator token's CW20&nbsp;
-                                <code>balance</code> endpoint the same way.
+                                token-balance-based perks instead, read the wallet's <strong>bank
+                                balance</strong> of the creator token's <code>factory/...</code> denom
+                                (Section 10) — creator tokens are native coins, so there is no CW20{' '}
+                                <code>balance</code> query.
                             </Alert>
                         </SectionCard>
 
-                        {/* Section 14: Full Working Example */}
-                        <SectionCard id="full-example" number="14" title="Full Working Example Page">
+                        {/* Section 12: Full Working Example */}
+                        <SectionCard id="full-example" number="12" title="Full Working Example Page">
                             <Typography paragraph>
                                 Here's a complete, self-contained HTML page you can save and use. It includes
-                                wallet connection, subscribe, buy, sell, and fee collection all on one page.
+                                wallet connection, subscribe, buy, and sell all on one page.
                             </Typography>
                             <CodeBlock code={fullExampleCode} language="HTML" />
                         </SectionCard>
 
-                        {/* Section 15: Troubleshooting */}
-                        <SectionCard id="troubleshooting" number="15" title="Troubleshooting">
+                        {/* Section 13: Troubleshooting */}
+                        <SectionCard id="troubleshooting" number="13" title="Troubleshooting">
                             <TableContainer component={Paper} variant="outlined">
                                 <Table size="small">
                                     <TableHead>
@@ -1904,20 +1675,22 @@ const IntegrationGuidePage: React.FC = () => {
                                     <TableBody>
                                         {[
                                             ['"Please install Keplr extension"', 'Install Keplr from keplr.app/get and refresh the page'],
-                                            ['"Failed to connect"', 'Make sure you\'ve approved the BlueChip chain in Keplr. Try disconnecting and reconnecting'],
+                                            ['"Failed to connect"', 'Make sure you approved Osmosis in Keplr. Try disconnecting and reconnecting'],
                                             ['"out of gas"', 'Increase the gas limit in the execute() call (e.g., change "500000" to "800000")'],
-                                            ['"insufficient funds"', 'You need more bluechip tokens. Check your balance in Keplr'],
-                                            ['"Invalid creation funds: ... Send exactly one denom"', 'Create-pool requires exactly one coin entry of the canonical bluechip denom. Remove any IBC / tokenfactory / stray denoms from the funds array'],
-                                            ['"Insufficient creation fee"', "The attached bluechip amount is below the oracle-derived USD fee. Re-query the required amount (it changes with bluechip's USD price) and re-attach"],
+                                            ['"insufficient funds"', 'You need more OSMO. Check your balance in Keplr'],
+                                            ['"Belief price required" (post-threshold commit)', 'Once the pool is active, commits must carry a belief_price. Take a live simulation quote and set belief_price = offer / expected_out (Section 4)'],
+                                            ['"Invalid creation funds: ... Send exactly one denom"', 'Create-pool requires exactly one coin entry of uosmo. Remove any IBC / tokenfactory / stray denoms from the funds array'],
+                                            ['"Insufficient commit-pool creation fee"', "The attached OSMO is below the factory's flat pool_creation_fee. Query { factory: {} } for the live value and re-attach"],
                                             ['"creation fee is disabled; do not attach any funds"', 'The factory currently has the creation fee set to zero. Pass an empty funds array on these calls'],
                                             ['"rate limited"', 'Commits have a 13-second cooldown per wallet. Wait and try again'],
-                                            ['"Route exceeds the maximum of 3 hops"', 'The router caps routes at 3 hops. Any creator-token pair needs at most 2 (token → bluechip → token)'],
+                                            ['"Route exceeds the maximum of 3 hops"', 'The router caps routes at 3 hops. Any creator-token pair needs at most 2 (token → OSMO → token)'],
                                             ['"not registered with the factory" (router)', "A hop's pool address is not in the factory registry. Use pool addresses from the factory's pools query or this explorer"],
                                             ['Router swap reverts with a minimum_receive error', 'Price moved past your tolerance between simulation and execution. Re-quote and retry, or widen slippage slightly'],
                                             ['"Commit too small"', 'Each pool enforces a minimum commit value in USD (separate pre- and post-threshold floors). Increase the amount'],
-                                            ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the $25,000 threshold. Use Subscribe instead'],
-                                            ['"You do not own this position"', 'Double-check your Position ID. Query positions_by_owner to find your positions'],
-                                            ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on your block explorer'],
+                                            ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the USD threshold. Use Subscribe instead'],
+                                            ['Swap refunded, pool paused (circuit breaker)', "The pool's liquidity breaker latched (a reserve fell below 25% of its seed). Your offer was refunded in the same tx; trading resumes when the admin unpauses"],
+                                            ['Calls to deposit_liquidity / collect_fees / position fail', 'Those entry points no longer exist — liquidity lives in the native Osmosis pool. LP directly on app.osmosis.zone (Section 8)'],
+                                            ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on an Osmosis explorer (e.g. Mintscan)'],
                                             ['Keplr not detecting on mobile', 'Use the Keplr mobile app\'s built-in browser to visit your site'],
                                         ].map(([problem, solution], idx) => (
                                             <TableRow key={idx}>
@@ -1930,26 +1703,27 @@ const IntegrationGuidePage: React.FC = () => {
                             </TableContainer>
                         </SectionCard>
 
-                        {/* Section 16: Contract Address Reference */}
-                        <SectionCard id="contract-reference" number="16" title="Contract Address Reference">
+                        {/* Section 14: Contract Address Reference */}
+                        <SectionCard id="contract-reference" number="14" title="Contract Address Reference">
                             <Typography paragraph>
-                                These are the addresses you need. Get them from the BlueChip team or your block explorer:
+                                These are the identifiers you need. Get them from the BlueChip team or this explorer:
                             </Typography>
                             <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
                                 <Table size="small">
                                     <TableHead>
                                         <TableRow>
-                                            <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
+                                            <TableCell sx={{ fontWeight: 'bold' }}>Identifier</TableCell>
                                             <TableCell sx={{ fontWeight: 'bold' }}>What It Is</TableCell>
                                             <TableCell sx={{ fontWeight: 'bold' }}>Where to Find</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
                                         {[
-                                            ['Factory Address', 'Creates new pools', 'Deployment records / block explorer'],
-                                            ['Pool Address', 'Your specific creator pool', 'Returned when pool is created (tx hash)'],
-                                            ['Creator Token Address', 'The CW20 token for your pool', "Query pool's pair endpoint"],
-                                            ['Position NFT Address', 'NFT contract for LP positions', 'Part of pool creation response'],
+                                            ['Factory Address', 'Creates new pools; registry of all pools', 'Deployment records / this explorer'],
+                                            ['Pool Address', 'Your specific creator pool', "Returned when pool is created (tx hash), or the factory's pools query"],
+                                            ['Router Address', 'Multi-hop cross-token swaps', 'Deployment records (deployed alongside the factory)'],
+                                            ['Creator Token Denom', 'Native TokenFactory denom factory/{pool}/{sub}', "Query the pool's pair endpoint"],
+                                            ['GAMM Pool ID', 'The native Osmosis pool seeded at crossing', 'Threshold-crossing tx events / Osmosis app'],
                                         ].map(([addr, desc, where], idx) => (
                                             <TableRow key={idx}>
                                                 <TableCell><strong>{addr}</strong></TableCell>
@@ -1962,20 +1736,20 @@ const IntegrationGuidePage: React.FC = () => {
                             </TableContainer>
 
                             <Typography variant="h6" gutterBottom>
-                                How to Find Your Creator Token Address
+                                How to Find Your Creator Token Denom
                             </Typography>
                             <Typography paragraph>
-                                After your pool is created, you can find the creator token address by querying:
+                                After your pool is created, you can find the creator token denom by querying:
                             </Typography>
                             <CodeBlock
                                 code={`var pairInfo = await client.queryContractSmart("YOUR_POOL_ADDRESS", { pair: {} });
-// Look for the creator_token entry in pairInfo.asset_infos
-// (pool_token_info is the factory-side input field, not this response)`}
+// Look for the creator_token entry in pairInfo.asset_infos —
+// its denom field is the factory/{pool}/{subdenom} coin.`}
                                 language="JavaScript"
                             />
                             <Typography variant="body2" color="text.secondary">
-                                Or check the pool creation transaction on your block explorer — the token contract
-                                address appears in the instantiation events.
+                                Or check the pool creation transaction on a block explorer — the denom appears
+                                in the instantiation events (<code>create_denom</code>).
                             </Typography>
                         </SectionCard>
                     </Stack>

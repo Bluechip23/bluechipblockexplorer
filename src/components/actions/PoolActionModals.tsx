@@ -21,8 +21,6 @@ import OracleStatusBanner from '../universal/OracleStatusBanner';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SellIcon from '@mui/icons-material/Sell';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
-import AddCircleIcon from '@mui/icons-material/AddCircle';
-import RemoveCircleIcon from '@mui/icons-material/RemoveCircle';
 import { useWallet } from '../../context/WalletContext';
 import { NATIVE_DENOM, COIN_DECIMALS } from '../../defi/types';
 import {
@@ -33,11 +31,10 @@ import {
     verifyFundsMatch,
     sanitizeOnChainString,
     formatSwapSummary,
-    formatLiquidityDepositSummary,
     humanizeContractError,
 } from '../../utils/security';
 import { deadlineNs } from '../../utils/datetime';
-import { ensureCw20Allowance, minAmountAfterSlippage, resolvePoolAssets } from '../../utils/poolActions';
+import { deriveBeliefPrice, resolvePoolAssets } from '../../utils/poolActions';
 
 
 interface BaseModalProps {
@@ -162,7 +159,7 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
     const handleReview = () => {
         setInputError('');
 
-        // SECURITY: Validate the pool address is a well-formed bluechip bech32 address.
+        // SECURITY: Validate the pool address is a well-formed osmo bech32 address.
         const addrCheck = validateBech32Address(poolAddress);
         if (!addrCheck.ok) {
             setInputError(`Pool address invalid: ${addrCheck.error}`);
@@ -189,7 +186,8 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
     const handleConfirm = async () => {
         if (!client || !address) return;
 
-        // SECURITY: Assert chain ID matches bluechip-3 immediately before signing.
+        // SECURITY: Assert chain ID matches the expected Osmosis chain
+        // immediately before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
         if (!chainCheck.ok) {
             setErrorMsg(chainCheck.error!);
@@ -212,11 +210,19 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
             const slipResult = validateSlippage(maxSpread);
             const spreadDecimal = ((slipResult.pct ?? 0.5) / 100).toString();
 
+            // Read the pool's actual native denom, then fix belief_price
+            // from a live quote — a front-run that moves the pool reverts
+            // the swap instead of filling at the worse price.
+            const { bluechipDenom } = await resolvePoolAssets(client, poolAddress);
+            const offerInfo = { bluechip: { denom: bluechipDenom } };
+            const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+
             const msg = {
                 simple_swap: {
-                    offer_asset: { info: { bluechip: { denom: NATIVE_DENOM } }, amount: micro },
-                    belief_price: null,
+                    offer_asset: { info: offerInfo, amount: micro },
+                    belief_price: beliefPrice,
                     max_spread: spreadDecimal,
+                    allow_high_max_spread: null,
                     to: null,
                     transaction_deadline: deadlineNs(20),
                 },
@@ -224,9 +230,9 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
 
             // SECURITY: Build the funds array once, then verify it matches what
             // the UI told the user before forwarding to the wallet signer.
-            const funds = [{ denom: NATIVE_DENOM, amount: micro }];
+            const funds = [{ denom: bluechipDenom, amount: micro }];
             const fundsCheck = verifyFundsMatch(
-                [{ denom: NATIVE_DENOM, amount: micro }],
+                [{ denom: bluechipDenom, amount: micro }],
                 funds,
             );
             if (!fundsCheck.ok) {
@@ -275,12 +281,12 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
             {stage === 'input' && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <TextField
-                        label="Amount (bluechip)"
+                        label="Amount (OSMO)"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         type="number"
                         fullWidth
-                        helperText="Amount of bluechip to spend"
+                        helperText="Amount of OSMO to spend"
                     />
                     <TextField
                         label="Max Slippage (%)"
@@ -309,14 +315,14 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
                     title={`Buy ${sanitizeOnChainString(tokenSymbol, 16) || 'Token'}`}
                     summary={formatSwapSummary({
                         sendAmount: amount,
-                        sendSymbol: 'bluechip',
+                        sendSymbol: 'OSMO',
                         receiveAmount: '~estimated',
                         receiveSymbol: tokenSymbol || 'Token',
                         slippagePct: slipResult.pct ?? 0.5,
                     })}
                     slippageWarning={slipResult.warn}
                     details={[
-                        { label: 'You Pay', value: `${amount} bluechip` },
+                        { label: 'You Pay', value: `${amount} OSMO` },
                         { label: 'Max Slippage', value: `${maxSpread}%` },
                         { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
                     ]}
@@ -334,8 +340,11 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
 };
 
 
-export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string }> = ({
-    onClose, poolAddress, tokenSymbol, creatorTokenAddress,
+// Selling a creator token is the same simple_swap as buying — the creator
+// token is a native TokenFactory denom (factory/{pool}/{sub}) attached as
+// funds. The old CW20 send-hook path no longer exists on the contract.
+export const SellPanel: React.FC<BasePanelProps & { creatorTokenDenom?: string }> = ({
+    onClose, poolAddress, tokenSymbol, creatorTokenDenom,
 }) => {
     const { client, address } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
@@ -367,14 +376,6 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
             return;
         }
 
-        if (creatorTokenAddress) {
-            const tokenAddrCheck = validateBech32Address(creatorTokenAddress);
-            if (!tokenAddrCheck.ok) {
-                setInputError(`Token address invalid: ${tokenAddrCheck.error}`);
-                return;
-            }
-        }
-
         const amtCheck = validateTokenAmount(amount, COIN_DECIMALS);
         if (!amtCheck.ok) {
             setInputError(amtCheck.error!);
@@ -391,7 +392,7 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
     };
 
     const handleConfirm = async () => {
-        if (!client || !address || !creatorTokenAddress) return;
+        if (!client || !address) return;
 
         // SECURITY: Assert chain ID immediately before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
@@ -411,24 +412,46 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
             }
             const micro = amtResult.micro;
 
+            // Resolve the creator token's TokenFactory denom from the pool if
+            // the caller didn't supply it.
+            let tokenDenom = creatorTokenDenom;
+            if (!tokenDenom) {
+                tokenDenom = (await resolvePoolAssets(client, poolAddress)).tokenDenom ?? undefined;
+            }
+            if (!tokenDenom) {
+                setErrorMsg('Could not resolve the creator token denom for this pool.');
+                setStage('error');
+                return;
+            }
+
             const slipResult = validateSlippage(maxSpread);
             const spreadDecimal = ((slipResult.pct ?? 0.5) / 100).toString();
 
-            const hookMsg = {
-                swap: {
-                    belief_price: null,
+            const offerInfo = { creator_token: { denom: tokenDenom } };
+            const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+
+            const msg = {
+                simple_swap: {
+                    offer_asset: { info: offerInfo, amount: micro },
+                    belief_price: beliefPrice,
                     max_spread: spreadDecimal,
+                    allow_high_max_spread: null,
                     to: null,
                     transaction_deadline: deadlineNs(20),
                 },
             };
-            const msg = {
-                send: {
-                    contract: poolAddress,
-                    amount: micro,
-                    msg: btoa(JSON.stringify(hookMsg)),
-                },
-            };
+
+            // The creator token IS the attached funds — it's a bank coin.
+            const funds = [{ denom: tokenDenom, amount: micro }];
+            const fundsCheck = verifyFundsMatch(
+                [{ denom: tokenDenom, amount: micro }],
+                funds,
+            );
+            if (!fundsCheck.ok) {
+                setErrorMsg(`Funds verification failed: ${fundsCheck.error}`);
+                setStage('error');
+                return;
+            }
 
             // SECURITY: Transaction simulation before signing.
             try {
@@ -436,9 +459,9 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
                     typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
                     value: {
                         sender: address,
-                        contract: creatorTokenAddress,
+                        contract: poolAddress,
                         msg: new TextEncoder().encode(JSON.stringify(msg)),
-                        funds: [],
+                        funds,
                     },
                 }], 'Sell Token');
             } catch (simErr) {
@@ -447,7 +470,7 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
                 return;
             }
 
-            const result = await client.execute(address, creatorTokenAddress, msg, { amount: [], gas: '500000' }, 'Sell Token', []);
+            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Sell Token', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -502,7 +525,7 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
                         sendAmount: amount,
                         sendSymbol: tokenSymbol || 'Token',
                         receiveAmount: '~estimated',
-                        receiveSymbol: 'bluechip',
+                        receiveSymbol: 'OSMO',
                         slippagePct: slipResult.pct ?? 0.5,
                     })}
                     slippageWarning={slipResult.warn}
@@ -527,9 +550,10 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string
 
 // `thresholdReached` switches the panel between the two on-chain commit
 // behaviors: pre-threshold commits are banked toward the funding target,
-// post-threshold commits are swapped through the AMM (so they take an
-// optional max-slippage bound, like any swap). The subscription record
-// updates either way.
+// post-threshold commits are swapped through the native pool — the
+// contract REQUIRES a belief_price on that path, which we derive from a
+// live simulation quote at signing time. The subscription record updates
+// either way.
 export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean }> = ({
     onClose, poolAddress, tokenSymbol, thresholdReached = false,
 }) => {
@@ -570,7 +594,7 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
             return;
         }
 
-        // Post-threshold commits are AMM swaps — enforce slippage bounds.
+        // Post-threshold commits are swaps — enforce slippage bounds.
         if (thresholdReached) {
             const slipCheck = validateSlippage(maxSpread);
             if (!slipCheck.ok) {
@@ -605,18 +629,36 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
             const txDeadline = deadlineNs(20);
             const { bluechipDenom } = await resolvePoolAssets(client, poolAddress);
 
-            // max_spread only applies once the pool trades through the AMM;
-            // the contract ignores it pre-threshold, so send null there.
+            // max_spread only applies once the pool trades through the native
+            // pool; the contract ignores it pre-threshold, so send null there.
             const slipResult = validateSlippage(maxSpread);
             const spreadDecimal = thresholdReached
                 ? ((slipResult.pct ?? 0.5) / 100).toString()
                 : null;
 
+            // Post-threshold commits swap through the native pool and the
+            // contract REJECTS belief_price: null on that path — derive the
+            // price from a live quote. Pre-threshold commits don't swap.
+            let beliefPrice: string | null = null;
+            if (thresholdReached) {
+                beliefPrice = await deriveBeliefPrice(
+                    client,
+                    poolAddress,
+                    { bluechip: { denom: bluechipDenom } },
+                    micro,
+                );
+                if (!beliefPrice) {
+                    setErrorMsg('Could not quote this commit against the pool — try again in a moment.');
+                    setStage('error');
+                    return;
+                }
+            }
+
             const msg = {
                 commit: {
                     asset: { info: { bluechip: { denom: bluechipDenom } }, amount: micro },
                     transaction_deadline: txDeadline,
-                    belief_price: null,
+                    belief_price: beliefPrice,
                     max_spread: spreadDecimal,
                 },
             };
@@ -671,11 +713,11 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
                     <OracleStatusBanner />
                     <Alert severity="info" sx={{ mb: 1 }}>
                         {thresholdReached
-                            ? `This pool is past its funding threshold — your commit is swapped through the AMM and you receive ${symbol} at the current price. Your on-chain subscription record still updates.`
-                            : "Subscribe to this pool's pre-threshold phase. Your bluechip will be committed toward the funding threshold."}
+                            ? `This pool is past its funding threshold — your commit is swapped through the native Osmosis pool and you receive ${symbol} at the current price. Your on-chain subscription record still updates.`
+                            : "Subscribe to this pool's pre-threshold phase. Your OSMO will be committed toward the funding threshold."}
                     </Alert>
                     <TextField
-                        label="Amount (bluechip)"
+                        label="Amount (OSMO)"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         type="number"
@@ -707,420 +749,12 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
                 <ConfirmationView
                     title="Confirm Commitment"
                     summary={thresholdReached
-                        ? `You are committing ${amount} bluechip. It will be swapped through the pool and you will receive ${symbol}.`
-                        : `You are committing ${amount} bluechip toward this pool's funding threshold.`}
+                        ? `You are committing ${amount} OSMO. It will be swapped through the pool and you will receive ${symbol}.`
+                        : `You are committing ${amount} OSMO toward this pool's funding threshold.`}
                     details={[
-                        { label: 'You Commit', value: `${amount} bluechip` },
+                        { label: 'You Commit', value: `${amount} OSMO` },
                         ...(thresholdReached ? [{ label: 'Max Slippage', value: `${maxSpread}%` }] : []),
                         { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
-                    ]}
-                    onConfirm={handleConfirm}
-                    onBack={() => setStage('input')}
-                    executing={stage === 'executing'}
-                />
-            )}
-
-            {(stage === 'success' || stage === 'error') && (
-                <ResultView success={stage === 'success'} txHash={txHash} errorMsg={errorMsg} onClose={resetAndClose} />
-            )}
-        </Box>
-    );
-};
-
-
-export const DepositLiquidityPanel: React.FC<BasePanelProps & { creatorTokenAddress?: string }> = ({
-    onClose, poolAddress, tokenSymbol, creatorTokenAddress,
-}) => {
-    const { client, address, balance } = useWallet();
-    const [stage, setStage] = useState<TxStage>('input');
-    const [amount0, setAmount0] = useState('');
-    const [amount1, setAmount1] = useState('');
-    const [slippage, setSlippage] = useState('1');
-    const [txHash, setTxHash] = useState('');
-    const [errorMsg, setErrorMsg] = useState('');
-    const [inputError, setInputError] = useState('');
-
-    const steps = ['Enter Amounts', 'Confirm', 'Result'];
-    const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
-
-    const resetAndClose = () => {
-        setStage('input');
-        setAmount0('');
-        setAmount1('');
-        setTxHash('');
-        setErrorMsg('');
-        setInputError('');
-        onClose();
-    };
-
-    // SECURITY: Validate both deposit amounts, slippage, and all addresses.
-    const handleReview = () => {
-        setInputError('');
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) {
-            setInputError(`Pool address invalid: ${addrCheck.error}`);
-            return;
-        }
-
-        if (creatorTokenAddress) {
-            const tokenAddrCheck = validateBech32Address(creatorTokenAddress);
-            if (!tokenAddrCheck.ok) {
-                setInputError(`Token address invalid: ${tokenAddrCheck.error}`);
-                return;
-            }
-        }
-
-        // SECURITY: Validate bluechip amount against on-chain balance.
-        const amt0Check = validateTokenAmount(amount0, COIN_DECIMALS, balance?.amount);
-        if (!amt0Check.ok) {
-            setInputError(`Bluechip amount: ${amt0Check.error}`);
-            return;
-        }
-
-        const amt1Check = validateTokenAmount(amount1, COIN_DECIMALS);
-        if (!amt1Check.ok) {
-            setInputError(`Creator token amount: ${amt1Check.error}`);
-            return;
-        }
-
-        const slipCheck = validateSlippage(slippage);
-        if (!slipCheck.ok) {
-            setInputError(slipCheck.error!);
-            return;
-        }
-
-        setStage('confirm');
-    };
-
-    const handleConfirm = async () => {
-        if (!client || !address || !creatorTokenAddress) return;
-
-        // SECURITY: Chain assertion before signing.
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) {
-            setErrorMsg(chainCheck.error!);
-            setStage('error');
-            return;
-        }
-
-        setStage('executing');
-        try {
-            const amt0Result = validateTokenAmount(amount0, COIN_DECIMALS);
-            const amt1Result = validateTokenAmount(amount1, COIN_DECIMALS);
-            if (!amt0Result.ok || !amt0Result.micro || !amt1Result.ok || !amt1Result.micro) {
-                setErrorMsg('Invalid deposit amounts');
-                setStage('error');
-                return;
-            }
-            const a0 = amt0Result.micro;
-            const a1 = amt1Result.micro;
-
-            await ensureCw20Allowance(client, address, creatorTokenAddress, poolAddress, a1);
-
-            // SECURITY: slippage math done on BigInt micro-units to avoid
-            // floating-point drift for large deposits.
-            const slipResult = validateSlippage(slippage);
-            const slipPct = slipResult.pct ?? 1;
-
-            const msg = {
-                deposit_liquidity: {
-                    amount0: a0,
-                    amount1: a1,
-                    min_amount0: minAmountAfterSlippage(a0, slipPct),
-                    min_amount1: minAmountAfterSlippage(a1, slipPct),
-                    transaction_deadline: deadlineNs(20),
-                },
-            };
-
-            const funds = [{ denom: NATIVE_DENOM, amount: a0 }];
-            const fundsCheck = verifyFundsMatch(
-                [{ denom: NATIVE_DENOM, amount: a0 }],
-                funds,
-            );
-            if (!fundsCheck.ok) {
-                setErrorMsg(`Funds verification failed: ${fundsCheck.error}`);
-                setStage('error');
-                return;
-            }
-
-            // SECURITY: Transaction simulation before signing.
-            try {
-                await client.simulate(address, [{
-                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
-                    value: {
-                        sender: address,
-                        contract: poolAddress,
-                        msg: new TextEncoder().encode(JSON.stringify(msg)),
-                        funds,
-                    },
-                }], 'Deposit Liquidity');
-            } catch (simErr) {
-                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
-                setStage('error');
-                return;
-            }
-
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Deposit Liquidity', funds);
-            setTxHash(result.transactionHash);
-            setStage('success');
-        } catch (err) {
-            setErrorMsg((err as Error).message);
-            setStage('error');
-        }
-    };
-
-    const slipResult = validateSlippage(slippage);
-
-    return (
-        <Box>
-            <Stepper activeStep={activeStep} sx={{ mb: 3, mt: 1 }} alternativeLabel>
-                {steps.map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
-            </Stepper>
-
-            {stage === 'input' && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField
-                        label="Amount bluechip"
-                        value={amount0}
-                        onChange={(e) => setAmount0(e.target.value)}
-                        type="number"
-                        fullWidth
-                    />
-                    <TextField
-                        label={`Amount ${sanitizeOnChainString(tokenSymbol, 16) || 'Creator Token'}`}
-                        value={amount1}
-                        onChange={(e) => setAmount1(e.target.value)}
-                        type="number"
-                        fullWidth
-                    />
-                    <TextField
-                        label="Slippage Tolerance (%)"
-                        value={slippage}
-                        onChange={(e) => setSlippage(e.target.value)}
-                        type="number"
-                        fullWidth
-                        helperText="Min 0.1%, max 49%. Warning above 5%."
-                    />
-                    {inputError && <Alert severity="error">{inputError}</Alert>}
-                    <Button
-                        variant="contained"
-                        onClick={handleReview}
-                        disabled={!amount0 || !amount1 || parseFloat(amount0) <= 0 || parseFloat(amount1) <= 0}
-                        fullWidth
-                    >
-                        Review Deposit
-                    </Button>
-                </Box>
-            )}
-
-            {(stage === 'confirm' || stage === 'executing') && (
-                <ConfirmationView
-                    title="Confirm Liquidity Deposit"
-                    summary={formatLiquidityDepositSummary({
-                        amount0,
-                        symbol0: 'bluechip',
-                        amount1,
-                        symbol1: tokenSymbol || 'Creator Token',
-                        lpShares: '~estimated',
-                    })}
-                    slippageWarning={slipResult.warn}
-                    details={[
-                        { label: 'bluechip', value: amount0 },
-                        { label: sanitizeOnChainString(tokenSymbol, 16) || 'Creator Token', value: amount1 },
-                        { label: 'Slippage', value: `${slippage}%` },
-                    ]}
-                    onConfirm={handleConfirm}
-                    onBack={() => setStage('input')}
-                    executing={stage === 'executing'}
-                />
-            )}
-
-            {(stage === 'success' || stage === 'error') && (
-                <ResultView success={stage === 'success'} txHash={txHash} errorMsg={errorMsg} onClose={resetAndClose} />
-            )}
-        </Box>
-    );
-};
-
-
-export const RemoveLiquidityPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, tokenSymbol }) => {
-    const { client, address } = useWallet();
-    const [stage, setStage] = useState<TxStage>('input');
-    const [positionId, setPositionId] = useState('');
-    const [percentage, setPercentage] = useState('100');
-    const [slippage, setSlippage] = useState('1');
-    const [txHash, setTxHash] = useState('');
-    const [errorMsg, setErrorMsg] = useState('');
-    const [inputError, setInputError] = useState('');
-
-    const steps = ['Enter Details', 'Confirm', 'Result'];
-    const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
-
-    const resetAndClose = () => {
-        setStage('input');
-        setPositionId('');
-        setPercentage('100');
-        setTxHash('');
-        setErrorMsg('');
-        setInputError('');
-        onClose();
-    };
-
-    // SECURITY: Validate inputs before confirmation.
-    const handleReview = () => {
-        setInputError('');
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) {
-            setInputError(`Pool address invalid: ${addrCheck.error}`);
-            return;
-        }
-
-        if (!positionId || positionId.trim() === '') {
-            setInputError('Position ID is required.');
-            return;
-        }
-
-        const pct = parseInt(percentage, 10);
-        if (isNaN(pct) || pct < 1 || pct > 100) {
-            setInputError('Percentage must be between 1 and 100.');
-            return;
-        }
-
-        const slipCheck = validateSlippage(slippage);
-        if (!slipCheck.ok) {
-            setInputError(slipCheck.error!);
-            return;
-        }
-
-        setStage('confirm');
-    };
-
-    const handleConfirm = async () => {
-        if (!client || !address) return;
-
-        // SECURITY: Chain assertion before signing.
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) {
-            setErrorMsg(chainCheck.error!);
-            setStage('error');
-            return;
-        }
-
-        setStage('executing');
-        try {
-            const slipResult = validateSlippage(slippage);
-            const deviationBps = Math.floor((slipResult.pct ?? 1) * 100);
-            const txDeadline = deadlineNs(20);
-            const pct = parseInt(percentage, 10);
-
-            let msg: any;
-            if (pct >= 100) {
-                msg = {
-                    remove_all_liquidity: {
-                        position_id: positionId,
-                        min_amount0: null,
-                        min_amount1: null,
-                        max_ratio_deviation_bps: deviationBps,
-                        transaction_deadline: txDeadline,
-                    },
-                };
-            } else {
-                msg = {
-                    remove_partial_liquidity_by_percent: {
-                        position_id: positionId,
-                        percentage: pct,
-                        min_amount0: null,
-                        min_amount1: null,
-                        max_ratio_deviation_bps: deviationBps,
-                        transaction_deadline: txDeadline,
-                    },
-                };
-            }
-
-            // SECURITY: Transaction simulation before signing.
-            try {
-                await client.simulate(address, [{
-                    typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
-                    value: {
-                        sender: address,
-                        contract: poolAddress,
-                        msg: new TextEncoder().encode(JSON.stringify(msg)),
-                        funds: [],
-                    },
-                }], 'Remove Liquidity');
-            } catch (simErr) {
-                setErrorMsg(`Simulation failed — transaction would be rejected: ${(simErr as Error).message}`);
-                setStage('error');
-                return;
-            }
-
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Remove Liquidity');
-            setTxHash(result.transactionHash);
-            setStage('success');
-        } catch (err) {
-            setErrorMsg((err as Error).message);
-            setStage('error');
-        }
-    };
-
-    const slipResult = validateSlippage(slippage);
-
-    return (
-        <Box>
-            <Stepper activeStep={activeStep} sx={{ mb: 3, mt: 1 }} alternativeLabel>
-                {steps.map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
-            </Stepper>
-
-            {stage === 'input' && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField
-                        label="Position ID"
-                        value={positionId}
-                        onChange={(e) => setPositionId(e.target.value)}
-                        fullWidth
-                        helperText="Your LP position ID"
-                    />
-                    <TextField
-                        label="Percentage to Remove"
-                        value={percentage}
-                        onChange={(e) => setPercentage(e.target.value)}
-                        type="number"
-                        fullWidth
-                        helperText="100 = remove all"
-                        inputProps={{ min: 1, max: 100 }}
-                    />
-                    <TextField
-                        label="Max Deviation (%)"
-                        value={slippage}
-                        onChange={(e) => setSlippage(e.target.value)}
-                        type="number"
-                        fullWidth
-                        helperText="Min 0.1%, max 49%. Warning above 5%."
-                    />
-                    {inputError && <Alert severity="error">{inputError}</Alert>}
-                    <Button
-                        variant="contained"
-                        color="error"
-                        onClick={handleReview}
-                        disabled={!positionId}
-                        fullWidth
-                    >
-                        Review Removal
-                    </Button>
-                </Box>
-            )}
-
-            {(stage === 'confirm' || stage === 'executing') && (
-                <ConfirmationView
-                    title="Confirm Liquidity Removal"
-                    summary={`You are removing ${percentage}% of position ${positionId}. You will receive the corresponding share of pooled tokens.`}
-                    slippageWarning={slipResult.warn}
-                    details={[
-                        { label: 'Position ID', value: positionId },
-                        { label: 'Remove', value: `${percentage}%` },
-                        { label: 'Max Deviation', value: `${slippage}%` },
                     ]}
                     onConfirm={handleConfirm}
                     onBack={() => setStage('input')}
@@ -1141,10 +775,14 @@ export const RemoveLiquidityPanel: React.FC<BasePanelProps> = ({ onClose, poolAd
 //
 // CommitModal is the standalone commit flow for pools still in their
 // funding phase, where commit is the only available action. TradeModal
-// and LiquidityModal host the panels in tabs for active (post-threshold)
-// pools. Inactive tab panels stay mounted (hidden via CSS) so an
-// in-flight transaction isn't lost if the user peeks at another tab;
-// closing the dialog unmounts everything, resetting all panel state.
+// hosts the panels in tabs for active (post-threshold) pools. Inactive
+// tab panels stay mounted (hidden via CSS) so an in-flight transaction
+// isn't lost if the user peeks at another tab; closing the dialog
+// unmounts everything, resetting all panel state.
+//
+// There is no LiquidityModal anymore: liquidity lives in the native
+// Osmosis GAMM pool (seeded at threshold crossing and locked in the pool
+// contract), so LP flows happen on app.osmosis.zone, not here.
 // ---------------------------------------------------------------------------
 
 export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => (
@@ -1164,9 +802,9 @@ export type TradeTab = 'buy' | 'sell' | 'commit';
 const TRADE_TABS: TradeTab[] = ['buy', 'sell', 'commit'];
 
 export const TradeModal: React.FC<BaseModalProps & {
-    creatorTokenAddress?: string;
+    creatorTokenDenom?: string;
     initialTab?: TradeTab;
-}> = ({ open, onClose, poolAddress, tokenSymbol, creatorTokenAddress, initialTab = 'buy' }) => {
+}> = ({ open, onClose, poolAddress, tokenSymbol, creatorTokenDenom, initialTab = 'buy' }) => {
     const [tab, setTab] = useState(Math.max(0, TRADE_TABS.indexOf(initialTab)));
 
     // Re-sync the active tab each time the dialog opens.
@@ -1201,57 +839,12 @@ export const TradeModal: React.FC<BaseModalProps & {
                     <SellPanel
                         poolAddress={poolAddress}
                         tokenSymbol={tokenSymbol}
-                        creatorTokenAddress={creatorTokenAddress}
+                        creatorTokenDenom={creatorTokenDenom}
                         onClose={onClose}
                     />
                 </Box>
                 <Box sx={{ display: tab === 2 ? 'block' : 'none' }}>
                     <CommitPanel poolAddress={poolAddress} tokenSymbol={tokenSymbol} thresholdReached onClose={onClose} />
-                </Box>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-export type LiquidityTab = 'provide' | 'remove';
-const LIQUIDITY_TABS: LiquidityTab[] = ['provide', 'remove'];
-
-export const LiquidityModal: React.FC<BaseModalProps & {
-    creatorTokenAddress?: string;
-    initialTab?: LiquidityTab;
-}> = ({ open, onClose, poolAddress, tokenSymbol, creatorTokenAddress, initialTab = 'provide' }) => {
-    const [tab, setTab] = useState(Math.max(0, LIQUIDITY_TABS.indexOf(initialTab)));
-
-    useEffect(() => {
-        if (open) setTab(Math.max(0, LIQUIDITY_TABS.indexOf(initialTab)));
-    }, [open, initialTab]);
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Manage Liquidity
-                <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
-            </DialogTitle>
-            <Tabs
-                value={tab}
-                onChange={(_, v) => setTab(v)}
-                variant="fullWidth"
-                sx={{ borderBottom: 1, borderColor: 'divider' }}
-            >
-                <Tab icon={<AddCircleIcon fontSize="small" />} iconPosition="start" label="Provide" />
-                <Tab icon={<RemoveCircleIcon fontSize="small" />} iconPosition="start" label="Remove" />
-            </Tabs>
-            <DialogContent>
-                <Box sx={{ display: tab === 0 ? 'block' : 'none' }}>
-                    <DepositLiquidityPanel
-                        poolAddress={poolAddress}
-                        tokenSymbol={tokenSymbol}
-                        creatorTokenAddress={creatorTokenAddress}
-                        onClose={onClose}
-                    />
-                </Box>
-                <Box sx={{ display: tab === 1 ? 'block' : 'none' }}>
-                    <RemoveLiquidityPanel poolAddress={poolAddress} tokenSymbol={tokenSymbol} onClose={onClose} />
                 </Box>
             </DialogContent>
         </Dialog>

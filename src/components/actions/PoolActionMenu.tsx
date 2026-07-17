@@ -4,24 +4,30 @@ import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import { useWallet } from '../../context/WalletContext';
-import { TradeModal, LiquidityModal, CommitModal } from './PoolActionModals';
+import { TradeModal, CommitModal } from './PoolActionModals';
 import { sanitizeOnChainString } from '../../utils/security';
 
 interface PoolActionMenuProps {
     poolAddress: string;
     tokenSymbol?: string;
+    /**
+     * The creator token's native TokenFactory denom (factory/{pool}/{sub}).
+     * The prop keeps its historical name because every pool summary in the
+     * data layer still exposes it as `creatorTokenAddress`.
+     */
     creatorTokenAddress?: string | null;
     thresholdReached?: boolean;
     // Compact variant uses icon-only buttons for tight contexts (table rows).
     compact?: boolean;
 }
 
-type ActionKind = 'trade' | 'liquidity' | 'commit' | null;
+type ActionKind = 'trade' | 'commit' | null;
 
-// Post-threshold pools get two consolidated entry points: a Trade modal
-// (Buy / Sell / Commit tabs) and a Liquidity modal (Provide / Remove
-// tabs). Pools still in their funding phase keep the standalone Commit
-// button — trading and liquidity don't exist for them yet.
+// Post-threshold pools get a consolidated Trade modal (Buy / Sell /
+// Commit tabs) plus a link out to Osmosis for liquidity — LP flows live
+// on the native GAMM pool now, not in this app. Pools still in their
+// funding phase keep the standalone Commit button — trading doesn't
+// exist for them yet.
 const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     poolAddress,
     tokenSymbol,
@@ -37,7 +43,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     const symbol = sanitizeOnChainString(tokenSymbol, 16) || 'Token';
 
     const buttons: {
-        key: Exclude<ActionKind, null>;
+        key: Exclude<ActionKind, null> | 'osmosis-lp';
         label: string;
         icon: React.ReactElement;
         color: 'primary' | 'error' | 'success' | 'warning' | 'info';
@@ -51,8 +57,8 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
             show: thresholdReached,
         },
         {
-            key: 'liquidity',
-            label: 'Liquidity',
+            key: 'osmosis-lp',
+            label: 'LP on Osmosis',
             icon: <WaterDropIcon fontSize="small" />,
             color: 'primary',
             show: thresholdReached,
@@ -67,6 +73,17 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     ];
 
     const visible = buttons.filter((b) => b.show);
+
+    const onButtonClick = (key: (typeof buttons)[number]['key']) => {
+        if (key === 'osmosis-lp') {
+            // Liquidity lives in the native Osmosis pool — send the user to
+            // the Osmosis app rather than a contract flow that no longer
+            // exists.
+            window.open('https://app.osmosis.zone/pools', '_blank', 'noopener');
+            return;
+        }
+        setOpenModal(key);
+    };
 
     return (
         <>
@@ -84,7 +101,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                                 size="small"
                                 variant="outlined"
                                 color={b.color}
-                                onClick={() => setOpenModal(b.key)}
+                                onClick={() => onButtonClick(b.key)}
                                 sx={{ minWidth: 36, px: 1 }}
                             >
                                 {b.icon}
@@ -97,7 +114,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                             variant="contained"
                             color={b.color}
                             startIcon={b.icon}
-                            onClick={() => setOpenModal(b.key)}
+                            onClick={() => onButtonClick(b.key)}
                         >
                             {b.label}
                         </Button>
@@ -110,14 +127,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                 onClose={() => setOpenModal(null)}
                 poolAddress={poolAddress}
                 tokenSymbol={tokenSymbol}
-                creatorTokenAddress={creatorTokenAddress || undefined}
-            />
-            <LiquidityModal
-                open={openModal === 'liquidity'}
-                onClose={() => setOpenModal(null)}
-                poolAddress={poolAddress}
-                tokenSymbol={tokenSymbol}
-                creatorTokenAddress={creatorTokenAddress || undefined}
+                creatorTokenDenom={creatorTokenAddress || undefined}
             />
             <CommitModal
                 open={openModal === 'commit'}

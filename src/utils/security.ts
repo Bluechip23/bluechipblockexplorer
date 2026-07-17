@@ -11,8 +11,9 @@ import { compareMicro } from './bigintMath';
 
 // SECURITY: The only chain this frontend is allowed to broadcast against.
 // Any other chain ID reported by the wallet must block the transaction.
-export const EXPECTED_CHAIN_ID = 'bluechip-3';
-export const EXPECTED_BECH32_PREFIX = 'bluechip';
+// The BlueChip contracts are deployed on Osmosis.
+export const EXPECTED_CHAIN_ID = 'osmosis-1';
+export const EXPECTED_BECH32_PREFIX = 'osmo';
 
 // SECURITY: Slippage bounds enforced on every swap/liquidity action to
 // prevent sandwich attacks (too high) and guaranteed revert (too low).

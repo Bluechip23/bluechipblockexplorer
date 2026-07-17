@@ -110,7 +110,7 @@ const StakingPage: React.FC = () => {
                                     Total Bonded
                                 </Typography>
                                 <Typography variant="h6">
-                                    {formatAmount(stakingPool.bonded, 'ubluechip')} bluechip
+                                    {formatAmount(stakingPool.bonded, 'uosmo')} OSMO
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -120,7 +120,7 @@ const StakingPage: React.FC = () => {
                                     Total Unbonded
                                 </Typography>
                                 <Typography variant="h6">
-                                    {formatAmount(stakingPool.notBonded, 'ubluechip')} bluechip
+                                    {formatAmount(stakingPool.notBonded, 'uosmo')} OSMO
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -170,7 +170,7 @@ const StakingPage: React.FC = () => {
                                                             </Link></CopyableId>
                                                         </TableCell>
                                                         <TableCell>
-                                                            {formatAmount(v.tokens, 'ubluechip')} ({votingPower}%)
+                                                            {formatAmount(v.tokens, 'uosmo')} ({votingPower}%)
                                                         </TableCell>
                                                         <TableCell>
                                                             {(parseFloat(v.commission.commission_rates.rate) * 100).toFixed(1)}%
@@ -233,7 +233,7 @@ const StakingPage: React.FC = () => {
                             disabled
                         />
                         <TextField
-                            label="Amount (bluechip)"
+                            label="Amount (OSMO)"
                             fullWidth
                             type="number"
                             value={delegateAmount}

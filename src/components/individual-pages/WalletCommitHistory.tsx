@@ -42,7 +42,7 @@ const WalletCommitHistory: React.FC<{ wallet: string }> = ({ wallet }) => {
                             <TableCell>Pool</TableCell>
                             <TableCell>Phase</TableCell>
                             <TableCell align="right">USD</TableCell>
-                            <TableCell align="right">bluechip</TableCell>
+                            <TableCell align="right">OSMO</TableCell>
                             <TableCell>Tx</TableCell>
                         </TableRow>
                     </TableHead>

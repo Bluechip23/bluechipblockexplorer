@@ -1,15 +1,20 @@
-// Shared building blocks for MsgExecuteContract flows against creator /
-// standard pools. These were previously copy-pasted (and drifting) between
-// the Creator Economy page forms and the pool action modals.
+// Shared building blocks for MsgExecuteContract flows against creator
+// pools. These were previously copy-pasted (and drifting) between the
+// Creator Economy page forms and the pool action modals.
 
 import type { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { NATIVE_DENOM } from '../defi/types';
-import { compareMicro, safeBigInt } from './bigintMath';
+import { safeBigInt } from './bigintMath';
 
 export interface PoolAssets {
-    /** CW20 creator-token contract, or null for a pure native pool. */
-    tokenAddress: string | null;
-    /** The pool's native denom leg (defaults to the canonical bluechip denom). */
+    /**
+     * The creator token's native TokenFactory denom
+     * (factory/{pool_addr}/{subdenom}), or null if the pool has no
+     * creator leg. Post-Osmosis-migration the creator token is a bank
+     * coin — there is no CW20 contract address.
+     */
+    tokenDenom: string | null;
+    /** The pool's native denom leg (defaults to the canonical OSMO denom). */
     bluechipDenom: string;
 }
 
@@ -22,48 +27,47 @@ export async function resolvePoolAssets(
     client: SigningCosmWasmClient,
     poolAddress: string,
 ): Promise<PoolAssets> {
-    let tokenAddress: string | null = null;
+    let tokenDenom: string | null = null;
     let bluechipDenom = NATIVE_DENOM;
     try {
         const pairInfo = await client.queryContractSmart(poolAddress, { pair: {} });
         const infos: Array<{
             bluechip?: { denom: string };
-            creator_token?: { contract_addr: string };
+            creator_token?: { denom: string };
         }> = pairInfo?.asset_infos ?? pairInfo?.pool_token_info ?? [];
         for (const asset of infos) {
-            if (asset?.creator_token?.contract_addr) tokenAddress = asset.creator_token.contract_addr;
+            if (asset?.creator_token?.denom) tokenDenom = asset.creator_token.denom;
             if (asset?.bluechip?.denom) bluechipDenom = asset.bluechip.denom;
         }
     } catch {
-        // Fall back to NATIVE_DENOM / no CW20 leg.
+        // Fall back to NATIVE_DENOM / no creator leg.
     }
-    return { tokenAddress, bluechipDenom };
+    return { tokenDenom, bluechipDenom };
 }
 
 /**
- * Ensures `spender` may pull at least `requiredMicro` of the CW20 at
- * `tokenAddress` from `owner`, submitting an `increase_allowance` when the
- * current allowance falls short.
+ * Derives the `belief_price` string (offer-per-ask, 18 decimals) from a
+ * live `simulation` quote against the pool. Setting a belief price fixes
+ * the user's worst-case fill at submit time — a front-run that moves the
+ * pool reverts the swap instead of filling at the worse price — and is
+ * REQUIRED by the contract on post-threshold commits. Returns null when
+ * the pool cannot be quoted (caller decides whether that is fatal).
  */
-export async function ensureCw20Allowance(
+export async function deriveBeliefPrice(
     client: SigningCosmWasmClient,
-    owner: string,
-    tokenAddress: string,
-    spender: string,
-    requiredMicro: string,
-): Promise<void> {
-    const allowance = await client.queryContractSmart(tokenAddress, {
-        allowance: { owner, spender },
-    });
-    if (compareMicro(allowance.allowance, requiredMicro) < 0) {
-        await client.execute(
-            owner,
-            tokenAddress,
-            { increase_allowance: { spender, amount: requiredMicro } },
-            { amount: [], gas: '200000' },
-            'Approve',
-            [],
-        );
+    poolAddress: string,
+    offerInfo: { bluechip: { denom: string } } | { creator_token: { denom: string } },
+    offerAmountMicro: string,
+): Promise<string | null> {
+    try {
+        const sim = await client.queryContractSmart(poolAddress, {
+            simulation: { offer_asset: { info: offerInfo, amount: offerAmountMicro } },
+        });
+        const out = safeBigInt(sim?.return_amount ?? '0');
+        if (out <= 0n) return null;
+        return (Number(offerAmountMicro) / Number(out)).toFixed(18);
+    } catch {
+        return null;
     }
 }
 

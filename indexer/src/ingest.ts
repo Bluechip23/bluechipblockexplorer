@@ -42,7 +42,7 @@ async function ingestHeight(db: Db, cfg: Config, height: number): Promise<void> 
             }, tx.events);
 
             for (const p of parsed.pools) upsertPool(db, p);
-            for (const t of parsed.poolTokens) setPoolToken(db, t.pool_id, t.token_address);
+            for (const t of parsed.poolTokens) setPoolToken(db, t.pool_id, t.token_denom);
             for (const c of parsed.commits) insertCommit(db, c);
             for (const t of parsed.trades) insertTrade(db, t);
             for (const l of parsed.liquidity) insertLiquidity(db, l);

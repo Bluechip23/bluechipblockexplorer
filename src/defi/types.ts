@@ -1,4 +1,7 @@
-export const NATIVE_DENOM = 'ubluechip';
+// The BlueChip contracts live on Osmosis: payments are OSMO (uosmo),
+// addresses are osmo1..., and creator tokens are native TokenFactory
+// denoms (factory/{pool_addr}/{subdenom}).
+export const NATIVE_DENOM = 'uosmo';
 export const COIN_DECIMALS = 6;
 
 export interface ChainConfig {
@@ -6,75 +9,20 @@ export interface ChainConfig {
     chainName: string;
     rpc: string;
     rest: string;
-    bip44: { coinType: number };
-    bech32Config: {
-        bech32PrefixAccAddr: string;
-        bech32PrefixAccPub: string;
-        bech32PrefixValAddr: string;
-        bech32PrefixValPub: string;
-        bech32PrefixConsAddr: string;
-        bech32PrefixConsPub: string;
-    };
-    currencies: CurrencyConfig[];
-    feeCurrencies: FeeCurrencyConfig[];
-    stakeCurrency: CurrencyConfig;
-}
-
-export interface CurrencyConfig {
-    coinDenom: string;
-    coinMinimalDenom: string;
-    coinDecimals: number;
-    coinGeckoId: string;
-}
-
-export interface FeeCurrencyConfig extends CurrencyConfig {
-    gasPriceStep: {
-        low: number;
-        average: number;
-        high: number;
-    };
 }
 
 export const MAINNET_CONFIG: ChainConfig = {
-    chainId: 'bluechip-3',
-    chainName: 'Bluechip Mainnet',
-    rpc: 'https://bluechip.rpc.bluechip.link',
-    rest: 'https://bluechip.api.bluechip.link',
-    bip44: { coinType: 118 },
-    bech32Config: {
-        bech32PrefixAccAddr: 'bluechip',
-        bech32PrefixAccPub: 'bluechippub',
-        bech32PrefixValAddr: 'bluechipvaloper',
-        bech32PrefixValPub: 'bluechipvaloperpub',
-        bech32PrefixConsAddr: 'bluechipvalcons',
-        bech32PrefixConsPub: 'bluechipvalconspub',
-    },
-    currencies: [{
-        coinDenom: 'bluechip',
-        coinMinimalDenom: 'ubluechip',
-        coinDecimals: 6,
-        coinGeckoId: 'bluechip',
-    }],
-    feeCurrencies: [{
-        coinDenom: 'bluechip',
-        coinMinimalDenom: 'ubluechip',
-        coinDecimals: 6,
-        coinGeckoId: 'bluechip',
-        gasPriceStep: { low: 0.01, average: 0.025, high: 0.04 },
-    }],
-    stakeCurrency: {
-        coinDenom: 'bluechip',
-        coinMinimalDenom: 'ubluechip',
-        coinDecimals: 6,
-        coinGeckoId: 'bluechip',
-    },
+    chainId: 'osmosis-1',
+    chainName: 'Osmosis',
+    rpc: 'https://rpc.osmosis.zone',
+    rest: 'https://lcd.osmosis.zone',
 };
 
 // Keplr-compatible injected wallet API. Leap implements the same
-// surface (suggest chain, enable, per-provider getOfflineSigner), so a
-// single interface covers both extensions.
+// surface (enable, per-provider getOfflineSigner), so a single
+// interface covers both extensions. Osmosis ships built-in with both,
+// so no experimentalSuggestChain step is needed.
 export interface InjectedWallet {
-    experimentalSuggestChain: (config: ChainConfig) => Promise<void>;
     enable: (chainId: string) => Promise<void>;
     getOfflineSigner?: (chainId: string) => import('@cosmjs/proto-signing').OfflineSigner;
 }

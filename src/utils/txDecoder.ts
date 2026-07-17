@@ -81,25 +81,26 @@ function decodeExecuteMsg(raw: unknown): Record<string, any> | null {
 const WASM_ACTION_LABELS: Record<string, string> = {
     commit: 'Commit',
     simple_swap: 'Swap',
-    deposit_liquidity: 'Provide Liquidity',
-    add_to_position: 'Add To LP Position',
-    remove_all_liquidity: 'Remove Liquidity',
-    remove_partial_liquidity: 'Remove Liquidity',
-    remove_partial_liquidity_by_percent: 'Remove Liquidity',
-    collect_fees: 'Collect LP Fees',
-    claim_creator_fees: 'Claim Creator Fees',
     claim_creator_excess_liquidity: 'Claim Excess Liquidity',
     continue_distribution: 'Distribute Payouts',
+    claim_failed_distribution: 'Claim Failed Payout',
+    self_recover_distribution: 'Recover Distribution',
     create: 'Create Commit Pool',
-    create_standard_pool: 'Create Standard Pool',
     execute_multi_hop: 'Multi-Hop Swap',
-    increase_allowance: 'Approve Token Spend',
-    decrease_allowance: 'Revoke Token Allowance',
-    transfer: 'Transfer Tokens',
-    update_marketing: 'Update Token Branding',
-    upload_logo: 'Upload Token Logo',
     retry_factory_notify: 'Retry Factory Notify',
-    update_oracle_price: 'Update Oracle Price',
+    pause: 'Pause Pool',
+    unpause: 'Unpause Pool',
+    emergency_withdraw: 'Emergency Withdraw',
+    // Legacy actions from the pre-Osmosis (CW20 / internal-AMM) design.
+    // Retained only so historical transactions still render a label.
+    deposit_liquidity: 'Provide Liquidity (legacy)',
+    add_to_position: 'Add To LP Position (legacy)',
+    remove_all_liquidity: 'Remove Liquidity (legacy)',
+    remove_partial_liquidity: 'Remove Liquidity (legacy)',
+    remove_partial_liquidity_by_percent: 'Remove Liquidity (legacy)',
+    collect_fees: 'Collect LP Fees (legacy)',
+    claim_creator_fees: 'Claim Creator Fees (legacy)',
+    create_standard_pool: 'Create Standard Pool (legacy)',
 };
 
 // `msg` is the MsgExecuteContract msg field: either base64 (LCD JSON)
@@ -117,35 +118,19 @@ export function describeWasmExecute(msg: unknown): WasmActionInfo | null {
             const amt = body?.asset?.amount;
             return {
                 label: 'Commit',
-                detail: amt ? `Committed ${formatMicroAmount(amt)} bluechip` : undefined,
+                detail: amt ? `Committed ${formatMicroAmount(amt)} OSMO` : undefined,
             };
         }
         case 'simple_swap': {
+            // Both sides are native denoms now. A native OSMO offer is a
+            // buy; a creator TokenFactory denom offer is a sell.
             const amt = body?.offer_asset?.amount;
             const isNative = !!body?.offer_asset?.info?.bluechip;
             return {
                 label: 'Swap',
                 detail: amt
-                    ? `Swapped ${formatMicroAmount(amt)} ${isNative ? 'bluechip for creator tokens' : 'creator tokens for bluechip'}`
+                    ? `Swapped ${formatMicroAmount(amt)} ${isNative ? 'OSMO for creator tokens' : 'creator tokens for OSMO'}`
                     : undefined,
-            };
-        }
-        case 'send': {
-            // CW20 send with an embedded hook — for BlueChip pools this is
-            // the sell path (Cw20HookMsg::Swap).
-            const hook = decodeExecuteMsg(body?.msg);
-            const hookAction = hook ? Object.keys(hook)[0] : null;
-            if (hookAction === 'swap') {
-                return {
-                    label: 'Swap',
-                    detail: body?.amount
-                        ? `Sold ${formatMicroAmount(body.amount)} creator tokens for bluechip`
-                        : undefined,
-                };
-            }
-            return {
-                label: 'Send Tokens',
-                detail: body?.amount ? `Sent ${formatMicroAmount(body.amount)} tokens` : undefined,
             };
         }
         case 'deposit_liquidity':
@@ -155,7 +140,7 @@ export function describeWasmExecute(msg: unknown): WasmActionInfo | null {
             return {
                 label: WASM_ACTION_LABELS[action],
                 detail: a0 && a1
-                    ? `${formatMicroAmount(a0)} bluechip + ${formatMicroAmount(a1)} creator tokens`
+                    ? `${formatMicroAmount(a0)} OSMO + ${formatMicroAmount(a1)} creator tokens`
                     : undefined,
             };
         }

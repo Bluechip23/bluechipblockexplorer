@@ -139,7 +139,7 @@ const CreatorTokenTable: React.FC = () => {
                                             />
                                         </TableCell>
                                         <TableCell>
-                                            <Link to={`/creatortoken/${row.creatorTokenAddress}`}>
+                                            <Link to={`/creatortoken/${encodeURIComponent(row.creatorTokenAddress ?? '')}`}>
                                                 {row.tokenName}
                                             </Link>
                                         </TableCell>

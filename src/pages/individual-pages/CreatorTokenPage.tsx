@@ -16,21 +16,24 @@ import CopyableId from '../../components/universal/CopyableId';
 
 const CreatorTokenPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
+    // The route param is a native TokenFactory denom (factory/{pool}/{sub})
+    // — it arrives URL-encoded because it contains slashes.
+    const denom = id ? decodeURIComponent(id) : undefined;
     const [tokenInfo, setTokenInfo] = useState<CW20TokenInfo | null>(null);
     const [pool, setPool] = useState<PoolSummary | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchToken = async () => {
-            if (!id) return;
+            if (!denom) return;
             setLoading(true);
             try {
-                const ti = await queryTokenInfo(id);
+                const ti = await queryTokenInfo(denom);
                 setTokenInfo(ti);
 
                 if (factoryAddress) {
                     const summaries = await fetchAllPoolSummaries(factoryAddress);
-                    const match = summaries.find(s => s.creatorTokenAddress === id);
+                    const match = summaries.find(s => s.creatorTokenAddress === denom);
                     if (match) setPool(match);
                 }
             } catch (error) {
@@ -40,9 +43,9 @@ const CreatorTokenPage: React.FC = () => {
             }
         };
         fetchToken();
-    }, [id]);
+    }, [denom]);
 
-    if (!id) {
+    if (!denom) {
         return <PageShell width={8} showStats={false}><Grid item xs={12} md={8}><Typography>Token Not Found</Typography></Grid></PageShell>;
     }
 
@@ -66,7 +69,7 @@ const CreatorTokenPage: React.FC = () => {
                                     )}
                                 </Box>
                                 <Divider />
-                                <Typography sx={{ mt: 1 }}>Contract Address: <CopyableId value={id}>{abbreviateAddress(id)}</CopyableId></Typography>
+                                <Typography sx={{ mt: 1 }}>Denom: <CopyableId value={denom}>{abbreviateAddress(denom)}</CopyableId></Typography>
                                 <Typography>Decimals: {tokenInfo.decimals}</Typography>
                                 <Typography>Total Supply: {formatMicroAmount(tokenInfo.total_supply, tokenInfo.decimals)}</Typography>
                                 {pool && (
@@ -76,8 +79,7 @@ const CreatorTokenPage: React.FC = () => {
                                         <Typography>
                                             Pool: <CopyableId value={pool.poolAddress}><Link to={`/creatorpool/${pool.poolAddress}`} style={{ color: '#1976d2' }}>{abbreviateAddress(pool.poolAddress)}</Link></CopyableId>
                                         </Typography>
-                                        <Typography>Total Liquidity: {formatMicroAmount(pool.totalLiquidity)}</Typography>
-                                        <Typography>LP Positions: {pool.totalPositions}</Typography>
+                                        <Typography>Native pool reserves (OSMO): {formatMicroAmount(pool.reserve0)}</Typography>
                                         <Typography>Committers: {pool.totalCommitters}</Typography>
                                     </>
                                 )}

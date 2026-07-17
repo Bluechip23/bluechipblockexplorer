@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS pools (
 );
 CREATE INDEX IF NOT EXISTS idx_pools_pool_id ON pools(pool_id);
 
--- token_created_successfully only carries pool_id, so token addresses
--- land here and are joined to pools on pool_id.
+-- Creator-token identifiers land here and are joined to pools on
+-- pool_id. The token_address column name is historical: it now stores
+-- the token's native TokenFactory denom (factory/{pool}/{subdenom});
+-- legacy pre-Osmosis rows hold the old CW20 contract address.
 CREATE TABLE IF NOT EXISTS pool_tokens (
     pool_id INTEGER PRIMARY KEY,
     token_address TEXT NOT NULL
@@ -46,8 +48,8 @@ CREATE TABLE IF NOT EXISTS commits (
     committer TEXT NOT NULL,
     phase TEXT NOT NULL,               -- funding | active | threshold_crossing | threshold_hit_exact
     amount_bluechip TEXT,
-    amount_usd TEXT,
-    usd_raised_after TEXT,
+    amount_usd TEXT,                   -- legacy events only; NULL on current-chain commits
+    usd_raised_after TEXT,             -- micro-USD running total (funding-phase commits)
     bluechip_raised_after TEXT,
     tokens_received TEXT,
     PRIMARY KEY (txhash, event_index)
@@ -68,7 +70,7 @@ CREATE TABLE IF NOT EXISTS trades (
     return_amount TEXT,
     commission TEXT,
     spread TEXT,
-    price REAL,                        -- bluechip per token (display only)
+    price REAL,                        -- OSMO per token (display only)
     reserve0_after TEXT,
     reserve1_after TEXT,
     PRIMARY KEY (txhash, event_index)
@@ -164,9 +166,11 @@ export function upsertPool(db: Db, p: PoolRow): void {
         ON CONFLICT(address) DO UPDATE SET pool_id = excluded.pool_id, kind = excluded.kind`).run(p);
 }
 
-export function setPoolToken(db: Db, poolId: number, tokenAddress: string): void {
+// tokenDenom: TokenFactory denom (or a legacy CW20 address); stored in
+// the token_address column, whose name predates the Osmosis migration.
+export function setPoolToken(db: Db, poolId: number, tokenDenom: string): void {
     db.prepare(`INSERT INTO pool_tokens (pool_id, token_address) VALUES (?, ?)
-        ON CONFLICT(pool_id) DO UPDATE SET token_address = excluded.token_address`).run(poolId, tokenAddress);
+        ON CONFLICT(pool_id) DO UPDATE SET token_address = excluded.token_address`).run(poolId, tokenDenom);
 }
 
 export function markThresholdCrossed(db: Db, pool: string, ts: number): void {

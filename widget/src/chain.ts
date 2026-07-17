@@ -2,23 +2,25 @@
 // messages.ts stays pure and the smoke test can stub at this seam.
 
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { getConfig, keplrChainInfo } from './config.ts';
+import { getConfig } from './config.ts';
 import {
+    beliefPriceFromSimulation,
     buildCommitMsg,
     COMMIT_GAS,
     commitFunds,
     committingInfoQuery,
     evaluateGate,
     IS_FULLY_COMMITED_QUERY,
+    simulationQuery,
     smartQueryUrl,
     toMicro,
     type CommitRecord,
     type GateResult,
 } from './messages.ts';
 
-// Minimal Keplr surface the widget uses.
+// Minimal Keplr surface the widget uses. Osmosis ships built into Keplr,
+// so no experimentalSuggestChain registration step is needed.
 interface KeplrLike {
-    experimentalSuggestChain(info: unknown): Promise<void>;
     enable(chainId: string): Promise<void>;
     getOfflineSigner(chainId: string): unknown;
     getKey(chainId: string): Promise<{ bech32Address: string }>;
@@ -44,7 +46,7 @@ export async function connect(): Promise<Session> {
     if (!keplr) {
         throw new Error('Keplr wallet not found — install it from https://www.keplr.app/get and refresh.');
     }
-    await keplr.experimentalSuggestChain(keplrChainInfo(cfg));
+    // Osmosis is built into Keplr — enabling the chain is all that's needed.
     await keplr.enable(cfg.chainId);
     const signer = keplr.getOfflineSigner(cfg.chainId) as Parameters<typeof SigningCosmWasmClient.connectWithSigner>[1];
     const accounts = await signer.getAccounts();
@@ -74,7 +76,6 @@ export async function getAddress(): Promise<string> {
     if (!keplr) {
         throw new Error('Keplr wallet not found — install it from https://www.keplr.app/get and refresh.');
     }
-    await keplr.experimentalSuggestChain(keplrChainInfo(cfg));
     await keplr.enable(cfg.chainId);
     const key = await keplr.getKey(cfg.chainId);
     return key.bech32Address;
@@ -85,8 +86,8 @@ export interface SubscribeResult {
     address: string;
 }
 
-/** Commit native bluechip to a creator pool ("subscribe"). Amount is in
- * whole bluechip (e.g. "25" or 25). */
+/** Commit OSMO to a creator pool ("subscribe"). Amount is in whole OSMO
+ * (e.g. "25" or 25). */
 export async function subscribe(opts: { pool?: string; amount: string | number }): Promise<SubscribeResult> {
     const cfg = getConfig();
     const pool = opts.pool ?? cfg.pool;
@@ -95,8 +96,8 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
     const amountMicro = toMicro(opts.amount, cfg.coinDecimals);
     const { address, client } = await connect();
 
-    // Post-threshold commits are AMM swaps and need a spread guard;
-    // pre-threshold commits must NOT set one.
+    // Post-threshold commits are AMM swaps and need a belief_price + spread
+    // guard; pre-threshold commits must NOT set either.
     let thresholdHit = false;
     try {
         const status = await client.queryContractSmart(pool, IS_FULLY_COMMITED_QUERY);
@@ -107,7 +108,19 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
         // a wrong guess fails loudly at execution rather than silently.
     }
 
-    const msg = buildCommitMsg({ denom: cfg.nativeDenom, amountMicro, thresholdHit });
+    // The contract REQUIRES a non-null belief_price on post-threshold
+    // commits: derive it from the pool's own swap simulation (offer per
+    // ask). Pre-threshold commits keep belief_price null.
+    let beliefPrice: string | null = null;
+    if (thresholdHit) {
+        const sim = (await client.queryContractSmart(
+            pool,
+            simulationQuery(cfg.nativeDenom, amountMicro),
+        )) as { return_amount?: string } | null;
+        beliefPrice = beliefPriceFromSimulation(amountMicro, sim?.return_amount);
+    }
+
+    const msg = buildCommitMsg({ denom: cfg.nativeDenom, amountMicro, thresholdHit, beliefPrice });
     const funds = commitFunds(cfg.nativeDenom, amountMicro);
     const result = await client.execute(
         address,

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Grid, Stack, Typography, Tabs, Tab, Box, Card, CardContent, TextField, Button, Alert, IconButton, Tooltip } from '@mui/material';
+import { Grid, Stack, Typography, Tabs, Tab, Box, Card, CardContent, TextField, Button, Alert, IconButton, Tooltip, Link } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import PageShell from '../components/universal/PageShell';
@@ -20,21 +20,14 @@ import {
 } from '../utils/security';
 import { formatMicroAmount } from '../utils/bigintMath';
 import { isFullyCommitted } from '../utils/contractQueries';
-import { deadlineNs, timeAgo } from '../utils/datetime';
-import { ensureCw20Allowance, minAmountAfterSlippage, resolvePoolAssets } from '../utils/poolActions';
+import { deadlineNs } from '../utils/datetime';
+import { deriveBeliefPrice, resolvePoolAssets } from '../utils/poolActions';
 
 // Sentinel the factory's commit-pool create handler requires in the
-// CreatorToken slot of pool_token_info. The factory mints the real CW20
-// during creation and rewrites this slot to the freshly minted address.
+// CreatorToken slot of pool_token_info. The pool mints its own native
+// TokenFactory denom (factory/{pool_addr}/{subdenom}) at instantiate and
+// rewrites this slot with the real denom.
 const CREATOR_TOKEN_SENTINEL = 'WILL_BE_CREATED_BY_FACTORY';
-
-// Mirrors the Rust TokenType discriminated union over the wire. The
-// `bluechip` tag is the serde-renamed Native variant; the `creator_token`
-// tag is the CW20 variant. Declared as a real union so TypeScript can
-// narrow on `'bluechip' in t` / `'creator_token' in t` checks.
-type TokenTypeWire =
-    | { bluechip: { denom: string } }
-    | { creator_token: { contract_addr: string } };
 
 const TabPanel: React.FC<{ children?: React.ReactNode; value: number; index: number }> = ({ children, value, index }) => (
     <div role="tabpanel" hidden={value !== index}>
@@ -67,36 +60,14 @@ const TxHashDisplay: React.FC<{ txHash: string }> = ({ txHash }) => {
     );
 };
 
-// Builds a TokenType wire entry from a free-form input. Anything starting
-// with `bluechip` / `cosmos` and over the typical bech32 length is treated
-// as a CW20 contract; otherwise we treat it as a native bank denom.
-const tokenTypeFromInput = (raw: string): TokenTypeWire => {
-    const trimmed = raw.trim();
-    const looksLikeAddress = trimmed.length > 20 && (trimmed.startsWith('bluechip') || trimmed.startsWith('cosmos'));
-    return looksLikeAddress
-        ? { creator_token: { contract_addr: trimmed } }
-        : { bluechip: { denom: trimmed } };
-};
-
 // =========================================================================
 // CREATE POOL TAB
 // =========================================================================
 const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: string }> = ({ client, address }) => {
-    const [poolKind, setPoolKind] = useState<'commit' | 'standard'>('commit');
-
-    // Commit-pool inputs.
+    // Commit-pool inputs. (Standard pools were removed from the factory —
+    // the only creation path is the commit / creator pool.)
     const [tokenName, setTokenName] = useState('');
     const [tokenSymbol, setTokenSymbol] = useState('');
-
-    // Standard-pool inputs.
-    const [asset0, setAsset0] = useState(NATIVE_DENOM);
-    const [asset1, setAsset1] = useState('');
-    const [label, setLabel] = useState('');
-
-    // USD-denominated creation fee, supplied as ubluechip funds. The
-    // factory reads its actual required amount from its own state; we let
-    // the user attach their best estimate and refund any surplus on-chain.
-    const [creationFeeMicro, setCreationFeeMicro] = useState('');
 
     const [status, setStatus] = useState('');
     const [txHash, setTxHash] = useState('');
@@ -114,112 +85,65 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
             return;
         }
 
-        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        // SECURITY: Assert chain ID matches the expected Osmosis chain before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
         if (!chainCheck.ok) {
             setStatus(`Error: ${chainCheck.error}`);
             return;
         }
 
-        const fundsMicro = creationFeeMicro.trim();
-        const funds = fundsMicro && fundsMicro !== '0'
-            ? [{ denom: NATIVE_DENOM, amount: fundsMicro }]
-            : [];
-
         try {
             setTxHash('');
 
-            if (poolKind === 'commit') {
-                if (!tokenName || !tokenSymbol) { setStatus('Error: Enter token name and symbol'); return; }
+            if (!tokenName || !tokenSymbol) { setStatus('Error: Enter token name and symbol'); return; }
 
-                // Mirror the contract's validate_creator_token_info bounds.
-                if (tokenName.length < 3 || tokenName.length > 50 || !/^[\x20-\x7E]+$/.test(tokenName)) {
-                    setStatus('Error: Token name must be 3-50 printable ASCII characters');
-                    return;
-                }
-                if (!/^[A-Z0-9]{3,12}$/.test(tokenSymbol) || !/[A-Z]/.test(tokenSymbol)) {
-                    setStatus('Error: Token symbol must be 3-12 chars (A-Z, 0-9) with at least one letter');
-                    return;
-                }
+            // Mirror the contract's validate_creator_token_info bounds.
+            if (tokenName.length < 3 || tokenName.length > 50 || !/^[\x20-\x7E]+$/.test(tokenName)) {
+                setStatus('Error: Token name must be 3-50 printable ASCII characters');
+                return;
+            }
+            if (!/^[A-Z0-9]{3,12}$/.test(tokenSymbol) || !/[A-Z]/.test(tokenSymbol)) {
+                setStatus('Error: Token symbol must be 3-12 chars (A-Z, 0-9) with at least one letter');
+                return;
+            }
 
-                setStatus('Creating commit pool...');
+            setStatus('Creating commit pool...');
 
-                // The factory's CreatePool now carries only pool_token_info;
-                // every other field (commit_fee_info, threshold_payout,
-                // bluechip lock caps, oracle config) is sourced from the
-                // factory's stored config and silently overwritten if the
-                // caller tries to supply it.
-                const createMsg = {
-                    create: {
-                        pool_msg: {
-                            pool_token_info: [
-                                { bluechip: { denom: NATIVE_DENOM } },
-                                { creator_token: { contract_addr: CREATOR_TOKEN_SENTINEL } },
-                            ],
-                        },
-                        token_info: {
-                            name: tokenName,
-                            symbol: tokenSymbol,
-                            decimal: 6,
-                        },
+            // The factory charges a flat OSMO creation fee — read the live
+            // value from factory config and attach exactly that. Zero fee
+            // means attach nothing (the handler rejects funds in that case).
+            const factoryConfig = await client.queryContractSmart(FACTORY, { factory: {} });
+            const creationFee: string = factoryConfig?.factory?.pool_creation_fee ?? '0';
+            const feeDenom: string = factoryConfig?.factory?.bluechip_denom ?? NATIVE_DENOM;
+            const funds = creationFee !== '0'
+                ? [{ denom: feeDenom, amount: creationFee }]
+                : [];
+
+            // The factory's CreatePool carries only pool_token_info; every
+            // other dial (commit_fee_info, threshold_payout, lock caps,
+            // pricing config) is sourced from the factory's stored config
+            // and silently overwritten if the caller tries to supply it.
+            const createMsg = {
+                create: {
+                    pool_msg: {
+                        pool_token_info: [
+                            { bluechip: { denom: NATIVE_DENOM } },
+                            { creator_token: { denom: CREATOR_TOKEN_SENTINEL } },
+                        ],
                     },
-                };
-
-                const result = await client.execute(address, FACTORY, createMsg, { amount: [], gas: '2000000' }, 'Create Commit Pool', funds);
-                setTxHash(result.transactionHash);
-                setStatus('Success! Commit pool creation submitted.');
-                setTokenName('');
-                setTokenSymbol('');
-                return;
-            }
-
-            // ---- Standard pool ----
-            if (!asset0 || !asset1) { setStatus('Error: Both pool assets are required'); return; }
-            if (asset0.trim() === asset1.trim()) { setStatus('Error: Standard pool cannot pair an asset with itself'); return; }
-            if (!label.trim()) { setStatus('Error: Label is required for a standard pool'); return; }
-            if (label.length > 128) { setStatus('Error: Label must be 128 characters or fewer'); return; }
-
-            const token0 = tokenTypeFromInput(asset0);
-            const token1 = tokenTypeFromInput(asset1);
-
-            // The factory enforces that at least one leg equal the canonical
-            // bluechip denom. Surface that requirement client-side so the
-            // user gets immediate feedback rather than a contract error.
-            const isCanonicalBluechip = (t: TokenTypeWire) =>
-                'bluechip' in t && t.bluechip.denom === NATIVE_DENOM;
-            if (!isCanonicalBluechip(token0) && !isCanonicalBluechip(token1)) {
-                setStatus(`Error: One asset must be the canonical bluechip denom (${NATIVE_DENOM})`);
-                return;
-            }
-
-            // CreatorToken legs must be valid bech32 addresses; the factory
-            // also confirms they answer a CW20 TokenInfo query.
-            for (const t of [token0, token1]) {
-                if ('creator_token' in t) {
-                    const check = validateBech32Address(t.creator_token.contract_addr);
-                    if (!check.ok) { setStatus(`Error: CreatorToken address invalid — ${check.error}`); return; }
-                }
-            }
-
-            setStatus('Creating standard pool...');
-            const createStandardMsg = {
-                create_standard_pool: {
-                    pool_token_info: [token0, token1],
-                    label: label.trim(),
+                    token_info: {
+                        name: tokenName,
+                        symbol: tokenSymbol,
+                        decimal: 6,
+                    },
                 },
             };
-            const result = await client.execute(
-                address,
-                FACTORY,
-                createStandardMsg,
-                { amount: [], gas: '2000000' },
-                'Create Standard Pool',
-                funds,
-            );
+
+            const result = await client.execute(address, FACTORY, createMsg, { amount: [], gas: '2000000' }, 'Create Commit Pool', funds);
             setTxHash(result.transactionHash);
-            setStatus('Success! Standard pool creation submitted.');
-            setAsset1('');
-            setLabel('');
+            setStatus('Success! Commit pool creation submitted.');
+            setTokenName('');
+            setTokenSymbol('');
         } catch (err) {
             setStatus('Error: ' + (err as Error).message);
         }
@@ -227,37 +151,20 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Tabs value={poolKind === 'commit' ? 0 : 1} onChange={(_, v) => setPoolKind(v === 0 ? 'commit' : 'standard')} sx={{ mb: 1 }}>
-                <Tab label="Commit (Creator) Pool" />
-                <Tab label="Standard Pool" />
-            </Tabs>
-
-            {poolKind === 'commit' && (
-                <>
-                    <TextField label="Token Name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} placeholder="My Creator Token" required helperText="3-50 printable ASCII characters" />
-                    <TextField label="Token Symbol" value={tokenSymbol} onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())} placeholder="MCT" required inputProps={{ maxLength: 12 }} helperText="3-12 chars, A-Z + 0-9, at least one letter" />
-                    <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                        <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Pool Configuration</Typography>
-                        <Typography variant="body2">All commit-phase economics (threshold, fees, lock caps, oracle) are read from the factory's stored config. The CreatePool payload only carries the token pair; any caller-supplied overrides are ignored.</Typography>
-                    </Box>
-                </>
-            )}
-
-            {poolKind === 'standard' && (
-                <>
-                    <TextField label="Asset 0 (denom or CW20 address)" value={asset0} onChange={(e) => setAsset0(e.target.value)} required helperText={`One asset must be the canonical bluechip denom (${NATIVE_DENOM})`} />
-                    <TextField label="Asset 1 (denom or CW20 address)" value={asset1} onChange={(e) => setAsset1(e.target.value)} required />
-                    <TextField label="Pool Label" value={label} onChange={(e) => setLabel(e.target.value)} required inputProps={{ maxLength: 128 }} helperText="On-chain label for explorers and operator tooling" />
-                    <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                        <Typography variant="body2">Standard pools wrap two pre-existing assets and have no commit phase or distribution. CW20 legs are validated against TokenInfo at creation time.</Typography>
-                    </Box>
-                </>
-            )}
-
-            <TextField label="Creation Fee (ubluechip)" value={creationFeeMicro} onChange={(e) => setCreationFeeMicro(e.target.value)} type="number" helperText="USD-denominated; attach the canonical-bluechip equivalent. Surplus is refunded on-chain." />
+            <TextField label="Token Name" value={tokenName} onChange={(e) => setTokenName(e.target.value)} placeholder="My Creator Token" required helperText="3-50 printable ASCII characters" />
+            <TextField label="Token Symbol" value={tokenSymbol} onChange={(e) => setTokenSymbol(e.target.value.toUpperCase())} placeholder="MCT" required inputProps={{ maxLength: 12 }} helperText="3-12 chars, A-Z + 0-9, at least one letter" />
+            <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Pool Configuration</Typography>
+                <Typography variant="body2">
+                    All commit-phase economics (threshold, fees, lock caps, x/twap pricing) are read from the
+                    factory's stored config — the create payload only carries the token pair. Your token is
+                    minted as a native Osmosis TokenFactory denom, and the flat OSMO creation fee is read
+                    live from the factory and attached automatically (surplus is refunded on-chain).
+                </Typography>
+            </Box>
 
             <Button variant="contained" onClick={handleCreate} disabled={!client || !address}>
-                {poolKind === 'commit' ? 'Create Commit Pool' : 'Create Standard Pool'}
+                Create Commit Pool
             </Button>
             {status && <Alert severity={status.includes('Success') ? 'success' : status.includes('Error') ? 'error' : 'info'}>{status}</Alert>}
             <TxHashDisplay txHash={txHash} />
@@ -280,7 +187,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
     const handleSubscribe = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
 
-        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        // SECURITY: Validate pool address is a well-formed osmo bech32 address.
         const addrCheck = validateBech32Address(poolAddress);
         if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
 
@@ -288,7 +195,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
         const amtCheck = validateTokenAmount(amount, COIN_DECIMALS);
         if (!amtCheck.ok) { setStatus(`Error: ${amtCheck.error}`); return; }
 
-        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        // SECURITY: Assert chain ID matches the expected Osmosis chain before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
         if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
 
@@ -302,11 +209,29 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             const txDeadline = deadlineNs(deadline);
             const { bluechipDenom } = await resolvePoolAssets(client, poolAddress);
 
+            // Post-threshold commits swap through the native pool and the
+            // contract REQUIRES a belief_price on that path — derive it
+            // from a live quote so a front-run reverts instead of filling
+            // at a worse price. Pre-threshold commits don't swap.
+            let beliefPrice: string | null = null;
+            if (isThresholdCrossed) {
+                beliefPrice = await deriveBeliefPrice(
+                    client,
+                    poolAddress,
+                    { bluechip: { denom: bluechipDenom } },
+                    micro,
+                );
+                if (!beliefPrice) {
+                    setStatus('Error: Could not quote this commit against the pool — try again in a moment.');
+                    return;
+                }
+            }
+
             const msg = {
                 commit: {
                     asset: { info: { bluechip: { denom: bluechipDenom } }, amount: micro },
                     transaction_deadline: txDeadline,
-                    belief_price: null,
+                    belief_price: beliefPrice,
                     max_spread: (isThresholdCrossed && maxSpread) ? maxSpread : null,
                 },
             };
@@ -329,8 +254,8 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <OracleStatusBanner />
                     <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Pool" />
-                    <TextField label="Amount (bluechip)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
-                    <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5%" />
+                    <TextField label="Amount (OSMO)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
+                    <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5% (applies post-threshold)" />
                     <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
                     <Button variant="contained" onClick={handleSubscribe} disabled={!client}>Commit</Button>
                     {status && <Alert severity={status.includes('Success') ? 'success' : 'info'}>{status}</Alert>}
@@ -363,7 +288,7 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
     const handleSwap = async () => {
         if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
 
-        // SECURITY: Validate pool address is a well-formed bluechip bech32 address.
+        // SECURITY: Validate pool address is a well-formed osmo bech32 address.
         const addrCheck = validateBech32Address(poolAddress);
         if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
 
@@ -378,7 +303,7 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
             if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
         }
 
-        // SECURITY: Assert chain ID matches bluechip-3 before signing.
+        // SECURITY: Assert chain ID matches the expected Osmosis chain before signing.
         const chainCheck = await assertWalletOnExpectedChain(client);
         if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
 
@@ -388,47 +313,41 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
             const micro = amtCheck.micro!;
             const txDeadline = deadlineNs(deadline);
 
-            const isContract = offerAsset.length > 20 && (offerAsset.startsWith('bluechip') || offerAsset.startsWith('cosmos'));
+            // Both sides of every pool are native bank denoms now: OSMO
+            // (uosmo) and the creator token's TokenFactory denom
+            // (factory/{pool}/{sub}). Either direction is the same
+            // simple_swap with the offered denom attached as funds — the
+            // old CW20 send-hook path no longer exists.
+            const offerDenom = offerAsset.trim() || NATIVE_DENOM;
+            const isCreatorToken = offerDenom.startsWith('factory/');
+            const offerInfo = isCreatorToken
+                ? { creator_token: { denom: offerDenom } }
+                : { bluechip: { denom: offerDenom } };
 
-            if (!isContract) {
-                // Native bluechip swap.
-                const msg = {
-                    simple_swap: {
-                        offer_asset: { info: { bluechip: { denom: offerAsset || NATIVE_DENOM } }, amount: micro },
-                        belief_price: null,
-                        max_spread: maxSpread || null,
-                        allow_high_max_spread: allowHighSpread ? true : null,
-                        to: null,
-                        transaction_deadline: txDeadline,
-                    },
-                };
-                const result = await client.execute(
-                    address,
-                    poolAddress,
-                    msg,
-                    { amount: [], gas: '500000' },
-                    'Swap',
-                    [{ denom: offerAsset || NATIVE_DENOM, amount: micro }],
-                );
-                setTxHash(result.transactionHash);
-                setStatus('Success!');
-            } else {
-                // CW20 swap via send hook. The hook payload is the
-                // pool's Cw20HookMsg::Swap variant.
-                const hookMsg = {
-                    swap: {
-                        belief_price: null,
-                        max_spread: maxSpread || null,
-                        allow_high_max_spread: allowHighSpread ? true : null,
-                        to: null,
-                        transaction_deadline: txDeadline,
-                    },
-                };
-                const msg = { send: { contract: poolAddress, amount: micro, msg: btoa(JSON.stringify(hookMsg)) } };
-                const result = await client.execute(address, offerAsset, msg, { amount: [], gas: '500000' }, 'Swap CW20', []);
-                setTxHash(result.transactionHash);
-                setStatus('Success!');
-            }
+            // Fix belief_price from a live quote — a front-run that moves
+            // the pool reverts the swap instead of filling at a worse price.
+            const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+
+            const msg = {
+                simple_swap: {
+                    offer_asset: { info: offerInfo, amount: micro },
+                    belief_price: beliefPrice,
+                    max_spread: maxSpread || null,
+                    allow_high_max_spread: allowHighSpread ? true : null,
+                    to: null,
+                    transaction_deadline: txDeadline,
+                },
+            };
+            const result = await client.execute(
+                address,
+                poolAddress,
+                msg,
+                { amount: [], gas: '500000' },
+                'Swap',
+                [{ denom: offerDenom, amount: micro }],
+            );
+            setTxHash(result.transactionHash);
+            setStatus('Success!');
         } catch (err) {
             setStatus('Error: ' + humanizeContractError(err));
         }
@@ -437,7 +356,7 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Pool" />
-            <TextField label="Offer Asset (denom or CW20 address)" value={offerAsset} onChange={(e) => setOfferAsset(e.target.value)} helperText="e.g. ubluechip or a CW20 contract address" />
+            <TextField label="Offer Denom" value={offerAsset} onChange={(e) => setOfferAsset(e.target.value)} helperText="uosmo to buy, or the creator token's factory/... denom to sell" />
             <TextField label="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
             <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5%" />
             <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
@@ -456,241 +375,31 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 };
 
 // =========================================================================
-// LIQUIDITY TAB
+// LIQUIDITY TAB — informational only.
+//
+// The creator pool has no deposit/remove-liquidity or collect-fees entry
+// points anymore: at threshold crossing it creates and seeds a NATIVE
+// Osmosis GAMM pool and holds the LP shares itself. Anyone who wants to
+// LP does it directly on Osmosis, and LP fees accrue per GAMM rules.
 // =========================================================================
-const LiquidityTab: React.FC<{ client: SigningCosmWasmClient | null; address: string }> = ({ client, address }) => {
-    const [subTab, setSubTab] = useState(0);
-    const [poolAddress, setPoolAddress] = useState('');
-    const [amount0, setAmount0] = useState('');
-    const [amount1, setAmount1] = useState('');
-    const [positionId, setPositionId] = useState('');
-    const [removeAmount, setRemoveAmount] = useState('');
-    const [removeMode, setRemoveMode] = useState('amount');
-    const [removePercent, setRemovePercent] = useState('');
-    const [slippage, setSlippage] = useState('1');
-    const [deadline, setDeadline] = useState('20');
-    const [status, setStatus] = useState('');
-    const [txHash, setTxHash] = useState('');
-
-    const handleDeposit = async () => {
-        if (!client || !address || !poolAddress) { setStatus('Connect wallet and set pool address'); return; }
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
-
-        const amt0Check = validateTokenAmount(amount0, COIN_DECIMALS);
-        if (!amt0Check.ok) { setStatus(`Error: Bluechip amount — ${amt0Check.error}`); return; }
-        const amt1Check = validateTokenAmount(amount1, COIN_DECIMALS);
-        if (!amt1Check.ok) { setStatus(`Error: Creator token amount — ${amt1Check.error}`); return; }
-
-        const slipCheck = validateSlippage(slippage);
-        if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
-
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
-
-        try {
-            setStatus('Depositing...');
-            setTxHash('');
-            const a0 = amt0Check.micro!;
-            const a1 = amt1Check.micro!;
-
-            const { tokenAddress, bluechipDenom } = await resolvePoolAssets(client, poolAddress);
-            if (!tokenAddress) { setStatus('Error: No creator token found in pool'); return; }
-
-            setStatus('Approving tokens...');
-            await ensureCw20Allowance(client, address, tokenAddress, poolAddress, a1);
-
-            // DepositLiquidity (matches both creator-pool and standard-pool):
-            // amount0/amount1 + optional min_amount0/min_amount1 + optional
-            // transaction_deadline. No max_ratio_deviation_bps here — that
-            // field only exists on the remove handlers.
-            const msg = {
-                deposit_liquidity: {
-                    amount0: a0,
-                    amount1: a1,
-                    min_amount0: minAmountAfterSlippage(a0, slippage),
-                    min_amount1: minAmountAfterSlippage(a1, slippage),
-                    transaction_deadline: deadlineNs(deadline),
-                },
-            };
-
-            setStatus('Depositing...');
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Deposit Liquidity', [{ denom: bluechipDenom, amount: a0 }]);
-            setTxHash(result.transactionHash);
-            setStatus('Success!');
-        } catch (err) { setStatus('Error: ' + (err as Error).message); }
-    };
-
-    const handleAddToPosition = async () => {
-        if (!client || !address || !poolAddress || !positionId) { setStatus('Fill in pool address and position ID'); return; }
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
-
-        const amt0Check = validateTokenAmount(amount0, COIN_DECIMALS);
-        if (!amt0Check.ok) { setStatus(`Error: Bluechip amount — ${amt0Check.error}`); return; }
-        const amt1Check = validateTokenAmount(amount1, COIN_DECIMALS);
-        if (!amt1Check.ok) { setStatus(`Error: Creator token amount — ${amt1Check.error}`); return; }
-
-        const slipCheck = validateSlippage(slippage);
-        if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
-
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
-
-        try {
-            setStatus('Adding to position...');
-            setTxHash('');
-            const a0 = amt0Check.micro!;
-            const a1 = amt1Check.micro!;
-
-            const { tokenAddress, bluechipDenom } = await resolvePoolAssets(client, poolAddress);
-            if (!tokenAddress) { setStatus('Error: No creator token found in pool'); return; }
-
-            setStatus('Approving tokens...');
-            await ensureCw20Allowance(client, address, tokenAddress, poolAddress, a1);
-
-            const msg = {
-                add_to_position: {
-                    position_id: positionId,
-                    amount0: a0,
-                    amount1: a1,
-                    min_amount0: minAmountAfterSlippage(a0, slippage),
-                    min_amount1: minAmountAfterSlippage(a1, slippage),
-                    transaction_deadline: deadlineNs(deadline),
-                },
-            };
-
-            setStatus('Adding to position...');
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Add To Position', [{ denom: bluechipDenom, amount: a0 }]);
-            setTxHash(result.transactionHash);
-            setStatus('Success!');
-        } catch (err) { setStatus('Error: ' + (err as Error).message); }
-    };
-
-    const handleRemove = async () => {
-        if (!client || !address || !poolAddress || !positionId) { setStatus('Fill in all fields'); return; }
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
-
-        const slipCheck = validateSlippage(slippage);
-        if (!slipCheck.ok) { setStatus(`Error: ${slipCheck.error}`); return; }
-
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
-
-        try {
-            setStatus('Removing...');
-            setTxHash('');
-            const deviationBps = slippage ? Math.floor(parseFloat(slippage) * 100) : null;
-            const txDeadline = deadlineNs(deadline);
-
-            let msg: any;
-            if (removeMode === 'all') {
-                msg = { remove_all_liquidity: { position_id: positionId, min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: txDeadline } };
-            } else if (removeMode === 'percent') {
-                msg = { remove_partial_liquidity_by_percent: { position_id: positionId, percentage: parseInt(removePercent, 10) || 0, min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: txDeadline } };
-            } else {
-                msg = { remove_partial_liquidity: { position_id: positionId, liquidity_to_remove: Math.floor(parseFloat(removeAmount)).toString(), min_amount0: null, min_amount1: null, max_ratio_deviation_bps: deviationBps, transaction_deadline: txDeadline } };
-            }
-
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Remove Liquidity');
-            setTxHash(result.transactionHash);
-            setStatus('Success!');
-        } catch (err) { setStatus('Error: ' + (err as Error).message); }
-    };
-
-    return (
-        <Box>
-            <Box sx={{ mb: 2 }}><PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Pool" /></Box>
-            <Tabs value={subTab} onChange={(_, v) => setSubTab(v)} sx={{ mb: 2 }}>
-                <Tab label="Provide Liquidity" />
-                <Tab label="Add to Position" />
-                <Tab label="Remove Liquidity" />
-            </Tabs>
-            {subTab === 0 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField label="Amount 0 (bluechip)" value={amount0} onChange={(e) => setAmount0(e.target.value)} type="number" />
-                    <TextField label="Amount 1 (Creator Token)" value={amount1} onChange={(e) => setAmount1(e.target.value)} type="number" />
-                    <TextField label="Slippage (%)" value={slippage} onChange={(e) => setSlippage(e.target.value)} type="number" />
-                    <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
-                    <Button variant="contained" onClick={handleDeposit} disabled={!client}>Provide Liquidity</Button>
-                </Box>
-            )}
-            {subTab === 1 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField label="Position ID" value={positionId} onChange={(e) => setPositionId(e.target.value)} />
-                    <TextField label="Amount 0 (bluechip)" value={amount0} onChange={(e) => setAmount0(e.target.value)} type="number" />
-                    <TextField label="Amount 1 (Creator Token)" value={amount1} onChange={(e) => setAmount1(e.target.value)} type="number" />
-                    <TextField label="Slippage (%)" value={slippage} onChange={(e) => setSlippage(e.target.value)} type="number" />
-                    <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
-                    <Button variant="contained" onClick={handleAddToPosition} disabled={!client}>Add to Position</Button>
-                </Box>
-            )}
-            {subTab === 2 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <TextField label="Position ID" value={positionId} onChange={(e) => setPositionId(e.target.value)} />
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button variant={removeMode === 'amount' ? 'contained' : 'outlined'} size="small" onClick={() => setRemoveMode('amount')}>Amount</Button>
-                        <Button variant={removeMode === 'percent' ? 'contained' : 'outlined'} size="small" onClick={() => setRemoveMode('percent')}>Percentage</Button>
-                        <Button variant={removeMode === 'all' ? 'contained' : 'outlined'} size="small" onClick={() => setRemoveMode('all')}>Remove All</Button>
-                    </Box>
-                    {removeMode === 'amount' && <TextField label="Liquidity to Remove" value={removeAmount} onChange={(e) => setRemoveAmount(e.target.value)} type="number" />}
-                    {removeMode === 'percent' && <TextField label="Percentage (0-100)" value={removePercent} onChange={(e) => setRemovePercent(e.target.value)} type="number" />}
-                    <TextField label="Max Deviation (%)" value={slippage} onChange={(e) => setSlippage(e.target.value)} type="number" />
-                    <TextField label="Deadline (minutes)" value={deadline} onChange={(e) => setDeadline(e.target.value)} type="number" />
-                    <Button variant="contained" color="error" onClick={handleRemove} disabled={!client}>Remove Liquidity</Button>
-                </Box>
-            )}
-            {status && <Alert severity={status.includes('Success') ? 'success' : 'info'} sx={{ mt: 2 }}>{status}</Alert>}
-            <TxHashDisplay txHash={txHash} />
-        </Box>
-    );
-};
-
-// =========================================================================
-// FEES TAB
-// =========================================================================
-const FeesTab: React.FC<{ client: SigningCosmWasmClient | null; address: string }> = ({ client, address }) => {
-    const [poolAddress, setPoolAddress] = useState('');
-    const [positionId, setPositionId] = useState('');
-    const [status, setStatus] = useState('');
-    const [txHash, setTxHash] = useState('');
-
-    const handleCollect = async () => {
-        if (!client || !address || !poolAddress) { setStatus('Connect wallet and enter pool address'); return; }
-
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) { setStatus(`Error: Pool address invalid — ${addrCheck.error}`); return; }
-
-        const chainCheck = await assertWalletOnExpectedChain(client);
-        if (!chainCheck.ok) { setStatus(`Error: ${chainCheck.error}`); return; }
-
-        try {
-            setStatus('Verifying ownership...');
-            setTxHash('');
-            const pos = await client.queryContractSmart(poolAddress, { position: { position_id: positionId } });
-            if (pos.owner !== address) { setStatus('Error: You do not own this position'); return; }
-
-            setStatus('Collecting fees...');
-            const result = await client.execute(address, poolAddress, { collect_fees: { position_id: positionId } }, { amount: [], gas: '400000' }, 'Collect Fees');
-            setTxHash(result.transactionHash);
-            setStatus('Success!');
-        } catch (err) { setStatus('Error: ' + (err as Error).message); }
-    };
-
-    return (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Pool" />
-            <TextField label="Position ID" value={positionId} onChange={(e) => setPositionId(e.target.value)} />
-            <Button variant="contained" color="success" onClick={handleCollect} disabled={!client}>Collect Fees</Button>
-            {status && <Alert severity={status.includes('Success') ? 'success' : 'info'}>{status}</Alert>}
-            <TxHashDisplay txHash={txHash} />
-        </Box>
-    );
-};
+const LiquidityInfoTab: React.FC = () => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Alert severity="info">
+            Liquidity lives on Osmosis now. When a creator pool crosses its funding threshold,
+            the contract creates and seeds a native Osmosis GAMM pool (the seed is locked in the
+            pool contract and belongs to no one). There are no liquidity or fee-collection
+            actions on the BlueChip contracts.
+        </Alert>
+        <Typography variant="body2">
+            To provide or remove liquidity for a creator token — or to collect your LP
+            rewards — use the Osmosis app directly:{' '}
+            <Link href="https://app.osmosis.zone/pools" target="_blank" rel="noopener">
+                app.osmosis.zone/pools
+            </Link>
+            . Find the pool paired as OSMO / your creator token.
+        </Typography>
+    </Box>
+);
 
 // =========================================================================
 // MAIN DEFI PAGE
@@ -702,11 +411,12 @@ const DefiPage: React.FC = () => {
 
     // Allow deep-linking to a specific tab via ?tab=<name>. The "Commit"
     // shortcut in the top bar relies on this to drop the user straight on
-    // the commit form when they land on /defi.
+    // the commit form when they land on /defi. Legacy 'liquidity' / 'fees'
+    // links land on the informational Liquidity tab.
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        const map: Record<string, number> = { create: 0, commit: 1, swap: 2, crosstoken: 3, liquidity: 4, fees: 5 };
+        const map: Record<string, number> = { create: 0, commit: 1, swap: 2, crosstoken: 3, liquidity: 4, fees: 4 };
         if (tab && tab in map) setMainTab(map[tab]);
     }, [location.search]);
 
@@ -719,7 +429,7 @@ const DefiPage: React.FC = () => {
                                 <Typography variant="h5" fontWeight="bold">Creator Economy</Typography>
                                 {balance && (
                                     <Typography variant="body2">
-                                        {formatMicroAmount(balance.amount)} bluechip
+                                        {formatMicroAmount(balance.amount)} OSMO
                                     </Typography>
                                 )}
                             </Stack>
@@ -736,7 +446,6 @@ const DefiPage: React.FC = () => {
                                 <Tab label="Swap" />
                                 <Tab label="Cross-Token" />
                                 <Tab label="Liquidity" />
-                                <Tab label="Collect Fees" />
                             </Tabs>
 
                             <TabPanel value={mainTab} index={0}>
@@ -752,10 +461,7 @@ const DefiPage: React.FC = () => {
                                 <CrossTokenSwapTab client={client} address={address} />
                             </TabPanel>
                             <TabPanel value={mainTab} index={4}>
-                                <LiquidityTab client={client} address={address} />
-                            </TabPanel>
-                            <TabPanel value={mainTab} index={5}>
-                                <FeesTab client={client} address={address} />
+                                <LiquidityInfoTab />
                             </TabPanel>
                         </CardContent>
                     </Card>

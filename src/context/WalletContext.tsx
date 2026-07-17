@@ -7,7 +7,7 @@ import {
     assertNoSecretsInStorage,
     assertWalletOnExpectedChain,
 } from '../utils/security';
-import { MAINNET_CONFIG, NATIVE_DENOM, detectInjectedWallet } from '../defi/types';
+import { NATIVE_DENOM, detectInjectedWallet } from '../defi/types';
 import { rpcEndpoint } from '../components/universal/IndividualPage.const';
 import { getDataSource } from '../utils/contractQueries';
 
@@ -18,8 +18,8 @@ import { getDataSource } from '../utils/contractQueries';
 //     a fake identity so the UI is browsable without an extension
 // ============================================================
 
-const MOCK_ADDRESS = 'bluechip1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
-const MOCK_BALANCE: Coin = { denom: 'ubluechip', amount: '84720000000' }; // 84,720 bluechip
+const MOCK_ADDRESS = 'osmo1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
+const MOCK_BALANCE: Coin = { denom: 'uosmo', amount: '84720000000' }; // 84,720 OSMO
 
 interface WalletContextType {
     client: SigningCosmWasmClient | null;
@@ -31,7 +31,7 @@ interface WalletContextType {
     // or 'Demo' in mock mode. Null while disconnected.
     walletName: string | null;
     // SECURITY: exposed so transaction flows can re-assert the wallet is
-    // still connected to bluechip-3 right before signing.
+    // still connected to the expected Osmosis chain right before signing.
     expectedChainId: string;
     // SECURITY: tells components whether the connection has been marked as
     // expired due to idle timeout so they can display the reconnect prompt.
@@ -121,8 +121,8 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
             const { name, wallet } = detected;
 
             // SECURITY: Scope wallet permission requests to the minimum
-            // required: chain registration + account read + tx signing.
-            await wallet.experimentalSuggestChain({ ...MAINNET_CONFIG, rpc: rpcEndpoint });
+            // required: account read + tx signing. Osmosis ships with
+            // Keplr/Leap, so no experimentalSuggestChain registration step.
             await wallet.enable(EXPECTED_CHAIN_ID);
 
             const signer = wallet.getOfflineSigner
@@ -142,8 +142,8 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
 
             const signingClient = await SigningCosmWasmClient.connectWithSigner(rpcEndpoint, signer);
 
-            // SECURITY: verify the signer really is on bluechip-3 before
-            // exposing the client to any transaction flow.
+            // SECURITY: verify the signer really is on the expected Osmosis
+            // chain before exposing the client to any transaction flow.
             const chainCheck = await assertWalletOnExpectedChain(signingClient);
             if (!chainCheck.ok) {
                 setError(chainCheck.error ?? 'Connected to the wrong chain.');
