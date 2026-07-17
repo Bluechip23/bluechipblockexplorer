@@ -47,7 +47,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                         You have not created a pool yet
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                        Create your own creator token and liquidity pool. Subscribers will commit bluechip
+                        Create your own creator token and liquidity pool. Subscribers will commit OSMO
                         to fund your pool, and you'll earn fees on every transaction.
                     </Typography>
                     <Button variant="contained" size="large" onClick={onCreatePool}>

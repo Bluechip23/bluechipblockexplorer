@@ -7,7 +7,7 @@ import {
     assertNoSecretsInStorage,
     assertWalletOnExpectedChain,
 } from '../utils/security';
-import { NATIVE_DENOM, detectInjectedWallet } from '../defi/types';
+import { CHAIN_CONFIG, NATIVE_DENOM, detectInjectedWallet } from '../defi/types';
 import { rpcEndpoint } from '../components/universal/IndividualPage.const';
 import { getDataSource } from '../utils/contractQueries';
 
@@ -19,7 +19,7 @@ import { getDataSource } from '../utils/contractQueries';
 // ============================================================
 
 const MOCK_ADDRESS = 'osmo1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
-const MOCK_BALANCE: Coin = { denom: 'uosmo', amount: '84720000000' }; // 84,720 OSMO
+const MOCK_BALANCE: Coin = { denom: NATIVE_DENOM, amount: '84720000000' }; // 84,720 OSMO
 
 interface WalletContextType {
     client: SigningCosmWasmClient | null;
@@ -121,8 +121,8 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
             const { name, wallet } = detected;
 
             // SECURITY: Scope wallet permission requests to the minimum
-            // required: account read + tx signing. Osmosis ships with
-            // Keplr/Leap, so no experimentalSuggestChain registration step.
+            // required: chain registration + account read + tx signing.
+            await wallet.experimentalSuggestChain({ ...CHAIN_CONFIG, rpc: rpcEndpoint });
             await wallet.enable(EXPECTED_CHAIN_ID);
 
             const signer = wallet.getOfflineSigner
@@ -142,8 +142,8 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
 
             const signingClient = await SigningCosmWasmClient.connectWithSigner(rpcEndpoint, signer);
 
-            // SECURITY: verify the signer really is on the expected Osmosis
-            // chain before exposing the client to any transaction flow.
+            // SECURITY: verify the signer really is on the expected chain
+            // before exposing the client to any transaction flow.
             const chainCheck = await assertWalletOnExpectedChain(signingClient);
             if (!chainCheck.ok) {
                 setError(chainCheck.error ?? 'Connected to the wrong chain.');

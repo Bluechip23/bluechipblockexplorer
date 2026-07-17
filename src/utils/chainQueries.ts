@@ -438,25 +438,23 @@ export async function chainQueryThresholdAnalytics(
 // USD pricing (Osmosis x/twap, via the factory's convert_native_to_usd)
 // ---------------------------------------------------------------------------
 
-export interface BluechipPriceInfo {
-    price: string;        // micro-USD per 1 OSMO (Uint128)
-    timestamp: number;    // unix seconds of the TWAP reading
-    is_cached: boolean;
+// Mirrors pool-factory-interfaces `ConversionResponse`. `rate_used` is
+// micro-USD per native token (1_000_000 = $1.00/OSMO); `timestamp` is
+// the unix-seconds block time the TWAP was computed at — always the
+// current block, since the TWAP is computed live on-chain (no caching
+// or staleness concept).
+export interface ConversionResponse {
+    amount: string;       // USD value (6 decimals) of the queried amount
+    rate_used: string;    // micro-USD per OSMO
+    timestamp: number;    // unix seconds (current block time)
 }
 
-// There is no oracle contract anymore — USD pricing comes from Osmosis
-// x/twap. Value exactly 1 OSMO (1_000_000 uosmo) to learn the micro-USD
-// price of one OSMO, which is what the commit-staleness banner shows.
-export async function chainQueryBluechipOraclePrice(): Promise<BluechipPriceInfo> {
-    const res = await smart<{ amount: string; rate_used: string; timestamp: number }>(
-        factoryAddress,
-        { pool_factory_query: { convert_native_to_usd: { amount: '1000000' } } },
-    );
-    return {
-        price: res.amount,
-        timestamp: res.timestamp ?? Math.floor(Date.now() / 1000),
-        is_cached: false,
-    };
+// Values 1 OSMO (1_000_000 uosmo) in USD via the factory's live TWAP.
+// A failed query means commits fail closed on-chain too.
+export function chainQueryNativeUsdRate(): Promise<ConversionResponse> {
+    return smart<ConversionResponse>(factoryAddress, {
+        pool_factory_query: { convert_native_to_usd: { amount: '1000000' } },
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -494,22 +492,4 @@ export function chainSimulateMultiHop(
     return smart<SimulateMultiHopResponse>(routerAddr, {
         simulate_multi_hop: { operations, offer_amount: offerAmount },
     });
-}
-
-// ---------------------------------------------------------------------------
-// Expand-economy reserve (threshold-crossing rewards are paid from it)
-// ---------------------------------------------------------------------------
-
-export interface ExpandEconomyReserve {
-    address: string;
-    denom: string;
-    amount: string;   // micro
-}
-
-// The Osmosis-native design has no separate bluechip-mint / expand-economy
-// reserve contract — threshold-crossing rewards are minted by the pool via
-// TokenFactory. Retained as a null-returning stub so ops tiles that read it
-// simply hide rather than break.
-export async function chainQueryExpandEconomyReserve(): Promise<ExpandEconomyReserve | null> {
-    return null;
 }

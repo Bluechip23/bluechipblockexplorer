@@ -18,8 +18,8 @@ const CHROMIUM =
     process.env.CHROMIUM_PATH ??
     '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
-const RPC = 'https://rpc.osmosis.zone';
-const REST = 'https://lcd.osmosis.zone';
+const RPC = 'https://rpc.osmotest5.osmosis.zone';
+const REST = 'https://lcd.osmotest5.osmosis.zone';
 const POOL = 'osmo1pool0000000000000000000000000000000000';   // pre-threshold
 const POOL_FULL = 'osmo1poolfull00000000000000000000000000000'; // post-threshold
 const WALLET = 'osmo1fan00000000000000000000000000000000000';
@@ -65,7 +65,7 @@ const STATUS_RESULT = {
         protocol_version: { p2p: '8', block: '11', app: '0' },
         id: 'ab'.repeat(20),
         listen_addr: 'tcp://0.0.0.0:26656',
-        network: 'osmosis-1',
+        network: 'osmo-test-5',
         version: '0.37.2',
         channels: '40202122233038606100',
         moniker: 'smoke-node',
@@ -140,8 +140,9 @@ const KEPLR_STUB = `
     const pubkey = new Uint8Array(33); pubkey[0] = 2; pubkey[32] = 9;
     window.__signedBodies = [];
     window.keplr = {
-        // No experimentalSuggestChain: Osmosis ships built into Keplr, and
-        // the widget must not call it (a call here would throw).
+        // The default deployment is the osmo-test-5 testnet, which Keplr
+        // does not ship with — the widget must suggest the chain first.
+        async experimentalSuggestChain(info) { window.__suggestedChain = info && info.chainId; },
         async enable(chainId) { window.__enabledChain = chainId; },
         async getKey(chainId) { return { bech32Address: WALLET }; },
         getOfflineSigner(chainId) {
@@ -227,7 +228,7 @@ async function main() {
 
     let signed = await page.evaluate(() => window.__signedBodies);
     assert.equal(signed.length, 1);
-    assert.equal(signed[0].chainId, 'osmosis-1');
+    assert.equal(signed[0].chainId, 'osmo-test-5');
     const body = signed[0].bodyAscii;
     // The execute msg JSON is embedded verbatim in the tx body. The fake
     // node reported the pool in_progress, so belief_price and max_spread
@@ -248,9 +249,9 @@ async function main() {
     assert.match(postBody, expectedPostMsg, 'post-threshold tx body carries the simulation-derived belief_price');
     assert.ok(postBody.includes(POOL_FULL), 'tx body targets the fully committed pool');
 
-    // Keplr was enabled for Osmosis (and never asked to suggest a chain —
-    // the stub has no experimentalSuggestChain, a call would have thrown).
-    assert.equal(await page.evaluate(() => window.__enabledChain), 'osmosis-1');
+    // The widget suggested the (testnet) chain to Keplr and enabled it.
+    assert.equal(await page.evaluate(() => window.__suggestedChain), 'osmo-test-5');
+    assert.equal(await page.evaluate(() => window.__enabledChain), 'osmo-test-5');
 
     await browser.close();
     console.log('smoke: all assertions passed');

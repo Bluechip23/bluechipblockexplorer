@@ -50,7 +50,7 @@ interface ChartRow {
     t: number;
     label: string;
     close: number | null;
-    volume: number | null;      // whole bluechip
+    volume: number | null;      // whole OSMO
     buyVolume: number | null;
     sellVolume: number | null;
 }

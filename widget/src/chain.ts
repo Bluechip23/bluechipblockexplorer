@@ -2,7 +2,7 @@
 // messages.ts stays pure and the smoke test can stub at this seam.
 
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { getConfig } from './config.ts';
+import { getConfig, keplrChainInfo } from './config.ts';
 import {
     beliefPriceFromSimulation,
     buildCommitMsg,
@@ -18,9 +18,12 @@ import {
     type GateResult,
 } from './messages.ts';
 
-// Minimal Keplr surface the widget uses. Osmosis ships built into Keplr,
-// so no experimentalSuggestChain registration step is needed.
+// Minimal Keplr surface the widget uses. The default deployment is the
+// osmo-test-5 testnet, which is not in Keplr's built-in registry, so the
+// chain is suggested before enabling (a no-op for chains Keplr already
+// knows, like osmosis-1).
 interface KeplrLike {
+    experimentalSuggestChain(info: unknown): Promise<void>;
     enable(chainId: string): Promise<void>;
     getOfflineSigner(chainId: string): unknown;
     getKey(chainId: string): Promise<{ bech32Address: string }>;
@@ -46,7 +49,7 @@ export async function connect(): Promise<Session> {
     if (!keplr) {
         throw new Error('Keplr wallet not found — install it from https://www.keplr.app/get and refresh.');
     }
-    // Osmosis is built into Keplr — enabling the chain is all that's needed.
+    await keplr.experimentalSuggestChain(keplrChainInfo(cfg));
     await keplr.enable(cfg.chainId);
     const signer = keplr.getOfflineSigner(cfg.chainId) as Parameters<typeof SigningCosmWasmClient.connectWithSigner>[1];
     const accounts = await signer.getAccounts();
@@ -76,6 +79,7 @@ export async function getAddress(): Promise<string> {
     if (!keplr) {
         throw new Error('Keplr wallet not found — install it from https://www.keplr.app/get and refresh.');
     }
+    await keplr.experimentalSuggestChain(keplrChainInfo(cfg));
     await keplr.enable(cfg.chainId);
     const key = await keplr.getKey(cfg.chainId);
     return key.bech32Address;

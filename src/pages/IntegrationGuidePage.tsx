@@ -87,26 +87,28 @@ const scriptTagsCode = `<!-- CosmJS — required for the hand-rolled snippets be
 
 const configCode = `<script>
 // ============================================================
-//  bluechip CONFIGURATION — EDIT THE ADDRESSES
+//  bluechip CONFIGURATION — EDIT THE POOL ADDRESS
 // ============================================================
 const bluechip_CONFIG = {
-    // Chain settings — Osmosis mainnet.
-    // (Testnet: chainId "osmo-test-5", rpc https://rpc.osmotest5.osmosis.zone,
-    //  rest https://lcd.osmotest5.osmosis.zone)
-    chainId:        "osmosis-1",
-    chainName:      "Osmosis",
-    rpc:            "https://rpc.osmosis.zone",
-    rest:           "https://lcd.osmosis.zone",
+    // Chain settings — the BlueChip contracts are currently deployed on
+    // the Osmosis TESTNET (osmo-test-5). When they ship on mainnet,
+    // switch to: chainId "osmosis-1", chainName "Osmosis",
+    // rpc https://rpc.osmosis.zone, rest https://lcd.osmosis.zone.
+    chainId:        "osmo-test-5",
+    chainName:      "Osmosis Testnet",
+    rpc:            "https://rpc.osmotest5.osmosis.zone",
+    rest:           "https://lcd.osmotest5.osmosis.zone",
     nativeDenom:    "uosmo",
     coinDecimals:   6,
 
-    // Your contract addresses — REPLACE THESE
-    factoryAddress: "osmo1factory_address_here",
+    // Deployed testnet contracts (replace on mainnet):
+    factoryAddress: "osmo1p93hcfzjnjfv0vtfxmunpqc25tq3p2vzh76hq3wxfz2zyayw4hzq4ac3vt",
+    routerAddress:  "osmo1wwx4sw56hc7srmcv2cu2un58kg2k34t9zlmrqj2244glj26fsj6q2z8jy2",
+    // Your creator pool — REPLACE THIS
     poolAddress:    "osmo1your_pool_address_here",
-    routerAddress:  "osmo1router_address_here",   // for cross-token swaps (Section 7)
 };
-// Keplr ships with Osmosis built in — no experimentalSuggestChain step
-// and no bech32/currency config to copy.
+// Keplr ships with Osmosis MAINNET built in; for the osmo-test-5 testnet,
+// suggest the chain once before enabling (harmless no-op on known chains).
 </script>`;
 
 const walletConnectionCode = `<script>
@@ -137,7 +139,32 @@ async function connectKeplrWallet() {
     }
 
     try {
-        // Osmosis ships with Keplr — enable it directly.
+        // Keplr knows Osmosis mainnet out of the box, but the osmo-test-5
+        // TESTNET (where the contracts currently live) must be suggested
+        // once. This is a harmless no-op for chains Keplr already knows.
+        var osmo = {
+            coinDenom: "OSMO", coinMinimalDenom: "uosmo", coinDecimals: 6,
+        };
+        await window.keplr.experimentalSuggestChain({
+            chainId:   bluechip_CONFIG.chainId,
+            chainName: bluechip_CONFIG.chainName,
+            rpc:       bluechip_CONFIG.rpc,
+            rest:      bluechip_CONFIG.rest,
+            bip44:     { coinType: 118 },
+            bech32Config: {
+                bech32PrefixAccAddr:  "osmo",
+                bech32PrefixAccPub:   "osmopub",
+                bech32PrefixValAddr:  "osmovaloper",
+                bech32PrefixValPub:   "osmovaloperpub",
+                bech32PrefixConsAddr: "osmovalcons",
+                bech32PrefixConsPub:  "osmovalconspub",
+            },
+            currencies:    [osmo],
+            feeCurrencies: [Object.assign({}, osmo, {
+                gasPriceStep: { low: 0.0025, average: 0.025, high: 0.04 },
+            })],
+            stakeCurrency: osmo,
+        });
         await window.keplr.enable(bluechip_CONFIG.chainId);
 
         // Get signer and address
@@ -1199,8 +1226,9 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <Typography paragraph>
                                 Your visitors will need the <strong>Keplr Wallet</strong> browser extension
-                                to interact with BlueChip buttons on your site. Keplr supports Osmosis out
-                                of the box — no custom chain registration required.
+                                to interact with BlueChip buttons on your site. Keplr supports Osmosis
+                                mainnet out of the box; the current osmo-test-5 testnet deployment is
+                                registered automatically by the connect snippet below.
                             </Typography>
                             <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 'bold' }}>
                                 Install Keplr:
@@ -1365,9 +1393,9 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="keplr-wallet" number="3" title="Connecting to Keplr Wallet">
                             <Typography paragraph>
                                 Every BlueChip interaction starts by connecting the user's Keplr wallet.
-                                Osmosis ships with Keplr, so there is no chain-registration step — just{' '}
-                                <code>enable(&quot;osmosis-1&quot;)</code>. Add this script{' '}
-                                <strong>once</strong> on any page where you have BlueChip buttons:
+                                The snippet suggests the configured chain first (needed for the
+                                osmo-test-5 testnet; a no-op for mainnet) and then enables it. Add this
+                                script <strong>once</strong> on any page where you have BlueChip buttons:
                             </Typography>
                             <CodeBlock code={walletConnectionCode} language="JavaScript" />
 

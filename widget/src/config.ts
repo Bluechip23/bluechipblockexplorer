@@ -1,7 +1,10 @@
-// Chain + endpoint configuration. The defaults below are the values
-// for Osmosis mainnet (the BlueChip contracts are Osmosis-native); sites
-// can override any of them via BluechipWidget.init({...}) before mounting
-// (and MUST override `pool` per creator, either in init or per-mount).
+// Chain + endpoint configuration. The defaults below target the Osmosis
+// testnet (osmo-test-5) deployment of the BlueChip creator-pool
+// contracts; sites can override any of them via BluechipWidget.init({...})
+// before mounting (and MUST override `pool` per creator, either in init
+// or per-mount). When the contracts ship on osmosis-1 mainnet, point the
+// widget at it with init({ chainId: 'osmosis-1', chainName: 'Osmosis',
+// rpc: ..., rest: ... }) — denom (uosmo) and prefix (osmo) are the same.
 
 export interface WidgetConfig {
     chainId: string;
@@ -18,15 +21,15 @@ export interface WidgetConfig {
 }
 
 export const DEFAULT_CONFIG: WidgetConfig = {
-    chainId: 'osmosis-1',
-    chainName: 'Osmosis',
-    rpc: 'https://rpc.osmosis.zone',
-    rest: 'https://lcd.osmosis.zone',
+    chainId: 'osmo-test-5',
+    chainName: 'Osmosis Testnet',
+    rpc: 'https://rpc.osmotest5.osmosis.zone',
+    rest: 'https://lcd.osmotest5.osmosis.zone',
     nativeDenom: 'uosmo',
     coinDenom: 'OSMO',
     coinDecimals: 6,
     bech32Prefix: 'osmo',
-    gasPrice: { low: 0.01, average: 0.025, high: 0.04 },
+    gasPrice: { low: 0.0025, average: 0.025, high: 0.04 },
     pool: null,
 };
 

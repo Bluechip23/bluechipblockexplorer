@@ -1102,14 +1102,46 @@ export function getCosmWasmClient() {
     return chain.getCosmWasmClient();
 }
 
-// ---- Factory oracle price (drives the commit staleness banner) ----
+// ---- Native/USD rate (drives the commit pricing banner) ----
 
-export type { BluechipPriceInfo } from './chainQueries';
+export type { ConversionResponse } from './chainQueries';
 
-export async function queryBluechipOraclePrice(): Promise<chain.BluechipPriceInfo | null> {
-    if (await onChain()) return chain.chainQueryBluechipOraclePrice().catch(() => null);
-    // Demo mode: a fresh, healthy oracle reading ($0.125 per bluechip).
-    return { price: '125000', timestamp: Math.floor(Date.now() / 1000) - 5, is_cached: false };
+export async function queryNativeUsdRate(): Promise<chain.ConversionResponse | null> {
+    if (await onChain()) return chain.chainQueryNativeUsdRate().catch(() => null);
+    // Demo mode: a healthy TWAP reading ($0.50 per OSMO).
+    return { amount: '500000', rate_used: '500000', timestamp: Math.floor(Date.now() / 1000) };
+}
+
+// ---- Factory config (pool creation fee, threshold, payout splits) ----
+
+export async function queryFactoryConfig(): Promise<FactoryConfig | null> {
+    if (await onChain()) return chain.chainQueryFactoryConfig();
+    // Demo mode: mirrors the osmo_testnet_v2 deployment values.
+    return {
+        factory_admin_address: MOCK_WALLET,
+        commit_threshold_limit_usd: '20000000',   // $20 testnet target
+        cw20_token_contract_id: 1,
+        cw721_nft_contract_id: 2,
+        create_pool_wasm_contract_id: 3,
+        bluechip_wallet_address: MOCK_WALLET,
+        commit_fee_bluechip: '0.01',
+        commit_fee_creator: '0.05',
+        max_bluechip_lock_per_pool: '100000000000',
+        creator_excess_liquidity_lock_days: 365,
+        bluechip_denom: 'uosmo',
+        pricing_pool_id: 1,
+        usd_quote_denom: 'ibc/mock_usdc_denom',
+        twap_window_seconds: 600,
+        pool_creation_fee: '1000000',             // 1 OSMO flat fee
+        gamm_pool_creation_fee: { denom: 'uosmo', amount: '1000000' },
+        threshold_payout_amounts: {
+            creator_reward_amount: '325000000000',
+            bluechip_reward_amount: '25000000000',
+            pool_seed_amount: '350000000000',
+            commit_return_amount: '500000000000',
+        },
+        emergency_withdraw_delay_seconds: 86400,
+    };
 }
 
 // ---- Router (multi-hop swaps) ----
@@ -1140,18 +1172,5 @@ export async function simulateMultiHop(
         final_amount: amount.toString(),
         intermediate_amounts: intermediates,
         price_impact: (0.005 * operations.length).toFixed(4),
-    };
-}
-
-// ---- Expand-economy reserve (ops monitoring) ----
-
-export type { ExpandEconomyReserve } from './chainQueries';
-
-export async function queryExpandEconomyReserve(): Promise<chain.ExpandEconomyReserve | null> {
-    if (await onChain()) return chain.chainQueryExpandEconomyReserve().catch(() => null);
-    return {
-        address: 'osmo1expand_economy_mock_address_for_preview',
-        denom: 'uosmo',
-        amount: '12500000000',   // 12,500 bluechip — comfortably funded
     };
 }
