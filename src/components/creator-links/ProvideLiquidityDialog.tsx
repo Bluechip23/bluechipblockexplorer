@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Button, Dialog, DialogTitle, DialogContent, IconButton, Link, Stack, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { sanitizeOnChainString } from '../../utils/security';
+import { chainQueryNativePoolId } from '../../utils/chainQueries';
 
 export interface ProvideLiquidityDialogProps {
     open: boolean;
@@ -21,9 +22,25 @@ export interface ProvideLiquidityDialogProps {
  * explains that and hands the user off to app.osmosis.zone.
  */
 const ProvideLiquidityDialog: React.FC<ProvideLiquidityDialogProps> = ({
-    open, onClose, tokenSymbol, creatorTokenAddress,
+    open, onClose, poolAddress, tokenSymbol, creatorTokenAddress,
 }) => {
     const symbol = tokenSymbol ? sanitizeOnChainString(tokenSymbol, 16) : 'this creator token';
+
+    // Resolve the native GAMM pool id (null pre-threshold / on failure) so
+    // the button can land on the exact pool instead of the pools list.
+    const [nativePoolId, setNativePoolId] = useState<number | null>(null);
+    useEffect(() => {
+        if (!open || !poolAddress) return;
+        let cancelled = false;
+        chainQueryNativePoolId(poolAddress)
+            .then((res) => { if (!cancelled) setNativePoolId(res.pool_id); })
+            .catch(() => { /* fall back to the generic pools link */ });
+        return () => { cancelled = true; };
+    }, [open, poolAddress]);
+
+    const osmosisHref = nativePoolId !== null
+        ? `https://app.osmosis.zone/pool/${nativePoolId}`
+        : 'https://app.osmosis.zone/pools';
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -40,20 +57,22 @@ const ProvideLiquidityDialog: React.FC<ProvideLiquidityDialogProps> = ({
                         any other Osmosis pool.
                     </Alert>
                     <Typography variant="body2" color="text.secondary">
-                        Find the pool paired as OSMO / {symbol}
-                        {creatorTokenAddress ? (
-                            <> (token denom <code style={{ wordBreak: 'break-all' }}>{creatorTokenAddress}</code>)</>
-                        ) : null} in the Osmosis pools list.
+                        {nativePoolId !== null
+                            ? <>This creator&apos;s liquidity is Osmosis pool #{nativePoolId}.</>
+                            : <>Find the pool paired as OSMO / {symbol}
+                                {creatorTokenAddress ? (
+                                    <> (token denom <code style={{ wordBreak: 'break-all' }}>{creatorTokenAddress}</code>)</>
+                                ) : null} in the Osmosis pools list.</>}
                     </Typography>
                     <Button
                         variant="contained"
                         component={Link}
-                        href="https://app.osmosis.zone/pools"
+                        href={osmosisHref}
                         target="_blank"
                         rel="noopener"
                         endIcon={<OpenInNewIcon />}
                     >
-                        Open Osmosis Pools
+                        {nativePoolId !== null ? `Open Osmosis Pool #${nativePoolId}` : 'Open Osmosis Pools'}
                     </Button>
                 </Stack>
             </DialogContent>

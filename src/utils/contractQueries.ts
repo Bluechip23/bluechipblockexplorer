@@ -109,12 +109,15 @@ export interface TokenDisplayInfo {
 export type CW20TokenInfo = TokenDisplayInfo;
 
 // Mirrors the factory's FactoryInstantiate struct (returned by the
-// `factory {}` query wrapped as `{ factory: {...} }`). Osmosis-native:
-// pricing comes from x/twap, so there are no Pyth/oracle fields, and
-// there are no standard pools.
+// `factory {}` query wrapped as `{ factory: {...} }`). USD pricing comes
+// from the Pyth native/USD feed (pyth_* fields below), kept fresh
+// on-chain by a price keeper and gated fail-closed for staleness and
+// confidence. There are no standard pools.
 export interface FactoryConfig {
     factory_admin_address: string;
     commit_threshold_limit_usd: string;
+    // Vestigial ids from the CW20/NFT era; the current contracts mint
+    // TokenFactory denoms and no longer instantiate either contract.
     cw20_token_contract_id: number;
     cw721_nft_contract_id: number;
     create_pool_wasm_contract_id: number;
@@ -125,11 +128,18 @@ export interface FactoryConfig {
     creator_excess_liquidity_lock_days: number;
     // Canonical native denom pools pair against (uosmo).
     bluechip_denom: string;
-    // Osmosis pool id + quote denom the factory prices bluechip_denom
-    // against via x/twap.
+    // Fee-swap EXECUTION route only (acquires the usd_quote_denom-
+    // denominated GAMM creation fee at threshold crossing). NOT a price
+    // source — USD pricing is Pyth-based since the oracle migration.
     pricing_pool_id: number;
     usd_quote_denom: string;
-    twap_window_seconds: number;
+    // Pyth oracle config (replaces the old twap_window_seconds). All
+    // serde(default) contract-side, so treat as possibly absent when
+    // pointed at a pre-Pyth factory.
+    pyth_contract_addr?: string;
+    pyth_native_usd_feed_id?: string;
+    max_pyth_staleness_seconds?: number;
+    pyth_conf_threshold_bps?: number;
     // FLAT creation fee in base units of bluechip_denom (uosmo). "0" = disabled.
     pool_creation_fee: string;
     // GAMM pool-creation fee the pool holds until threshold crossing.
@@ -1108,7 +1118,7 @@ export type { ConversionResponse } from './chainQueries';
 
 export async function queryNativeUsdRate(): Promise<chain.ConversionResponse | null> {
     if (await onChain()) return chain.chainQueryNativeUsdRate().catch(() => null);
-    // Demo mode: a healthy TWAP reading ($0.50 per OSMO).
+    // Demo mode: a healthy Pyth reading ($0.50 per OSMO).
     return { amount: '500000', rate_used: '500000', timestamp: Math.floor(Date.now() / 1000) };
 }
 
@@ -1131,7 +1141,10 @@ export async function queryFactoryConfig(): Promise<FactoryConfig | null> {
         bluechip_denom: 'uosmo',
         pricing_pool_id: 1,
         usd_quote_denom: 'ibc/mock_usdc_denom',
-        twap_window_seconds: 600,
+        pyth_contract_addr: 'osmo1mock_pyth_contract_address',
+        pyth_native_usd_feed_id: '5867f5683c757393a0670ef0f701490950fe93fdb006d181c8265a831ac0c5c6',
+        max_pyth_staleness_seconds: 300,
+        pyth_conf_threshold_bps: 200,
         pool_creation_fee: '1000000',             // 1 OSMO flat fee
         gamm_pool_creation_fee: { denom: 'uosmo', amount: '1000000' },
         threshold_payout_amounts: {

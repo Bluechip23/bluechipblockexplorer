@@ -63,6 +63,10 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
     // uosmo to attach as the creation fee: '0' = fee disabled (attach
     // nothing), null = quote not loaded / failed.
     const [creationFeeMicro, setCreationFeeMicro] = useState<string | null>(null);
+    // The factory's configured native pairing denom. Defaults to uosmo
+    // but is read live with the fee quote so the message and the attached
+    // funds always match the factory's bluechip_denom config.
+    const [bluechipDenom, setBluechipDenom] = useState<string>(NATIVE_DENOM);
 
     const steps = ['Pool Details', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -94,6 +98,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
     const quoteCreationFee = async (): Promise<string> => {
         if (!client) throw new Error('Wallet not connected');
         const { factory } = await client.queryContractSmart(FACTORY, { factory: {} });
+        setBluechipDenom(factory?.bluechip_denom ?? NATIVE_DENOM);
         return factory?.pool_creation_fee ?? '0';
     };
 
@@ -159,7 +164,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         create: {
             pool_msg: {
                 pool_token_info: [
-                    { bluechip: { denom: NATIVE_DENOM } },
+                    { bluechip: { denom: bluechipDenom } },
                     { creator_token: { denom: CREATOR_TOKEN_SENTINEL } },
                 ],
             },
@@ -196,7 +201,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
         try {
             const createMsg = buildCreatorPoolMsg();
             const funds = creationFeeMicro !== '0'
-                ? [{ denom: NATIVE_DENOM, amount: creationFeeMicro }]
+                ? [{ denom: bluechipDenom, amount: creationFeeMicro }]
                 : [];
 
             try {
@@ -277,9 +282,9 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                             </Typography>
                             <Typography variant="body2">Decimals: 6 (required by contract)</Typography>
                             <Typography variant="body2">
-                                Threshold, fee splits, lock caps and x/twap pricing config are read
-                                from the factory's stored configuration. The flat OSMO creation fee
-                                is quoted live and attached automatically.
+                                Threshold, fee splits, lock caps and the Pyth USD-pricing config are
+                                read from the factory's stored configuration. The flat OSMO creation
+                                fee is quoted live and attached automatically.
                             </Typography>
                         </Box>
 

@@ -163,6 +163,20 @@ export function chainQueryPoolAnalytics(poolAddress: string): Promise<PoolAnalyt
     return smart<PoolAnalyticsResponse>(poolAddress, { analytics: {} });
 }
 
+// The native Osmosis GAMM pool this contract seeded at threshold
+// crossing. `pool_id` is null pre-threshold; `lp_share_denom` is the
+// `gamm/pool/{id}` share denom once seeded. THE way to route users to
+// the right Osmosis pool for add/remove liquidity and to resolve LP
+// balances — third-party LP lives on the native pool, not the contract.
+export interface NativePoolIdResponse {
+    pool_id: number | null;
+    lp_share_denom: string | null;
+}
+
+export function chainQueryNativePoolId(poolAddress: string): Promise<NativePoolIdResponse> {
+    return smart<NativePoolIdResponse>(poolAddress, { native_pool_id: {} });
+}
+
 // Symbol derived from a TokenFactory denom: factory/{pool}/{subdenom}.
 function symbolFromDenom(denom: string): string {
     const parts = denom.split('/');
@@ -435,22 +449,24 @@ export async function chainQueryThresholdAnalytics(
 }
 
 // ---------------------------------------------------------------------------
-// USD pricing (Osmosis x/twap, via the factory's convert_native_to_usd)
+// USD pricing (Pyth native/USD feed, via the factory's convert_native_to_usd)
 // ---------------------------------------------------------------------------
 
 // Mirrors pool-factory-interfaces `ConversionResponse`. `rate_used` is
 // micro-USD per native token (1_000_000 = $1.00/OSMO); `timestamp` is
-// the unix-seconds block time the TWAP was computed at — always the
-// current block, since the TWAP is computed live on-chain (no caching
-// or staleness concept).
+// the unix-seconds block time the valuation was performed at. The
+// factory reads the Pyth feed configured on it (kept fresh on-chain by
+// a price keeper) and fails CLOSED: a stale price (older than
+// max_pyth_staleness_seconds), a too-wide confidence interval, or an
+// out-of-band rate makes this query error rather than return a bad rate.
 export interface ConversionResponse {
     amount: string;       // USD value (6 decimals) of the queried amount
     rate_used: string;    // micro-USD per OSMO
     timestamp: number;    // unix seconds (current block time)
 }
 
-// Values 1 OSMO (1_000_000 uosmo) in USD via the factory's live TWAP.
-// A failed query means commits fail closed on-chain too.
+// Values 1 OSMO (1_000_000 uosmo) in USD via the factory's Pyth-backed
+// conversion. A failed query means commits fail closed on-chain too.
 export function chainQueryNativeUsdRate(): Promise<ConversionResponse> {
     return smart<ConversionResponse>(factoryAddress, {
         pool_factory_query: { convert_native_to_usd: { amount: '1000000' } },

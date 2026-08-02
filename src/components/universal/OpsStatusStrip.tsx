@@ -13,10 +13,11 @@ import { NATIVE_SYMBOL } from '../../defi/types';
 import { factoryAddress } from './IndividualPage.const';
 
 // Protocol-health strip for the front page. Commits are valued through
-// the factory's on-chain TWAP (Osmosis x/twap over the configured
-// OSMO/USD-stable pool) and fail closed when that query errors, so
-// surfacing these signals publicly turns "the site is broken" support
-// pings into "the price query is down / a distribution is stalled".
+// the Pyth native/USD price feed configured on the factory (kept fresh
+// on-chain by a price keeper) and fail closed when the price is stale,
+// low-confidence, or unavailable — so surfacing these signals publicly
+// turns "the site is broken" support pings into "the price feed is
+// down / a distribution is stalled".
 
 // How many crossed pools to health-scan (keeps front-page load bounded).
 const POOL_SCAN_CAP = 12;
@@ -24,8 +25,9 @@ const POOL_SCAN_CAP = 12;
 type Tone = 'success' | 'warning' | 'error' | 'default';
 
 interface StripState {
-    // micro-USD per native token; null = TWAP query failing.
-    twapRate: string | null;
+    // micro-USD per native token; null = the factory's Pyth-backed
+    // conversion query failing (stale/low-confidence/unavailable price).
+    usdRate: string | null;
     pendingNotifies: number;
     stalledDistributions: number;
     activeDistributions: number;
@@ -34,7 +36,7 @@ interface StripState {
 }
 
 const EMPTY: StripState = {
-    twapRate: null,
+    usdRate: null,
     pendingNotifies: 0, stalledDistributions: 0, activeDistributions: 0,
     indexerHeight: null, loaded: false,
 };
@@ -62,7 +64,7 @@ const OpsStatusStrip: React.FC = () => {
 
             if (cancelled) return;
             setS({
-                twapRate: rate?.rate_used ?? null,
+                usdRate: rate?.rate_used ?? null,
                 pendingNotifies: healths.filter((h) => h.pending).length,
                 stalledDistributions: healths.filter((h) => h.dist?.is_stalled).length,
                 activeDistributions: healths.filter((h) => h.dist?.is_distributing && !h.dist.is_stalled).length,
@@ -77,15 +79,16 @@ const OpsStatusStrip: React.FC = () => {
 
     if (!s.loaded) return null;
 
-    // The TWAP is computed live on-chain at query time, so the only
-    // unhealthy state is the query itself failing (commits fail closed).
-    const priceTone: Tone = s.twapRate === null ? 'error' : 'success';
-    const priceLabel = s.twapRate === null
+    // The factory's conversion query is fail-closed over the Pyth feed
+    // (staleness + confidence gates), so an erroring query means commits
+    // are being rejected on-chain too.
+    const priceTone: Tone = s.usdRate === null ? 'error' : 'success';
+    const priceLabel = s.usdRate === null
         ? `${NATIVE_SYMBOL}/USD: unavailable`
-        : `${NATIVE_SYMBOL}/USD: $${formatMicroAmount(s.twapRate, 6, 4)}`;
-    const priceTip = s.twapRate === null
-        ? `The factory's ${NATIVE_SYMBOL}/USD TWAP query is failing — commits are valued through it and are being rejected until it recovers.`
-        : `Live ${NATIVE_SYMBOL}/USD rate from the factory's on-chain TWAP (Osmosis x/twap over the configured pricing pool). Computed fresh every query — no keeper or staleness window.`;
+        : `${NATIVE_SYMBOL}/USD: $${formatMicroAmount(s.usdRate, 6, 4)}`;
+    const priceTip = s.usdRate === null
+        ? `The factory's ${NATIVE_SYMBOL}/USD price query is failing (Pyth price stale, low-confidence, or unavailable) — commits are valued through it and are being rejected until the feed recovers.`
+        : `Live ${NATIVE_SYMBOL}/USD rate from the Pyth feed configured on the factory. A price keeper keeps the feed fresh on-chain; the read fails closed past the staleness/confidence gates.`;
 
     const payoutsTone: Tone = s.stalledDistributions > 0 ? 'error'
         : s.activeDistributions > 0 ? 'warning' : 'success';

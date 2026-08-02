@@ -602,8 +602,9 @@ const CreatorPoolPage: React.FC = () => {
                                                     When Threshold is Reached
                                                 </Typography>
                                                 {/* Canonical threshold-payout splits: 1.2M creator
-                                                    tokens are minted by the pool's CW20 and divided
-                                                    per the factory's threshold_payout_amounts. */}
+                                                    tokens are minted as the pool's native TokenFactory
+                                                    denom and divided per the factory's
+                                                    threshold_payout_amounts. */}
                                                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                                                     {[
                                                         { label: 'Creator Reward', value: '325,000 tokens' },

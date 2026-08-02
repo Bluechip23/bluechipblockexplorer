@@ -22,6 +22,7 @@ import { formatMicroAmount } from '../utils/bigintMath';
 import { isFullyCommitted } from '../utils/contractQueries';
 import { deadlineNs } from '../utils/datetime';
 import { deriveBeliefPrice, resolvePoolAssets } from '../utils/poolActions';
+import { chainQueryNativePoolId, NativePoolIdResponse } from '../utils/chainQueries';
 
 // Sentinel the factory's commit-pool create handler requires in the
 // CreatorToken slot of pool_token_info. The pool mints its own native
@@ -127,7 +128,7 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
                 create: {
                     pool_msg: {
                         pool_token_info: [
-                            { bluechip: { denom: NATIVE_DENOM } },
+                            { bluechip: { denom: feeDenom } },
                             { creator_token: { denom: CREATOR_TOKEN_SENTINEL } },
                         ],
                     },
@@ -156,7 +157,7 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
             <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Pool Configuration</Typography>
                 <Typography variant="body2">
-                    All commit-phase economics (threshold, fees, lock caps, x/twap pricing) are read from the
+                    All commit-phase economics (threshold, fees, lock caps, Pyth USD pricing) are read from the
                     factory's stored config — the create payload only carries the token pair. Your token is
                     minted as a native Osmosis TokenFactory denom, and the flat OSMO creation fee is read
                     live from the factory and attached automatically (surplus is refunded on-chain).
@@ -375,31 +376,78 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 };
 
 // =========================================================================
-// LIQUIDITY TAB — informational only.
+// LIQUIDITY TAB — informational + native-pool lookup.
 //
 // The creator pool has no deposit/remove-liquidity or collect-fees entry
 // points anymore: at threshold crossing it creates and seeds a NATIVE
 // Osmosis GAMM pool and holds the LP shares itself. Anyone who wants to
 // LP does it directly on Osmosis, and LP fees accrue per GAMM rules.
+// The `native_pool_id` query resolves which GAMM pool that is, so we can
+// deep-link straight to it instead of sending users to search the pool
+// list by hand.
 // =========================================================================
-const LiquidityInfoTab: React.FC = () => (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Alert severity="info">
-            Liquidity lives on Osmosis now. When a creator pool crosses its funding threshold,
-            the contract creates and seeds a native Osmosis GAMM pool (the seed is locked in the
-            pool contract and belongs to no one). There are no liquidity or fee-collection
-            actions on the BlueChip contracts.
-        </Alert>
-        <Typography variant="body2">
-            To provide or remove liquidity for a creator token — or to collect your LP
-            rewards — use the Osmosis app directly:{' '}
-            <Link href="https://app.osmosis.zone/pools" target="_blank" rel="noopener">
-                app.osmosis.zone/pools
-            </Link>
-            . Find the pool paired as OSMO / your creator token.
-        </Typography>
-    </Box>
-);
+const LiquidityInfoTab: React.FC = () => {
+    const [poolAddress, setPoolAddress] = useState('');
+    const [lookupStatus, setLookupStatus] = useState('');
+    const [nativePool, setNativePool] = useState<NativePoolIdResponse | null>(null);
+
+    const handleLookup = async () => {
+        setNativePool(null);
+        const addrCheck = validateBech32Address(poolAddress);
+        if (!addrCheck.ok) { setLookupStatus(`Error: ${addrCheck.error}`); return; }
+        try {
+            setLookupStatus('Looking up the native pool...');
+            const res = await chainQueryNativePoolId(poolAddress);
+            setNativePool(res);
+            setLookupStatus(res.pool_id === null
+                ? 'This pool has not crossed its threshold yet — no native Osmosis pool exists for it.'
+                : '');
+        } catch (err) {
+            setLookupStatus('Error: ' + humanizeContractError(err));
+        }
+    };
+
+    return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Alert severity="info">
+                Liquidity lives on Osmosis now. When a creator pool crosses its funding threshold,
+                the contract creates and seeds a native Osmosis GAMM pool (the seed is locked in the
+                pool contract and belongs to no one). There are no liquidity or fee-collection
+                actions on the BlueChip contracts.
+            </Alert>
+            <Typography variant="body2">
+                To provide or remove liquidity for a creator token — or to collect your LP
+                rewards — use the Osmosis app directly:{' '}
+                <Link href="https://app.osmosis.zone/pools" target="_blank" rel="noopener">
+                    app.osmosis.zone/pools
+                </Link>
+                . Pick a creator pool below to jump straight to its Osmosis pool.
+            </Typography>
+            <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Creator Pool" />
+            <Button variant="contained" onClick={handleLookup} disabled={!poolAddress}>
+                Find Native Osmosis Pool
+            </Button>
+            {nativePool?.pool_id !== null && nativePool?.pool_id !== undefined && (
+                <Alert severity="success">
+                    Native GAMM pool #{nativePool.pool_id} —{' '}
+                    <Link
+                        href={`https://app.osmosis.zone/pool/${nativePool.pool_id}`}
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        open it on Osmosis
+                    </Link>
+                    {nativePool.lp_share_denom && (
+                        <> · LP share denom: <code>{nativePool.lp_share_denom}</code></>
+                    )}
+                </Alert>
+            )}
+            {lookupStatus && (
+                <Alert severity={lookupStatus.startsWith('Error') ? 'error' : 'info'}>{lookupStatus}</Alert>
+            )}
+        </Box>
+    );
+};
 
 // =========================================================================
 // MAIN DEFI PAGE

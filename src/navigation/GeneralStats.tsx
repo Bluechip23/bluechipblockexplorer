@@ -46,7 +46,7 @@ const GeneralStats: React.FC = () => {
         let cancelled = false;
 
         const fetchStats = async () => {
-            // Live OSMO/USD TWAP the contracts use to value commits.
+            // Live OSMO/USD rate (Pyth-backed) the contracts use to value commits.
             try {
                 const conv = await smartQuery<{ rate_used: string }>(factoryAddress, {
                     pool_factory_query: { convert_native_to_usd: { amount: '1000000' } },
@@ -81,16 +81,22 @@ const GeneralStats: React.FC = () => {
     }, []);
 
     // Resolve the search input in priority order:
-    //   1. osmo1... contract address registered as a pool  -> pool page
-    //   2. osmo1... / name known to the profiles service   -> creator links page
-    //   3. bare number                                     -> pool id lookup
-    //   4. anything else                                   -> creator directory search
+    //   1. factory/... TokenFactory denom                  -> creator token page
+    //   2. osmo1... contract address registered as a pool  -> pool page
+    //   3. osmo1... / name known to the profiles service   -> creator links page
+    //   4. bare number                                     -> pool id lookup
+    //   5. anything else                                   -> creator directory search
     const handleSearch = async () => {
         const q = searchValue.trim();
         if (!q) return;
         setError('');
         setSearching(true);
         try {
+            // Creator tokens are TokenFactory denoms (factory/{pool}/{sub}).
+            if (/^factory\/osmo1[0-9a-z]{20,}\/.+$/.test(q)) {
+                navigateTo(`/creatortoken/${encodeURIComponent(q)}`);
+                return;
+            }
             if (/^osmo1[0-9a-z]{20,}$/.test(q)) {
                 try {
                     const registered = await smartQuery<{ pool_id: number } | null>(factoryAddress, {
@@ -108,9 +114,11 @@ const GeneralStats: React.FC = () => {
                     return;
                 }
                 if (q.length > 50) {
-                    // Contract-length address that isn't a registered pool:
-                    // assume it's a creator token CW20.
-                    navigateTo(`/creatortoken/${q}`);
+                    // Contract-length address that isn't a registered pool —
+                    // no creator-token page can exist for it (creator tokens
+                    // are TokenFactory denoms, handled above), so fall through
+                    // to the not-found error below.
+                    setError('No creator pool or links page found for that address.');
                     return;
                 }
                 setError('No creator pool or links page found for that address.');
@@ -164,7 +172,7 @@ const GeneralStats: React.FC = () => {
                 </Stack>
                 {error && <Typography variant="body2" color="error">{error}</Typography>}
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} flexWrap="wrap">
-                    <Typography variant="body2">{NATIVE_SYMBOL} Price (TWAP): {price || '—'}</Typography>
+                    <Typography variant="body2">{NATIVE_SYMBOL} Price (Pyth): {price || '—'}</Typography>
                     <Typography variant="body2">Commit Threshold: {threshold || '—'}</Typography>
                     <Typography variant="body2">Creator Pools: {poolCount || '—'}</Typography>
                 </Stack>
