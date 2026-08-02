@@ -26,10 +26,18 @@ import { decodeEventAttrs, RawEvent } from './rpc';
 //     swap_amount_usd) — no longer emitted, still parsed when present so
 //     historical backfills keep their USD figures.
 //   swap (pool-core/src/swap.rs):
-//     action=swap, sender, receiver, offer_asset, ask_asset, offer_amount,
-//     token_out_min_amount, pool_id, pool_contract, ... — legacy swaps
-//     also carried return_amount, spread_amount, commission_amount,
-//     reserve0_after, reserve1_after.
+//     Swaps are async on the Osmosis-native contracts: the dispatch emits
+//     action=swap (sender, receiver, offer_asset, ask_asset, offer_amount,
+//     token_out_min_amount, pool_id, pool_contract) and the actual fill
+//     arrives in the same tx via the SubMsg reply's action=swap_forward
+//     (sender, receiver, offer_amount, offer_denom, return_amount,
+//     token_out_denom, effective_price). The two are joined below by
+//     pool + offer_amount to produce one trade row with the real fill.
+//     Post-threshold ("active") commits route through the same reply, so
+//     their swap_forward also supplies the commit's tokens_received.
+//     Legacy (pre-Osmosis) swaps carried return_amount, spread_amount,
+//     commission_amount, reserve0_after, reserve1_after on the swap event
+//     itself — still parsed when present.
 //   creator claims (creator-pool/src/liquidity_helpers.rs):
 //     action=claim_creator_excess (bluechip_amount/token_amount)
 //   factory pool discovery (factory/src/pool_creation_reply.rs):
@@ -119,6 +127,22 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
     // pool_created_successfully reply lands in the same tx).
     const denomByPool = new Map<string, string>();
 
+    // Async-swap fills (action=swap_forward reply events), joined after
+    // the walk to the dispatch rows that lack a fill amount. Each fill is
+    // consumed at most once.
+    interface SwapForward {
+        pool: string;
+        offer_amount: string;
+        return_amount: string;
+        token_out_denom: string;
+        used: boolean;
+    }
+    const swapForwards: SwapForward[] = [];
+    // Trade rows from action=swap dispatch events still awaiting a fill.
+    const pendingSwapTrades: { tradeIdx: number; pool: string; offer_amount: string | null }[] = [];
+    // Post-threshold commits awaiting their swap fill (tokens_received).
+    const pendingActiveCommits: { commitIdx: number; pool: string; swap_amount: string }[] = [];
+
     for (let i = 0; i < events.length; i++) {
         const ev = events[i];
         if (ev.type !== 'wasm') continue;
@@ -199,25 +223,34 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 }
                 // A post-threshold ("active") commit is economically a buy
                 // through the AMM — surface it in the trade feed too.
-                // Only legacy events report tokens_received on the commit
-                // itself; current contracts swap via the Osmosis pool and
-                // only know token_out_min_amount at emit time, so no
-                // trade row is derived for them.
-                if (phase === 'active' && a['swap_amount_bluechip'] && a['tokens_received']) {
-                    out.trades.push({
-                        ...base,
-                        pool,
-                        trader: a['committer'],
-                        side: 'buy',
-                        source: 'commit',
-                        offer_amount: a['swap_amount_bluechip'],
-                        return_amount: a['tokens_received'],
-                        commission: a['commission_amount'] ?? null,
-                        spread: a['spread_amount'] ?? null,
-                        price: ratioPrice(a['swap_amount_bluechip'], a['tokens_received']),
-                        reserve0_after: a['reserve0_after'] ?? null,
-                        reserve1_after: a['reserve1_after'] ?? null,
-                    });
+                // Legacy events report tokens_received on the commit
+                // itself; current contracts swap via the Osmosis pool
+                // asynchronously, so the fill arrives in this same tx as
+                // an action=swap_forward reply event and is joined after
+                // the walk.
+                if (phase === 'active' && a['swap_amount_bluechip']) {
+                    if (a['tokens_received']) {
+                        out.trades.push({
+                            ...base,
+                            pool,
+                            trader: a['committer'],
+                            side: 'buy',
+                            source: 'commit',
+                            offer_amount: a['swap_amount_bluechip'],
+                            return_amount: a['tokens_received'],
+                            commission: a['commission_amount'] ?? null,
+                            spread: a['spread_amount'] ?? null,
+                            price: ratioPrice(a['swap_amount_bluechip'], a['tokens_received']),
+                            reserve0_after: a['reserve0_after'] ?? null,
+                            reserve1_after: a['reserve1_after'] ?? null,
+                        });
+                    } else {
+                        pendingActiveCommits.push({
+                            commitIdx: out.commits.length - 1,
+                            pool,
+                            swap_amount: a['swap_amount_bluechip'],
+                        });
+                    }
                 }
                 break;
             }
@@ -247,6 +280,33 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                         : ratioPrice(a['return_amount'], a['offer_amount']),
                     reserve0_after: a['reserve0_after'] ?? null,
                     reserve1_after: a['reserve1_after'] ?? null,
+                });
+                // Current contracts emit the fill separately (swap_forward
+                // reply in this same tx) — remember the row so the join
+                // below can fill return_amount/price.
+                if (a['return_amount'] === undefined) {
+                    pendingSwapTrades.push({
+                        tradeIdx: out.trades.length - 1,
+                        pool,
+                        offer_amount: a['offer_amount'] ?? null,
+                    });
+                }
+                break;
+            }
+
+            // The async-swap reply: the only event that carries the actual
+            // fill (return_amount) on current contracts. Emitted by the
+            // pool contract for both simple_swap and post-threshold
+            // commits; collected here and joined after the walk.
+            case 'swap_forward': {
+                const pool = a['pool_contract'] || contract;
+                if (!pool || a['return_amount'] === undefined) break;
+                swapForwards.push({
+                    pool,
+                    offer_amount: a['offer_amount'] ?? '',
+                    return_amount: a['return_amount'],
+                    token_out_denom: a['token_out_denom'] ?? '',
+                    used: false,
                 });
                 break;
             }
@@ -305,6 +365,50 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 break;
             }
         }
+    }
+
+    // Join swap_forward fills to their dispatch rows. Dispatch and reply
+    // land in the same tx from the same pool contract with the same
+    // offer_amount; each fill is consumed once, in event order, so
+    // multiple swaps in one tx pair up correctly.
+    const takeForward = (pool: string, offerAmount: string | null): SwapForward | null => {
+        if (offerAmount === null) return null;
+        const fwd = swapForwards.find((f) => !f.used && f.pool === pool && f.offer_amount === offerAmount);
+        if (!fwd) return null;
+        fwd.used = true;
+        return fwd;
+    };
+    for (const pending of pendingSwapTrades) {
+        const trade = out.trades[pending.tradeIdx];
+        const fwd = takeForward(pending.pool, pending.offer_amount);
+        if (!fwd) continue;
+        trade.return_amount = fwd.return_amount;
+        trade.price = trade.side === 'buy'
+            ? ratioPrice(trade.offer_amount ?? undefined, fwd.return_amount)
+            : ratioPrice(fwd.return_amount, trade.offer_amount ?? undefined);
+    }
+    for (const pending of pendingActiveCommits) {
+        const commit = out.commits[pending.commitIdx];
+        const fwd = takeForward(pending.pool, pending.swap_amount);
+        if (!fwd) continue;
+        commit.tokens_received = fwd.return_amount;
+        // Surface the post-threshold commit's AMM leg in the trade feed
+        // with its real fill, mirroring the legacy tokens_received path.
+        out.trades.push({
+            txhash: ctx.txhash, event_index: commit.event_index,
+            height: ctx.height, ts: ctx.ts,
+            pool: pending.pool,
+            trader: commit.committer,
+            side: 'buy',
+            source: 'commit',
+            offer_amount: pending.swap_amount,
+            return_amount: fwd.return_amount,
+            commission: null,
+            spread: null,
+            price: ratioPrice(pending.swap_amount, fwd.return_amount),
+            reserve0_after: null,
+            reserve1_after: null,
+        });
     }
 
     // Join instantiate-announced TokenFactory denoms to the pool_id the

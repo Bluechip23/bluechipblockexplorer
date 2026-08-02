@@ -786,8 +786,11 @@ async function listPools() {
     return all;
 }
 
-// Convert an OSMO amount to USD with the exact same x/twap conversion the
-// pools use (micro-units in, micro-USD out):
+// Convert an OSMO amount to USD with the exact same Pyth-backed conversion
+// the pools use (micro-units in, micro-USD out). The factory reads its
+// configured Pyth native/USD feed and fails closed on a stale or
+// low-confidence price — so expect this query to error (rather than
+// return a bad rate) if the price keeper falls behind:
 async function osmoToUsd(microOsmo) {
     var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
     var res = await client.queryContractSmart(bluechip_CONFIG.factoryAddress, {

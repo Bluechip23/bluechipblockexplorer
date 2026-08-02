@@ -107,6 +107,83 @@ test('post-threshold ("active") commit indexes with current attributes; no trade
     assert.equal(out.trades.length, 0);
 });
 
+test('async swap: swap_forward reply in the same tx fills return_amount and price', () => {
+    const out = parseTxEvents(CTX, [
+        wasm({
+            _contract_address: POOL,
+            action: 'swap',
+            sender: 'osmo1trader',
+            receiver: 'osmo1trader',
+            offer_asset: 'uosmo',
+            ask_asset: TOKEN_DENOM,
+            offer_amount: '1000000',
+            token_out_min_amount: '1900000',
+            pool_id: '7',
+            pool_contract: POOL,
+            block_height: '100',
+            block_time: '1700000000',
+        }),
+        wasm({
+            _contract_address: POOL,
+            action: 'swap_forward',
+            sender: 'osmo1trader',
+            receiver: 'osmo1trader',
+            offer_amount: '1000000',
+            offer_denom: 'uosmo',
+            return_amount: '2000000',
+            token_out_denom: TOKEN_DENOM,
+            effective_price: '2',
+            block_time: '1700000000',
+        }),
+    ]);
+    assert.equal(out.trades.length, 1);
+    const t = out.trades[0];
+    assert.equal(t.side, 'buy');
+    assert.equal(t.return_amount, '2000000');
+    assert.ok(Math.abs((t.price ?? 0) - 0.5) < 1e-9);   // 1 OSMO / 2 tokens
+});
+
+test('active commit + swap_forward reply fills tokens_received and derives the buy trade', () => {
+    const out = parseTxEvents(CTX, [
+        wasm({
+            _contract_address: POOL,
+            action: 'commit',
+            phase: 'active',
+            committer: 'osmo1fan',
+            total_commit_count: '9',
+            commit_amount_bluechip: '1000000',
+            swap_amount_bluechip: '940000',
+            token_out_min_amount: '1850000',
+            pool_id: '7',
+            pool_contract: POOL,
+            block_height: '100',
+            block_time: '1700000000',
+        }),
+        wasm({
+            _contract_address: POOL,
+            action: 'swap_forward',
+            sender: POOL,
+            receiver: 'osmo1fan',
+            offer_amount: '940000',
+            offer_denom: 'uosmo',
+            return_amount: '1880000',
+            token_out_denom: TOKEN_DENOM,
+            effective_price: '2',
+            block_time: '1700000000',
+        }),
+    ]);
+    assert.equal(out.commits.length, 1);
+    assert.equal(out.commits[0].tokens_received, '1880000');
+    assert.equal(out.trades.length, 1);
+    const t = out.trades[0];
+    assert.equal(t.side, 'buy');
+    assert.equal(t.source, 'commit');
+    assert.equal(t.trader, 'osmo1fan');
+    assert.equal(t.offer_amount, '940000');
+    assert.equal(t.return_amount, '1880000');
+    assert.ok(Math.abs((t.price ?? 0) - 0.5) < 1e-9);   // 0.94 OSMO / 1.88 tokens
+});
+
 test('threshold-crossing commit parses current attributes and marks the crossing', () => {
     const out = parseTxEvents(CTX, [wasm({
         _contract_address: POOL,

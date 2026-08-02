@@ -37,7 +37,7 @@ export function formatDenom(denom: string): string {
 }
 
 export function formatAmount(amount: string | number, denom?: string): string {
-    // u-prefixed denoms (e.g. ubluechip, uatom) are micro-units with 6 decimals.
+    // u-prefixed denoms (e.g. uosmo, uatom) are micro-units with 6 decimals.
     if (denom?.startsWith('u')) {
         return formatMicroAmount(amount, 6, 6);
     }
