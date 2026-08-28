@@ -1,17 +1,22 @@
 import { formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
 import { microToNumber, safeBigInt } from '../../utils/bigintMath';
 
+/** TVL of the live native pool in micro-OSMO. Liquidity lives in the
+ *  native Osmosis pool (the contract holds none), and the pool is a
+ *  balanced 50/50 xyk pool, so both legs together are worth twice the
+ *  OSMO-side reserve. */
+export function poolTvlOsmoMicro(pool: PoolSummary): bigint {
+    return safeBigInt(pool.reserve0) * 2n;
+}
+
 /** Extract a numeric value from a pool for a given metric key */
 export function getPoolMetricValue(pool: PoolSummary, metric: string): number {
     switch (metric) {
-        case 'totalLiquidity': return microToNumber(pool.totalLiquidity, 0);
-        case 'totalFeesCollected':
-        case 'tradeVolume': // fees as a proxy for trade volume
-            return microToNumber(safeBigInt(pool.totalFeesCollected0) + safeBigInt(pool.totalFeesCollected1), 0);
+        case 'totalLiquidity':
+            return microToNumber(poolTvlOsmoMicro(pool), 0);
         case 'totalCommitters':
         case 'uniqueHolders':
             return pool.totalCommitters;
-        case 'totalPositions': return pool.totalPositions;
         case 'raised': return microToNumber(pool.raised, 0);
         case 'totalSupply': return microToNumber(pool.totalSupply, 0);
         case 'reserve0': return microToNumber(pool.reserve0, 0);
@@ -40,7 +45,6 @@ export function formatPoolMetric(pool: PoolSummary, metricKey: string): string {
         case 'priceChange':
             return raw > 0 ? `${raw.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })} OSMO` : '-';
         case 'totalCommitters':
-        case 'totalPositions':
         case 'uniqueHolders':
             return raw.toLocaleString();
         default:
@@ -73,9 +77,7 @@ export interface PoolMetricDef {
 /** Pool-oriented metrics offered by the creator-portfolio compare view. */
 export const POOL_FOCUS_METRICS: PoolMetricDef[] = [
     { key: 'totalLiquidity', label: 'Total Liquidity (TVL)' },
-    { key: 'totalFeesCollected', label: 'Total Fees Collected' },
     { key: 'totalCommitters', label: 'Total Committers' },
-    { key: 'totalPositions', label: 'LP Positions' },
     { key: 'raised', label: 'Amount Raised' },
     { key: 'totalSupply', label: 'Total Supply' },
     { key: 'tokenPrice', label: 'Token Price' },
@@ -91,7 +93,6 @@ export const POOL_COMPARE_METRICS: PoolMetricDef[] = POOL_FOCUS_METRICS.filter(
 
 /** Token-oriented metrics offered by the top-tokens table compare view. */
 export const TOKEN_COMPARE_METRICS: PoolMetricDef[] = [
-    { key: 'tradeVolume', label: 'Trade Volume (Fees as Proxy)' },
     { key: 'tokenPrice', label: 'Token Price' },
     { key: 'priceChange', label: 'Price Change Potential' },
     { key: 'uniqueHolders', label: 'Unique Holders (Committers)' },

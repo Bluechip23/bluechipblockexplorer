@@ -16,6 +16,7 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import PoolActionMenu from '../actions/PoolActionMenu';
 import { formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
+import { poolTvlOsmoMicro } from './poolMetrics';
 
 interface PoolSelectorDropdownProps {
     pools: PoolSummary[];
@@ -183,7 +184,7 @@ const PoolSelectorDropdown: React.FC<PoolSelectorDropdownProps> = ({
                                                     : theme.palette.text.secondary,
                                         })}
                                     >
-                                        TVL: {formatMicroAmount(pool.totalLiquidity)}
+                                        TVL: {formatMicroAmount(poolTvlOsmoMicro(pool).toString())} OSMO
                                     </Typography>
                                 </Box>
 

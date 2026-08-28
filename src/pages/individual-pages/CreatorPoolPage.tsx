@@ -72,35 +72,6 @@ function computeMarketCap(reserve0: string, reserve1: string, totalSupply: strin
     return formatMicroAmount(Math.floor(mcap).toString());
 }
 
-function computeFeeApr(
-    totalFeesCollected0: string,
-    totalFeesCollected1: string,
-    totalLiquidity: string,
-    blockTimeLast: number
-): string {
-    const fees0 = microToNumber(totalFeesCollected0, 0);
-    const fees1 = microToNumber(totalFeesCollected1, 0);
-    const liquidity = microToNumber(totalLiquidity, 0);
-    if (!liquidity || (!fees0 && !fees1)) return '-';
-    const totalFees = fees0 + fees1;
-    const feeRatio = totalFees / liquidity;
-
-    if (blockTimeLast > 0) {
-        const now = Date.now() / 1000;
-        const poolAgeDays = (now - blockTimeLast) > 0
-            ? Math.max((now - blockTimeLast) / 86400, 1)
-            : 1;
-        const annualizedRatio = (feeRatio / poolAgeDays) * 365;
-        const apr = annualizedRatio * 100;
-        if (apr > 10000) return '>10,000%';
-        return apr.toFixed(1) + '%';
-    }
-
-    const apr = (feeRatio / 30) * 365 * 100;
-    if (apr > 10000) return '>10,000%';
-    return apr.toFixed(1) + '%';
-}
-
 function sumPaidUsd(committers: CommitterInfo[]): bigint {
     return committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n);
 }
@@ -237,9 +208,6 @@ const CreatorPoolPage: React.FC = () => {
     const marketCap = pool
         ? computeMarketCap(pool.reserve0, pool.reserve1, pool.totalSupply, pool.tokenDecimals)
         : '-';
-    const feeApr = pool
-        ? computeFeeApr(pool.totalFeesCollected0, pool.totalFeesCollected1, pool.totalLiquidity, pool.blockTimeLast)
-        : '-';
 
     return (
         <PageShell width={8}>
@@ -293,7 +261,7 @@ const CreatorPoolPage: React.FC = () => {
                                 <Card>
                                     <CardContent>
                                         <Grid container spacing={3}>
-                                            <Grid item xs={12} sm={4}>
+                                            <Grid item xs={12} sm={6}>
                                                 <Typography variant="body2" color="text.secondary">Token Price</Typography>
                                                 <Typography variant="h4" fontWeight="bold">
                                                     {tokenPrice}
@@ -302,26 +270,13 @@ const CreatorPoolPage: React.FC = () => {
                                                     OSMO per 1 {pool.tokenSymbol}
                                                 </Typography>
                                             </Grid>
-                                            <Grid item xs={6} sm={4}>
+                                            <Grid item xs={6} sm={6}>
                                                 <Typography variant="body2" color="text.secondary">Market Cap</Typography>
                                                 <Typography variant="h5" fontWeight="bold">
                                                     {marketCap}
                                                 </Typography>
                                                 <Typography variant="caption" color="text.secondary">
                                                     OSMO
-                                                </Typography>
-                                            </Grid>
-                                            <Grid item xs={6} sm={4}>
-                                                <Typography variant="body2" color="text.secondary">Fee APR</Typography>
-                                                <Typography variant="h5" fontWeight="bold" color={
-                                                    feeApr !== '-' && parseFloat(feeApr) > 50 ? 'success.main'
-                                                        : feeApr !== '-' && parseFloat(feeApr) > 10 ? 'warning.main'
-                                                            : 'text.primary'
-                                                }>
-                                                    {feeApr}
-                                                </Typography>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    for liquidity providers
                                                 </Typography>
                                             </Grid>
                                         </Grid>
@@ -406,22 +361,10 @@ const CreatorPoolPage: React.FC = () => {
                         <Grid item xs={12} md={8}>
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={3}>
-                                    <StatCard label="Total Liquidity" value={formatMicroAmount(pool.totalLiquidity)} />
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
                                     <StatCard label="Reserve (OSMO)" value={formatMicroAmount(pool.reserve0)} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label={`Reserve (${pool.tokenSymbol})`} value={formatMicroAmount(pool.reserve1)} />
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                    <StatCard label="LP Positions" value={pool.totalPositions} />
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                    <StatCard label="Fees Collected (OSMO)" value={formatMicroAmount(pool.totalFeesCollected0)} />
-                                </Grid>
-                                <Grid item xs={6} sm={3}>
-                                    <StatCard label={`Fees Collected (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} />
                                 </Grid>
                                 <Grid item xs={6} sm={3}>
                                     <StatCard label="Total Committers" value={pool.totalCommitters} />
@@ -443,11 +386,6 @@ const CreatorPoolPage: React.FC = () => {
                                 {pool.thresholdReached && marketCap !== '-' && (
                                     <Grid item xs={6} sm={3}>
                                         <StatCard label="Market Cap" value={`${marketCap} OSMO`} />
-                                    </Grid>
-                                )}
-                                {pool.thresholdReached && feeApr !== '-' && (
-                                    <Grid item xs={6} sm={3}>
-                                        <StatCard label="Fee APR" value={feeApr} />
                                     </Grid>
                                 )}
                             </Grid>
@@ -484,18 +422,6 @@ const CreatorPoolPage: React.FC = () => {
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
                                                 <StatCard label={`Volume (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.analytics.total_volume_1)} />
-                                            </Grid>
-                                            <Grid item xs={6} sm={3}>
-                                                <StatCard label="LP Deposits" value={analytics.analytics.total_lp_deposit_count} />
-                                            </Grid>
-                                            <Grid item xs={6} sm={3}>
-                                                <StatCard label="LP Withdrawals" value={analytics.analytics.total_lp_withdrawal_count} />
-                                            </Grid>
-                                            <Grid item xs={6} sm={3}>
-                                                <StatCard label="Unclaimed Fees (OSMO)" value={formatMicroAmount(analytics.fee_reserve_0)} />
-                                            </Grid>
-                                            <Grid item xs={6} sm={3}>
-                                                <StatCard label={`Unclaimed Fees (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.fee_reserve_1)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
                                                 <StatCard label="USD Raised" value={'$' + formatMicroAmount(analytics.total_usd_raised)} />
@@ -576,18 +502,6 @@ const CreatorPoolPage: React.FC = () => {
                                                 <>
                                                     <Grid item xs={6} sm={4}>
                                                         <StatCard label="Market Cap" value={`${marketCap} OSMO`} highlight />
-                                                    </Grid>
-                                                    <Grid item xs={6} sm={4}>
-                                                        <StatCard label="Fee APR (LP Incentive)" value={feeApr} highlight />
-                                                    </Grid>
-                                                    <Grid item xs={6} sm={4}>
-                                                        <StatCard label="Active LP Positions" value={pool.totalPositions} />
-                                                    </Grid>
-                                                    <Grid item xs={6} sm={4}>
-                                                        <StatCard label="Trading Fees (OSMO)" value={formatMicroAmount(pool.totalFeesCollected0)} />
-                                                    </Grid>
-                                                    <Grid item xs={6} sm={4}>
-                                                        <StatCard label={`Trading Fees (${pool.tokenSymbol})`} value={formatMicroAmount(pool.totalFeesCollected1)} />
                                                     </Grid>
                                                     <Grid item xs={6} sm={4}>
                                                         <StatCard label="Total Committers" value={pool.totalCommitters} />

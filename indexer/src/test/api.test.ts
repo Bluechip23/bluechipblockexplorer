@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import {
     commitSeries, creatorStatement, Db, insertClaim, insertCommit, insertTrade,
-    listCommitsByWallet, listTrades, migrate, priceSeries, upsertPool,
-    volumeSeries, windowStats,
+    listCommits, listCommitsByWallet, listTrades, listTradesByWallet, migrate,
+    priceSeries, upsertPool, volumeSeries, windowStats,
 } from '../db';
 
 const POOL = 'bluechip1pool';
@@ -160,4 +160,99 @@ test('listCommitsByWallet returns cross-pool history newest first', () => {
     assert.equal(rows[0].txhash, 'W2');           // newest first
     assert.equal(rows[0].pool, 'bluechip1pool2');
     assert.equal(rows[1].txhash, 'W1');
+});
+
+// ---------------------------------------------------------------------------
+// Current-chain events: no per-commit amount_usd, only the running total
+// (usd_raised_after). Per-commit USD must be derived as the delta between
+// consecutive totals.
+// ---------------------------------------------------------------------------
+
+function currentChainCommit(db: Db, i: number, ts: number, wallet: string, raisedAfter: string | null, phase = 'funding') {
+    insertCommit(db, {
+        txhash: `N${i}`, event_index: 0, height: i, ts, pool: POOL,
+        committer: wallet, phase,
+        amount_bluechip: '1000000', amount_usd: null,
+        usd_raised_after: raisedAfter, bluechip_raised_after: null, tokens_received: null,
+    });
+}
+
+test('commitSeries derives per-commit USD from usd_raised_after running totals', () => {
+    const db = freshDb();
+    currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '1000000');    // +$1
+    currentChainCommit(db, 2, T0 + 6, 'bluechip1a', '3000000');    // +$2
+    currentChainCommit(db, 3, T0 + 3700, 'bluechip1b', '7500000'); // +$4.50, next bucket
+
+    const rows = commitSeries(db, { pool: POOL, bucket: 3600, from: T0, to: T0 + 7200 }) as any[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].usd, 3000000);
+    // The delta at the second bucket's edge must use the previous bucket's
+    // total, not restart from zero.
+    assert.equal(rows[1].usd, 4500000);
+});
+
+test('listCommits exposes derived commit_usd (and leaves active commits null)', () => {
+    const db = freshDb();
+    currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '2000000');
+    currentChainCommit(db, 2, T0 + 6, 'bluechip1b', '5000000');
+    currentChainCommit(db, 3, T0 + 7, 'bluechip1c', null, 'active'); // post-threshold: no USD info
+
+    const rows = listCommits(db, { pool: POOL, limit: 10, beforeTs: null, wallet: null }) as any[];
+    assert.equal(rows.length, 3);
+    // Newest first: active row has no derivable USD.
+    assert.equal(rows[0].commit_usd, null);
+    assert.equal(rows[1].commit_usd, '3000000');
+    assert.equal(rows[2].commit_usd, '2000000');
+    // Legacy rows keep their explicit amount_usd.
+    insertCommit(db, {
+        txhash: 'L1', event_index: 0, height: 10, ts: T0 + 100, pool: POOL,
+        committer: 'bluechip1legacy', phase: 'funding',
+        amount_bluechip: '1', amount_usd: '999',
+        usd_raised_after: null, bluechip_raised_after: null, tokens_received: null,
+    });
+    const withLegacy = listCommits(db, { pool: POOL, limit: 1, beforeTs: null, wallet: 'bluechip1legacy' }) as any[];
+    assert.equal(withLegacy[0].commit_usd, '999');
+});
+
+test('creatorStatement fee shares work from derived USD on current-chain commits', () => {
+    const db = freshDb();
+    currentChainCommit(db, 1, T0 + 10, 'bluechip1fan', '1000000');   // $1.00 first commit
+    currentChainCommit(db, 2, T0 + 20, 'bluechip1fan', '5000000');   // +$4.00
+
+    const rows = creatorStatement(db, { pool: POOL, from: T0, to: T0 + 3600, feeBps: 500 });
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].gross_usd, '1000000');
+    assert.equal(rows[0].fee_share_usd, '50000');    // 5% of $1.00
+    assert.equal(rows[1].gross_usd, '4000000');
+    assert.equal(rows[1].fee_share_usd, '200000');   // 5% of $4.00
+});
+
+test('listTradesByWallet returns cross-pool trade history newest first', () => {
+    const db = freshDb();
+    upsertPool(db, { address: 'bluechip1pool2', pool_id: 2, kind: 'commit', created_height: 2, created_at: T0 });
+    insertTrade(db, {
+        txhash: 'T1', event_index: 0, height: 1, ts: T0 + 10, pool: POOL,
+        trader: 'bluechip1me', side: 'buy', source: 'swap',
+        offer_amount: '1000000', return_amount: '500', commission: null, spread: null,
+        price: 2.0, reserve0_after: null, reserve1_after: null,
+    });
+    insertTrade(db, {
+        txhash: 'T2', event_index: 0, height: 2, ts: T0 + 20, pool: 'bluechip1pool2',
+        trader: 'bluechip1me', side: 'sell', source: 'swap',
+        offer_amount: '500', return_amount: '900000', commission: null, spread: null,
+        price: 1.8, reserve0_after: null, reserve1_after: null,
+    });
+    insertTrade(db, {
+        txhash: 'T3', event_index: 0, height: 3, ts: T0 + 30, pool: POOL,
+        trader: 'bluechip1notme', side: 'buy', source: 'swap',
+        offer_amount: '1', return_amount: '1', commission: null, spread: null,
+        price: 1.0, reserve0_after: null, reserve1_after: null,
+    });
+
+    const rows = listTradesByWallet(db, { wallet: 'bluechip1me', limit: 10, beforeTs: null }) as any[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].txhash, 'T2');            // newest first
+    assert.equal(rows[0].pool, 'bluechip1pool2');
+    assert.equal(rows[0].side, 'sell');
+    assert.equal(rows[1].txhash, 'T1');
 });

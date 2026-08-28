@@ -80,13 +80,11 @@ export function computeCurrentPrice(pool: PoolSummary): string {
     return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
-function computeCreatorFeeRevenue(pool: PoolSummary): string {
-    // Creator earns 5% of commit fees (commit_fee_creator = 0.05) — scale
-    // with BigInt to preserve precision on large fee totals.
-    const fee0 = safeBigInt(pool.totalFeesCollected0);
-    const fee1 = safeBigInt(pool.totalFeesCollected1);
-    const creatorShare = ((fee0 + fee1) * 500n) / 10_000n;
-    return creatorShare.toString();
+function computeCreatorFeeRevenue(committers: CommitterInfo[]): string {
+    // The creator's 5% share (commit_fee_creator = 0.05) of gross commit
+    // USD — BigInt math to preserve precision on large totals.
+    const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
+    return ((totalUsd * 500n) / 10_000n).toString();
 }
 
 function computeCirculatingSupply(pool: PoolSummary): {
@@ -379,7 +377,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
         : computeCurrentPrice(pool);
     const activeSubscribers = getActiveSubscribers(committers, period);
     const totalSubscribers = pool.totalCommitters;
-    const creatorFeeRevenue = computeCreatorFeeRevenue(pool);
+    const creatorFeeRevenue = computeCreatorFeeRevenue(committers);
     const supply = computeCirculatingSupply(pool);
 
     const avgCommitSize = committers.length > 0
@@ -387,14 +385,6 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
               committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n) / BigInt(committers.length)
           ).toString()
         : '0';
-
-    const avgLiquidityPosition = pool.totalPositions > 0
-        ? (safeBigInt(pool.totalLiquidity) / BigInt(pool.totalPositions)).toString()
-        : '0';
-
-    const totalFeesProduced = (
-        safeBigInt(pool.totalFeesCollected0) + safeBigInt(pool.totalFeesCollected1)
-    ).toString();
 
     if (loading) {
         return (
@@ -564,16 +554,16 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
                 <SectionHeader icon={<MonetizationOnIcon fontSize="small" color="success" />} title="Fees & Revenue" />
                 <MetricRow
-                    icon={<AccountBalanceIcon color="success" />}
-                    label="Total Fees Produced"
-                    value={formatMicroAmount(totalFeesProduced)}
-                    subtext={`OSMO: ${formatMicroAmount(pool.totalFeesCollected0)} | Token: ${formatMicroAmount(pool.totalFeesCollected1)}`}
-                />
-                <MetricRow
                     icon={<MonetizationOnIcon sx={{ color: '#ffd700' }} />}
                     label="Creator Fee Revenue"
-                    value={formatMicroAmount(creatorFeeRevenue)}
-                    subtext="5% of commit fees earned by creator"
+                    value={`$${formatMicroAmount(creatorFeeRevenue)}`}
+                    subtext="5% commit fee earned by the creator"
+                />
+                <MetricRow
+                    icon={<AccountBalanceIcon color="success" />}
+                    label="LP Trading Fees"
+                    value="On Osmosis"
+                    subtext="Swap fees accrue in the native Osmosis pool, not this contract"
                 />
 
                 <Divider sx={{ my: 1 }} />
@@ -585,12 +575,6 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     label="Avg Commitment Size"
                     value={`$${formatMicroAmount(avgCommitSize)}`}
                     subtext={`Across ${committers.length} committer${committers.length !== 1 ? 's' : ''}`}
-                />
-                <MetricRow
-                    icon={<WaterDropIcon color="info" />}
-                    label="Avg Liquidity Position"
-                    value={formatMicroAmount(avgLiquidityPosition)}
-                    subtext={`${pool.totalPositions} position${pool.totalPositions !== 1 ? 's' : ''} in pool`}
                 />
 
                 <Divider sx={{ my: 1 }} />
@@ -616,18 +600,6 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                             label={`Volume (${pool.tokenSymbol})`}
                             value={formatMicroAmount(onChainAnalytics.analytics.total_volume_1)}
                             subtext="Cumulative creator token volume through swaps"
-                        />
-                        <MetricRow
-                            icon={<WaterDropIcon color="info" />}
-                            label="LP Deposits / Withdrawals"
-                            value={`${onChainAnalytics.analytics.total_lp_deposit_count} / ${onChainAnalytics.analytics.total_lp_withdrawal_count}`}
-                            subtext="Total liquidity add vs remove operations"
-                        />
-                        <MetricRow
-                            icon={<MonetizationOnIcon color="warning" />}
-                            label="Unclaimed Fee Reserves"
-                            value={`${formatMicroAmount(onChainAnalytics.fee_reserve_0)} OSMO / ${formatMicroAmount(onChainAnalytics.fee_reserve_1)} ${pool.tokenSymbol}`}
-                            subtext="Fees accrued but not yet collected by LPs"
                         />
                         {onChainAnalytics.analytics.last_trade_timestamp > 0 && (
                             <MetricRow

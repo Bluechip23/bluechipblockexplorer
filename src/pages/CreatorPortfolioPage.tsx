@@ -24,7 +24,7 @@ import { NotConnectedView } from '../components/universal/PortfolioShared';
 import StatCard from '../components/universal/StatCard';
 import PoolSelectorDropdown from '../components/portfolio/PoolSelectorDropdown';
 import PoolCompareModal from '../components/compare/PoolCompareModal';
-import { POOL_FOCUS_METRICS } from '../components/portfolio/poolMetrics';
+import { POOL_FOCUS_METRICS, poolTvlOsmoMicro } from '../components/portfolio/poolMetrics';
 import CreatorEarningsTab from '../components/portfolio/CreatorEarningsTab';
 import NoPoolsView from '../components/portfolio/NoPoolsView';
 import {
@@ -69,11 +69,12 @@ const CreatorPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    const totalFeesEarned0 = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalFeesCollected0), 0n);
-    const totalFeesEarned1 = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalFeesCollected1), 0n);
-    const totalPoolLiquidity = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.totalLiquidity), 0n);
+    // Commit fees (the creator's 5% share of gross commits) are the real
+    // creator revenue; LP swap fees accrue on the native Osmosis pool.
+    const totalRaisedUsd = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.raised), 0n);
+    const totalCommitFeeUsd = (totalRaisedUsd * 500n) / 10_000n;
+    const totalPoolTvl = createdPools.reduce<bigint>((s, p) => s + poolTvlOsmoMicro(p), 0n);
     const totalSubscribers = createdPools.reduce((s, p) => s + p.totalCommitters, 0);
-    const totalLpPositions = createdPools.reduce((s, p) => s + p.totalPositions, 0);
 
     return (
         <PageShell>
@@ -112,10 +113,9 @@ const CreatorPortfolioPage: React.FC = () => {
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={4}><StatCard label="Pools Created" value={createdPools.length} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total Subscribers" value={totalSubscribers} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Total LP Positions" value={totalLpPositions} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Total TVL" value={formatMicroAmount(totalPoolLiquidity.toString())} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Fees Earned (OSMO)" value={formatMicroAmount(totalFeesEarned0.toString())} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Total TVL (OSMO)" value={formatMicroAmount(totalPoolTvl.toString())} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Total Raised (USD)" value={`$${formatMicroAmount(totalRaisedUsd.toString())}`} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Commit Fee Revenue (est.)" value={`$${formatMicroAmount(totalCommitFeeUsd.toString())}`} /></Grid>
                             </Grid>
 
                             <PoolSelectorDropdown
@@ -179,7 +179,7 @@ const CreatorPortfolioPage: React.FC = () => {
                                 metrics={POOL_FOCUS_METRICS}
                                 summaryMetrics={[
                                     { key: 'totalLiquidity', label: 'TVL' },
-                                    { key: 'totalFeesCollected', label: 'Total Fees' },
+                                    { key: 'raised', label: 'Raised' },
                                     { key: 'totalCommitters', label: 'Committers' },
                                     { key: 'tokenPrice', label: 'Price' },
                                     { key: 'marketCap', label: 'Market Cap' },

@@ -22,6 +22,7 @@ import PoolActionMenu from '../actions/PoolActionMenu';
 import StatCard from '../universal/StatCard';
 import { formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
 import { safeBigInt } from '../../utils/bigintMath';
+import { poolTvlOsmoMicro } from './poolMetrics';
 
 interface PortfolioCreatedPoolsTableProps {
     createdPools: PoolSummary[];
@@ -58,20 +59,17 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
         );
     }
 
-    const totalFeesEarned0 = createdPools.reduce<bigint>(
-        (sum, p) => sum + safeBigInt(p.totalFeesCollected0), 0n
+    // Commit fees (the creator's 5% share of gross commits) are the real
+    // creator revenue; LP swap fees accrue on the native Osmosis pool.
+    const totalRaisedUsd = createdPools.reduce<bigint>(
+        (sum, p) => sum + safeBigInt(p.raised), 0n
     );
-    const totalFeesEarned1 = createdPools.reduce<bigint>(
-        (sum, p) => sum + safeBigInt(p.totalFeesCollected1), 0n
-    );
-    const totalPoolLiquidity = createdPools.reduce<bigint>(
-        (sum, p) => sum + safeBigInt(p.totalLiquidity), 0n
+    const totalCommitFeeUsd = (totalRaisedUsd * 500n) / 10_000n;
+    const totalPoolTvl = createdPools.reduce<bigint>(
+        (sum, p) => sum + poolTvlOsmoMicro(p), 0n
     );
     const totalSubscribers = createdPools.reduce(
         (sum, p) => sum + p.totalCommitters, 0
-    );
-    const totalLpPositions = createdPools.reduce(
-        (sum, p) => sum + p.totalPositions, 0
     );
 
     return (
@@ -84,16 +82,13 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                     <StatCard label="Total Subscribers" value={totalSubscribers} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Total LP Positions" value={totalLpPositions} />
+                    <StatCard label="Total TVL (OSMO)" value={formatMicroAmount(totalPoolTvl.toString())} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Total TVL" value={formatMicroAmount(totalPoolLiquidity.toString())} />
+                    <StatCard label="Total Raised (USD)" value={`$${formatMicroAmount(totalRaisedUsd.toString())}`} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Fees Earned (OSMO)" value={formatMicroAmount(totalFeesEarned0.toString())} />
-                </Grid>
-                <Grid item xs={6} sm={4}>
-                    <StatCard label="Fees Earned (Token)" value={formatMicroAmount(totalFeesEarned1.toString())} />
+                    <StatCard label="Commit Fee Revenue (est.)" value={`$${formatMicroAmount(totalCommitFeeUsd.toString())}`} />
                 </Grid>
             </Grid>
 
@@ -104,11 +99,9 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                             <TableRow>
                                 <TableCell>Pool</TableCell>
                                 <TableCell>Status</TableCell>
-                                <TableCell>TVL</TableCell>
-                                <TableCell>Fees (OSMO)</TableCell>
-                                <TableCell>Fees (Token)</TableCell>
+                                <TableCell>TVL (OSMO)</TableCell>
+                                <TableCell>Raised (USD)</TableCell>
                                 <TableCell>Subscribers</TableCell>
-                                <TableCell>LP Positions</TableCell>
                                 <TableCell align="right">Actions</TableCell>
                             </TableRow>
                         </TableHead>
@@ -128,11 +121,9 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                                     <TableCell>
                                         <PoolStatusChip thresholdReached={pool.thresholdReached} />
                                     </TableCell>
-                                    <TableCell>{formatMicroAmount(pool.totalLiquidity)}</TableCell>
-                                    <TableCell>{formatMicroAmount(pool.totalFeesCollected0)}</TableCell>
-                                    <TableCell>{formatMicroAmount(pool.totalFeesCollected1)}</TableCell>
+                                    <TableCell>{formatMicroAmount(poolTvlOsmoMicro(pool).toString())}</TableCell>
+                                    <TableCell>${formatMicroAmount(pool.raised)}</TableCell>
                                     <TableCell>{pool.totalCommitters}</TableCell>
-                                    <TableCell>{pool.totalPositions}</TableCell>
                                     <TableCell align="right">
                                         <PoolActionMenu
                                             poolAddress={pool.poolAddress}

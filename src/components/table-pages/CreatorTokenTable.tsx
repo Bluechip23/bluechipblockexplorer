@@ -24,7 +24,7 @@ import {
     PoolSummary,
 } from '../../utils/contractQueries';
 import PoolCompareModal from '../compare/PoolCompareModal';
-import { TOKEN_COMPARE_METRICS } from '../portfolio/poolMetrics';
+import { TOKEN_COMPARE_METRICS, poolTvlOsmoMicro } from '../portfolio/poolMetrics';
 
 interface Column {
     id: string;
@@ -150,7 +150,7 @@ const CreatorTokenTable: React.FC = () => {
                                             {formatMicroAmount(row.totalSupply, row.tokenDecimals)}
                                         </TableCell>
                                         <TableCell>
-                                            {formatMicroAmount(row.totalLiquidity)}
+                                            {formatMicroAmount(poolTvlOsmoMicro(row).toString())}
                                         </TableCell>
                                         <TableCell>
                                             <PoolStatusChip thresholdReached={row.thresholdReached} />
@@ -172,7 +172,7 @@ const CreatorTokenTable: React.FC = () => {
                 metrics={TOKEN_COMPARE_METRICS}
                 extraRows={[
                     { label: 'Total Supply', value: (p) => formatMicroAmount(p.totalSupply, p.tokenDecimals) },
-                    { label: 'Pool Liquidity', value: (p) => formatMicroAmount(p.totalLiquidity) },
+                    { label: 'Pool Liquidity (OSMO)', value: (p) => formatMicroAmount(poolTvlOsmoMicro(p).toString()) },
                 ]}
             />
         </>
