@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS trades (
     PRIMARY KEY (txhash, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_trades_pool_ts ON trades(pool, ts);
+CREATE INDEX IF NOT EXISTS idx_trades_trader_ts ON trades(trader, ts);
 
 CREATE TABLE IF NOT EXISTS liquidity_events (
     txhash TEXT NOT NULL,
@@ -206,6 +207,27 @@ export function insertClaim(db: Db, r: ClaimRow): void {
 // be unit-tested against an in-memory database)
 // ---------------------------------------------------------------------------
 
+// Current contracts emit no per-commit USD attribute — only the running
+// total (usd_raised_after, from the event's total_raised_after). Derive
+// each commit's USD as the difference between consecutive running totals;
+// legacy rows keep their explicit amount_usd via COALESCE at the use site.
+// The window deliberately ignores any time filter so deltas at a query
+// window's edge stay correct. Caveat: if indexing started mid-history
+// (START_HEIGHT after the pool's first commit), the first indexed commit's
+// delta absorbs everything raised before it.
+const DERIVED_USD_CTE = `derived_usd AS (
+    SELECT txhash, event_index,
+           usd_raised_after - COALESCE(LAG(usd_raised_after) OVER (
+               PARTITION BY pool ORDER BY ts, height, event_index), 0) AS delta_usd
+    FROM commits
+    WHERE usd_raised_after IS NOT NULL
+)`;
+
+// Per-row USD as a micro-USD TEXT value (NULL when unknown, e.g. post-
+// threshold "active" commits, which carry no USD information at all).
+const COMMIT_USD_EXPR =
+    `CAST(COALESCE(c.amount_usd, CAST(ROUND(d.delta_usd) AS INTEGER)) AS TEXT)`;
+
 export function healthCounts(db: Db) {
     const count = (table: string) =>
         (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
@@ -282,13 +304,15 @@ export function volumeSeries(db: Db, p: SeriesParams) {
 // Commit activity per bucket (count, USD, unique wallets).
 export function commitSeries(db: Db, p: SeriesParams) {
     return db.prepare(`
+        WITH ${DERIVED_USD_CTE}
         SELECT
-            (ts / @bucket) * @bucket AS t,
+            (c.ts / @bucket) * @bucket AS t,
             COUNT(*) AS commits,
-            SUM(CAST(amount_usd AS REAL)) AS usd,
-            COUNT(DISTINCT committer) AS unique_committers
-        FROM commits
-        WHERE pool = @pool AND ts >= @from AND ts < @to
+            SUM(COALESCE(CAST(c.amount_usd AS REAL), d.delta_usd)) AS usd,
+            COUNT(DISTINCT c.committer) AS unique_committers
+        FROM commits c
+        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        WHERE c.pool = @pool AND c.ts >= @from AND c.ts < @to
         GROUP BY t
         ORDER BY t ASC`).all(seriesBind(p));
 }
@@ -313,13 +337,16 @@ export function listCommits(db: Db, opts: {
     pool: string; limit: number; beforeTs: number | null; wallet: string | null;
 }) {
     return db.prepare(`
-        SELECT txhash, height, ts, committer, phase, amount_bluechip, amount_usd,
-               usd_raised_after, bluechip_raised_after, tokens_received
-        FROM commits
-        WHERE pool = @pool
-          AND (@beforeTs IS NULL OR ts < @beforeTs)
-          AND (@wallet IS NULL OR committer = @wallet)
-        ORDER BY ts DESC, height DESC, event_index DESC
+        WITH ${DERIVED_USD_CTE}
+        SELECT c.txhash, c.height, c.ts, c.committer, c.phase, c.amount_bluechip, c.amount_usd,
+               c.usd_raised_after, c.bluechip_raised_after, c.tokens_received,
+               ${COMMIT_USD_EXPR} AS commit_usd
+        FROM commits c
+        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        WHERE c.pool = @pool
+          AND (@beforeTs IS NULL OR c.ts < @beforeTs)
+          AND (@wallet IS NULL OR c.committer = @wallet)
+        ORDER BY c.ts DESC, c.height DESC, c.event_index DESC
         LIMIT @limit`).all(opts);
 }
 
@@ -330,12 +357,15 @@ export function creatorStatement(db: Db, opts: {
     pool: string; from: number; to: number; feeBps: number;
 }) {
     const commits = db.prepare(`
-        SELECT txhash, ts, committer, phase, amount_usd, amount_bluechip
-        FROM commits
-        WHERE pool = @pool AND ts >= @from AND ts < @to
-        ORDER BY ts ASC, height ASC, event_index ASC`).all(opts) as {
+        WITH ${DERIVED_USD_CTE}
+        SELECT c.txhash, c.ts, c.committer, c.phase, c.amount_bluechip,
+               ${COMMIT_USD_EXPR} AS commit_usd
+        FROM commits c
+        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        WHERE c.pool = @pool AND c.ts >= @from AND c.ts < @to
+        ORDER BY c.ts ASC, c.height ASC, c.event_index ASC`).all(opts) as {
         txhash: string; ts: number; committer: string; phase: string;
-        amount_usd: string | null; amount_bluechip: string | null;
+        commit_usd: string | null; amount_bluechip: string | null;
     }[];
     const claims = db.prepare(`
         SELECT txhash, ts, action, creator, amount_0, amount_1
@@ -353,10 +383,10 @@ export function creatorStatement(db: Db, opts: {
             txhash: c.txhash,
             counterparty: c.committer,
             phase: c.phase,
-            gross_usd: c.amount_usd,
+            gross_usd: c.commit_usd,
             // String math on micro-units: amount * feeBps / 10000.
-            fee_share_usd: c.amount_usd !== null
-                ? ((BigInt(c.amount_usd) * BigInt(opts.feeBps)) / 10_000n).toString()
+            fee_share_usd: c.commit_usd !== null
+                ? ((BigInt(c.commit_usd) * BigInt(opts.feeBps)) / 10_000n).toString()
                 : null,
             gross_bluechip: c.amount_bluechip,
             amount_0: null as string | null,
@@ -389,10 +419,13 @@ export function windowStats(db: Db, pool: string, windowSec: number, now: number
                    SUM(CAST(CASE side WHEN 'buy' THEN offer_amount ELSE return_amount END AS REAL)) AS volume_bluechip
             FROM trades WHERE pool = ? AND ts >= ? AND ts < ?`).get(pool, from, to) as Record<string, number | null>;
         const c = db.prepare(`
+            WITH ${DERIVED_USD_CTE}
             SELECT COUNT(*) AS commits,
-                   SUM(CAST(amount_usd AS REAL)) AS commit_usd,
-                   COUNT(DISTINCT committer) AS unique_committers
-            FROM commits WHERE pool = ? AND ts >= ? AND ts < ?`).get(pool, from, to) as Record<string, number | null>;
+                   SUM(COALESCE(CAST(c.amount_usd AS REAL), d.delta_usd)) AS commit_usd,
+                   COUNT(DISTINCT c.committer) AS unique_committers
+            FROM commits c
+            LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+            WHERE c.pool = ? AND c.ts >= ? AND c.ts < ?`).get(pool, from, to) as Record<string, number | null>;
         return { ...t, ...c };
     };
     return {
@@ -408,9 +441,27 @@ export function listCommitsByWallet(db: Db, opts: {
     wallet: string; limit: number; beforeTs: number | null;
 }) {
     return db.prepare(`
-        SELECT txhash, height, ts, pool, phase, amount_bluechip, amount_usd, tokens_received
-        FROM commits
-        WHERE committer = @wallet
+        WITH ${DERIVED_USD_CTE}
+        SELECT c.txhash, c.height, c.ts, c.pool, c.phase, c.amount_bluechip, c.amount_usd,
+               c.tokens_received, ${COMMIT_USD_EXPR} AS commit_usd
+        FROM commits c
+        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        WHERE c.committer = @wallet
+          AND (@beforeTs IS NULL OR c.ts < @beforeTs)
+        ORDER BY c.ts DESC, c.height DESC, c.event_index DESC
+        LIMIT @limit`).all(opts);
+}
+
+// Cross-pool trade history for one wallet (newest first) — powers the
+// portfolio "My Transactions" view. The trader column is filled from the
+// swap dispatch's sender (or the committer, for post-threshold commits).
+export function listTradesByWallet(db: Db, opts: {
+    wallet: string; limit: number; beforeTs: number | null;
+}) {
+    return db.prepare(`
+        SELECT txhash, height, ts, pool, side, source, offer_amount, return_amount, price
+        FROM trades
+        WHERE trader = @wallet
           AND (@beforeTs IS NULL OR ts < @beforeTs)
         ORDER BY ts DESC, height DESC, event_index DESC
         LIMIT @limit`).all(opts);

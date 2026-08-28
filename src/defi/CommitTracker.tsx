@@ -58,13 +58,27 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
         const rows = await fetchRecentCommits(contractAddress, 1000);
         if (!rows || rows.length === 0) return false;
 
-        const ordered = [...rows].sort((a, b) => a.ts - b.ts || a.height - b.height);
+        // Only commits that carry USD information belong on the funding
+        // curve: current-chain funding commits report a running total
+        // (usd_raised_after) from which the indexer derives commit_usd;
+        // legacy rows carry amount_usd. Post-threshold "active" commits
+        // are AMM buys with no USD attribution and are excluded.
+        const funded = rows.filter(
+            (c) => c.commit_usd !== null || c.amount_usd !== null || c.usd_raised_after !== null,
+        );
+        if (funded.length === 0) return false;
+
+        const ordered = [...funded].sort((a, b) => a.ts - b.ts || a.height - b.height);
         let cumulative = 0n;
         let bluechipTotal = 0n;
         const wallets = new Set<string>();
         const data: GraphDataPoint[] = ordered.map((c) => {
-            const value = safeBigInt(c.amount_usd ?? '0');
-            cumulative += value;
+            const value = safeBigInt(c.commit_usd ?? c.amount_usd ?? '0');
+            // Prefer the contract's own running total when present — it is
+            // exact even if some earlier commits fell outside this page.
+            cumulative = c.usd_raised_after !== null
+                ? safeBigInt(c.usd_raised_after)
+                : cumulative + value;
             bluechipTotal += safeBigInt(c.amount_bluechip ?? '0');
             wallets.add(c.committer);
             return {

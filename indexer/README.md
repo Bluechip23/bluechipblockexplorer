@@ -55,9 +55,14 @@ unix **seconds**; token amounts are micro-unit **strings** (6 decimals);
 
 USD figures come from the `total_raised_after` attribute (micro-USD)
 emitted on **funding-phase** commits — the running total the pool prices
-at commit time. Other commit phases carry no USD attributes, so per-row
-`amount_usd` is `NULL` on current-chain data (it is only populated for
-legacy pre-Osmosis events, which carried per-commit USD amounts).
+at commit time. Current contracts emit no per-commit USD amount, so each
+commit's USD is **derived** as the difference between consecutive running
+totals and served as `commit_usd` on commit rows (and summed into the
+series/stats/statement USD aggregates). Legacy pre-Osmosis rows keep their
+explicit `amount_usd` and take precedence when present. Post-threshold
+("active") commits carry no USD information at all, so their `commit_usd`
+is `NULL`. Caveat: if `START_HEIGHT` skips part of a pool's history, the
+first indexed commit's derived USD absorbs everything raised before it.
 
 | Endpoint | Query params | Returns |
 |---|---|---|
@@ -65,9 +70,11 @@ legacy pre-Osmosis events, which carried per-commit USD amounts).
 | `/pools` | — | every discovered pool with kind, creation time, creator-token denom (`token_address` field, a TokenFactory denom), threshold-crossing time |
 | `/pools/:address/price-series` | `bucket` (sec), `from`, `to` | OHLC + OSMO volume per bucket |
 | `/pools/:address/volume-series` | `bucket`, `from`, `to` | buys/sells counts and OSMO volume per bucket |
-| `/pools/:address/commit-series` | `bucket`, `from`, `to` | commits, USD (legacy rows only — see USD note above), unique committers per bucket |
+| `/pools/:address/commit-series` | `bucket`, `from`, `to` | commits, USD (derived — see USD note above), unique committers per bucket |
 | `/pools/:address/trades` | `limit`, `before_ts`, `side`, `min_bluechip` | newest-first trade feed (swaps + post-threshold commits); `min_bluechip` is the whale filter |
-| `/pools/:address/commits` | `limit`, `before_ts`, `wallet` | newest-first per-transaction commit history |
+| `/pools/:address/commits` | `limit`, `before_ts`, `wallet` | newest-first per-transaction commit history (includes derived `commit_usd`) |
+| `/wallets/:address/commits` | `limit`, `before_ts` | newest-first cross-pool commit history for one wallet |
+| `/wallets/:address/trades` | `limit`, `before_ts` | newest-first cross-pool trade history (buys/sells) for one wallet |
 | `/pools/:address/creator-statement` | `from`, `to`, `fee_bps` (default 500) | chronological creator income lines: the creator's fee share of every commit + fee-pot/excess claim events |
 | `/pools/:address/stats` | `window` (sec, default 86400) | current-vs-previous window totals (trades, buys, sells, volume, commits, USD, unique committers) |
 

@@ -55,7 +55,13 @@ export interface IndexedCommit {
     committer: string;
     phase: string;
     amount_bluechip: string | null;
-    amount_usd: string | null;
+    amount_usd: string | null;          // legacy pre-Osmosis events only
+    // Micro-USD running total after this commit (funding-phase commits).
+    usd_raised_after: string | null;
+    // Per-commit micro-USD, derived by the indexer from consecutive
+    // running totals (legacy amount_usd when present). NULL for
+    // post-threshold "active" commits, which carry no USD information.
+    commit_usd: string | null;
     tokens_received: string | null;
 }
 
@@ -113,13 +119,31 @@ export interface WalletCommit {
     pool: string;
     phase: string;
     amount_bluechip: string | null;
-    amount_usd: string | null;
+    amount_usd: string | null;          // legacy pre-Osmosis events only
+    commit_usd: string | null;          // derived per-commit micro-USD (see IndexedCommit)
     tokens_received: string | null;
 }
 
 // Cross-pool commit history for one wallet, newest first.
 export function fetchWalletCommits(wallet: string, limit = 50): Promise<WalletCommit[] | null> {
     return fetchJson<WalletCommit[]>(`/wallets/${wallet}/commits?limit=${limit}`);
+}
+
+export interface WalletTrade {
+    txhash: string;
+    height: number;
+    ts: number;
+    pool: string;
+    side: 'buy' | 'sell';
+    source: 'swap' | 'commit';
+    offer_amount: string | null;
+    return_amount: string | null;
+    price: number | null;
+}
+
+// Cross-pool trade history for one wallet, newest first.
+export function fetchWalletTrades(wallet: string, limit = 50): Promise<WalletTrade[] | null> {
+    return fetchJson<WalletTrade[]>(`/wallets/${wallet}/trades?limit=${limit}`);
 }
 
 export function fetchCreatorStatement(pool: string, from = 0, to?: number, feeBps = 500): Promise<StatementLine[] | null> {

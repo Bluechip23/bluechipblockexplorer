@@ -40,9 +40,8 @@ const columns: readonly Column[] = [
     { id: 'token', label: 'Token' },
     { id: 'address', label: 'Pool Address' },
     { id: 'status', label: 'Status' },
-    { id: 'liquidity', label: 'Total Liquidity' },
-    { id: 'feesCollected', label: 'Fees Collected' },
-    { id: 'positions', label: 'LP Positions' },
+    { id: 'liquidity', label: 'Liquidity (OSMO)' },
+    { id: 'raised', label: 'Raised (USD)' },
     { id: 'committers', label: 'Committers' },
     { id: 'actions', label: '' },
 ];
@@ -66,7 +65,9 @@ const CreatorPoolTable: React.FC = () => {
                     return;
                 }
                 const summaries = await fetchAllPoolSummaries(factoryAddress);
-                summaries.sort((a, b) => compareMicro(b.totalLiquidity, a.totalLiquidity));
+                // Rank by the OSMO side of the live pool reserves (LP is
+                // native GAMM, so the contract has no liquidity total).
+                summaries.sort((a, b) => compareMicro(b.reserve0, a.reserve0));
                 setRows(summaries);
             } catch (err) {
                 console.error('Error loading pools:', err);
@@ -166,9 +167,8 @@ const CreatorPoolTable: React.FC = () => {
                                         <TableCell>
                                             <PoolStatusChip thresholdReached={row.thresholdReached} />
                                         </TableCell>
-                                        <TableCell>{formatMicroAmount(row.totalLiquidity)}</TableCell>
-                                        <TableCell>{formatMicroAmount(row.totalFeesCollected0)}</TableCell>
-                                        <TableCell>{row.totalPositions}</TableCell>
+                                        <TableCell>{formatMicroAmount(row.reserve0)}</TableCell>
+                                        <TableCell>${formatMicroAmount(row.raised)}</TableCell>
                                         <TableCell>{row.totalCommitters}</TableCell>
                                         <TableCell align="right">
                                             <PoolActionMenu

@@ -2,8 +2,8 @@ import cors from 'cors';
 import express, { Express, Request } from 'express';
 import {
     commitSeries, creatorStatement, Db, healthCounts, listCommits,
-    listCommitsByWallet, listPools, listTrades, priceSeries, volumeSeries,
-    windowStats,
+    listCommitsByWallet, listPools, listTrades, listTradesByWallet,
+    priceSeries, volumeSeries, windowStats,
 } from './db';
 
 function clampInt(raw: unknown, fallback: number, min: number, max: number): number {
@@ -123,6 +123,16 @@ export function buildApi(db: Db): Express {
         const wallet = poolParam(req);   // same bech32 shape check
         if (!wallet) return res.status(400).json({ error: 'invalid wallet address' });
         res.json(listCommitsByWallet(db, {
+            wallet,
+            limit: clampInt(req.query.limit, 50, 1, 1000),
+            beforeTs: optInt(req.query.before_ts),
+        }));
+    });
+
+    app.get('/wallets/:address/trades', (req, res) => {
+        const wallet = poolParam(req);   // same bech32 shape check
+        if (!wallet) return res.status(400).json({ error: 'invalid wallet address' });
+        res.json(listTradesByWallet(db, {
             wallet,
             limit: clampInt(req.query.limit, 50, 1, 1000),
             beforeTs: optInt(req.query.before_ts),
