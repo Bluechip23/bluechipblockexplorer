@@ -310,7 +310,7 @@ export async function chainFetchPoolSummary(poolAddress: string): Promise<PoolSu
             totalCommitters: commits?.committers.length ?? 0,
             blockTimeLast: info.pool_state.block_time_last,
             createdAtBlock: idx?.created_height ?? 0,
-            thresholdCrossedAtBlock: null,   // indexer records the crossing time, not height
+            thresholdCrossedAt: idx?.threshold_crossed_at ?? null,
             totalSwapCount: analytics.analytics.total_swap_count,
             totalCommitCount: analytics.analytics.total_commit_count,
             totalVolume0: analytics.analytics.total_volume_0,

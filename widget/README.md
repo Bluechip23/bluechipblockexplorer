@@ -9,8 +9,8 @@ What it does:
 - **Subscribe button** — connects Keplr, registers the Osmosis chain,
   and commits native OSMO to your creator pool (a "subscription").
   Handles pre- vs post-threshold commits correctly. Commits are valued
-  in USD via on-chain TWAP; the contract enforces a $5 minimum before
-  the pool's threshold is hit and $1 after.
+  in USD via the Pyth price oracle; the contract enforces a $5 minimum
+  before the pool's threshold is hit and $1 after.
 - **Subscription gate** — hides a block of your page until the viewer's
   wallet has a qualifying on-chain commit record for your pool.
 - **JS API** — the same primitives (`connect`, `subscribe`,

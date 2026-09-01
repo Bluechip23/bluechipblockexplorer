@@ -23,6 +23,7 @@ import StatCard from '../universal/StatCard';
 import { formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
 import { safeBigInt } from '../../utils/bigintMath';
 import { poolTvlOsmoMicro } from './poolMetrics';
+import { feeShare, useCommitFeeRates } from '../../hooks/useCommitFeeRates';
 
 interface PortfolioCreatedPoolsTableProps {
     createdPools: PoolSummary[];
@@ -31,6 +32,7 @@ interface PortfolioCreatedPoolsTableProps {
 }
 
 const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({ createdPools, loading, onCreatePool }) => {
+    const feeRates = useCommitFeeRates();
     if (loading) {
         return (
             <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -59,12 +61,13 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
         );
     }
 
-    // Commit fees (the creator's 5% share of gross commits) are the real
-    // creator revenue; LP swap fees accrue on the native Osmosis pool.
+    // Commit fees (the creator's share of gross commits, at the factory's
+    // configured rate) are the real creator revenue; LP swap fees accrue
+    // on the native Osmosis pool.
     const totalRaisedUsd = createdPools.reduce<bigint>(
         (sum, p) => sum + safeBigInt(p.raised), 0n
     );
-    const totalCommitFeeUsd = (totalRaisedUsd * 500n) / 10_000n;
+    const totalCommitFeeUsd = feeShare(totalRaisedUsd, feeRates.creatorBps);
     const totalPoolTvl = createdPools.reduce<bigint>(
         (sum, p) => sum + poolTvlOsmoMicro(p), 0n
     );

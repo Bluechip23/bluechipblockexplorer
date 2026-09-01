@@ -25,6 +25,7 @@ import StatCard from '../components/universal/StatCard';
 import PoolSelectorDropdown from '../components/portfolio/PoolSelectorDropdown';
 import PoolCompareModal from '../components/compare/PoolCompareModal';
 import { POOL_FOCUS_METRICS, poolTvlOsmoMicro } from '../components/portfolio/poolMetrics';
+import { feeShare, useCommitFeeRates } from '../hooks/useCommitFeeRates';
 import CreatorEarningsTab from '../components/portfolio/CreatorEarningsTab';
 import NoPoolsView from '../components/portfolio/NoPoolsView';
 import {
@@ -46,6 +47,7 @@ const CreatorPortfolioPage: React.FC = () => {
     const [comparedAddresses, setComparedAddresses] = useState<Set<string>>(new Set());
     const [showCompare, setShowCompare] = useState(false);
     const [poolTab, setPoolTab] = useState(0);
+    const feeRates = useCommitFeeRates();
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -69,10 +71,11 @@ const CreatorPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address, loadKey]);
 
-    // Commit fees (the creator's 5% share of gross commits) are the real
-    // creator revenue; LP swap fees accrue on the native Osmosis pool.
+    // Commit fees (the creator's share of gross commits, at the factory's
+    // configured rate) are the real creator revenue; LP swap fees accrue
+    // on the native Osmosis pool.
     const totalRaisedUsd = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.raised), 0n);
-    const totalCommitFeeUsd = (totalRaisedUsd * 500n) / 10_000n;
+    const totalCommitFeeUsd = feeShare(totalRaisedUsd, feeRates.creatorBps);
     const totalPoolTvl = createdPools.reduce<bigint>((s, p) => s + poolTvlOsmoMicro(p), 0n);
     const totalSubscribers = createdPools.reduce((s, p) => s + p.totalCommitters, 0);
 
