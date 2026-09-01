@@ -13,14 +13,17 @@ import { useWallet } from '../context/WalletContext';
 import { TabPanel, NotConnectedView } from '../components/universal/PortfolioShared';
 import StatCard from '../components/universal/StatCard';
 import PortfolioCommitmentsTable from '../components/portfolio/PortfolioCommitmentsTable';
+import PortfolioPositionsTable from '../components/portfolio/PortfolioPositionsTable';
 import PortfolioTransactionsTable from '../components/portfolio/PortfolioTransactionsTable';
 import PortfolioHoldingsTable from '../components/portfolio/PortfolioHoldingsTable';
 import { MyCommitment } from '../components/portfolio/types';
 import {
     fetchAllPoolSummaries,
+    queryLpPositions,
     queryPoolCommits,
     queryWalletHoldings,
     formatMicroAmount,
+    LpPosition,
     PoolSummary,
     WalletHolding,
 } from '../utils/contractQueries';
@@ -34,6 +37,7 @@ const ChainPortfolioPage: React.FC = () => {
     const [pools, setPools] = useState<PoolSummary[]>([]);
     const [commitments, setCommitments] = useState<MyCommitment[]>([]);
     const [holdings, setHoldings] = useState<WalletHolding[]>([]);
+    const [lpPositions, setLpPositions] = useState<LpPosition[]>([]);
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -62,8 +66,15 @@ const ChainPortfolioPage: React.FC = () => {
                     }));
                 }
 
-                const myHoldings = await queryWalletHoldings(address, allPools);
-                if (!cancelled) { setCommitments(myCommitments); setHoldings(myHoldings); }
+                const [myHoldings, myLpPositions] = await Promise.all([
+                    queryWalletHoldings(address, allPools),
+                    queryLpPositions(address, allPools),
+                ]);
+                if (!cancelled) {
+                    setCommitments(myCommitments);
+                    setHoldings(myHoldings);
+                    setLpPositions(myLpPositions);
+                }
             } catch (err) { console.error('Error loading portfolio:', err); }
             finally { if (!cancelled) setLoading(false); }
         }
@@ -74,6 +85,9 @@ const ChainPortfolioPage: React.FC = () => {
 
     const totalCommittedUsd = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_usd), 0n);
     const totalCommittedBluechip = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_bluechip), 0n);
+    // Both legs of a balanced pool are worth ~2x the wallet's OSMO-side
+    // underlying — a display estimate at current reserves.
+    const totalLpValueOsmo = lpPositions.reduce<bigint>((sum, p) => sum + 2n * safeBigInt(p.osmoAmount), 0n);
 
     return (
         <PageShell>
@@ -93,6 +107,8 @@ const ChainPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={3}><StatCard label="Pools Committed" value={commitments.length} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Total Committed (OSMO)" value={formatMicroAmount(totalCommittedBluechip.toString())} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="LP Positions" value={lpPositions.length} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="LP Value (OSMO, est.)" value={formatMicroAmount(totalLpValueOsmo.toString())} /></Grid>
                             </Grid>
 
                             <Card>
@@ -100,13 +116,15 @@ const ChainPortfolioPage: React.FC = () => {
                                     <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
                                         <Tab label={`My Holdings (${holdings.length + (balance && safeBigInt(balance.amount) > 0n ? 1 : 0)})`} />
                                         <Tab label={`Pools I Committed To (${commitments.length})`} />
+                                        <Tab label={`My LP Positions (${lpPositions.length})`} />
                                         <Tab label="My Transactions" />
                                     </Tabs>
                                 </CardContent>
                                 <CardContent>
                                     <TabPanel value={tab} index={0}><PortfolioHoldingsTable holdings={holdings} nativeBalance={balance?.amount || null} loading={loading} /></TabPanel>
                                     <TabPanel value={tab} index={1}><PortfolioCommitmentsTable commitments={commitments} loading={loading} /></TabPanel>
-                                    <TabPanel value={tab} index={2}><PortfolioTransactionsTable address={address} pools={pools} commitments={commitments} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={2}><PortfolioPositionsTable positions={lpPositions} loading={loading} /></TabPanel>
+                                    <TabPanel value={tab} index={3}><PortfolioTransactionsTable address={address} pools={pools} commitments={commitments} loading={loading} /></TabPanel>
                                 </CardContent>
                             </Card>
                         </Stack>

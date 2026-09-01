@@ -177,6 +177,70 @@ export function chainQueryNativePoolId(poolAddress: string): Promise<NativePoolI
     return smart<NativePoolIdResponse>(poolAddress, { native_pool_id: {} });
 }
 
+// A wallet's liquidity position in a pool's native GAMM pool: its
+// gamm/pool/{id} share balance (a plain bank balance) plus the estimated
+// underlying amounts at current reserves (reserve * shares / total).
+export interface LpPosition {
+    poolAddress: string;
+    tokenSymbol: string;
+    gammPoolId: number;
+    shareDenom: string;
+    shareBalance: string;    // raw share units (GAMM shares are 18-dec)
+    totalShares: string;
+    osmoAmount: string;      // micro-OSMO underlying (estimated)
+    tokenAmount: string;     // micro creator-token underlying (estimated)
+}
+
+async function bankTotalSupply(denom: string): Promise<bigint> {
+    const url = `${apiEndpoint}/cosmos/bank/v1beta1/supply/by_denom?denom=${encodeURIComponent(denom)}`;
+    const res = await fetch(url);
+    if (!res.ok) return 0n;
+    const body = await res.json();
+    return safeBigInt(body?.amount?.amount ?? '0');
+}
+
+// LP lives on the native Osmosis pool, so a wallet's positions are its
+// gamm share balances for each graduated pool — real chain state, unlike
+// the contract's legacy (always-empty) position registry.
+export async function chainQueryLpPositions(
+    walletAddress: string,
+    pools: Array<{
+        poolAddress: string; tokenSymbol: string; thresholdReached: boolean;
+        reserve0: string; reserve1: string;
+    }>,
+): Promise<LpPosition[]> {
+    const client = await getCosmWasmClient();
+    const positions: LpPosition[] = [];
+    for (const pool of pools) {
+        if (!pool.thresholdReached) continue;   // no GAMM pool pre-threshold
+        try {
+            const np = await chainQueryNativePoolId(pool.poolAddress);
+            if (!np.pool_id || !np.lp_share_denom) continue;
+            const bal = await client.getBalance(walletAddress, np.lp_share_denom);
+            const shares = safeBigInt(bal?.amount ?? '0');
+            if (shares === 0n) continue;
+            const total = await bankTotalSupply(np.lp_share_denom);
+            positions.push({
+                poolAddress: pool.poolAddress,
+                tokenSymbol: pool.tokenSymbol,
+                gammPoolId: np.pool_id,
+                shareDenom: np.lp_share_denom,
+                shareBalance: shares.toString(),
+                totalShares: total.toString(),
+                osmoAmount: total > 0n
+                    ? ((safeBigInt(pool.reserve0) * shares) / total).toString()
+                    : '0',
+                tokenAmount: total > 0n
+                    ? ((safeBigInt(pool.reserve1) * shares) / total).toString()
+                    : '0',
+            });
+        } catch (err) {
+            console.warn(`[chain] LP position lookup failed for ${pool.poolAddress}:`, err);
+        }
+    }
+    return positions;
+}
+
 // Symbol derived from a TokenFactory denom: factory/{pool}/{subdenom}.
 function symbolFromDenom(denom: string): string {
     const parts = denom.split('/');

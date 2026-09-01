@@ -1039,6 +1039,44 @@ export async function queryPositions(poolAddress: string): Promise<PositionsResp
     return mockQueryPositions(poolAddress);
 }
 
+// ---- Native GAMM LP positions (gamm share balances per graduated pool) ----
+
+export type { LpPosition } from './chainQueries';
+
+// Demo-mode LP positions for the connected demo wallet: a 5% and a 2%
+// share of the first two graduated pools, so the portfolio's LP views
+// stay browsable for UI testing without a chain.
+function mockQueryLpPositions(walletAddress: string, pools: PoolSummary[]): chain.LpPosition[] {
+    if (walletAddress !== MOCK_WALLET) return [];
+    const sharePcts = [5n, 2n];
+    return pools
+        .filter((p) => p.thresholdReached)
+        .slice(0, sharePcts.length)
+        .map((p, i) => {
+            const pct = sharePcts[i];
+            const gammPoolId = 100 + i;
+            const totalShares = 100_000_000_000_000_000_000n;   // 100 shares, 18-dec
+            return {
+                poolAddress: p.poolAddress,
+                tokenSymbol: p.tokenSymbol,
+                gammPoolId,
+                shareDenom: `gamm/pool/${gammPoolId}`,
+                shareBalance: ((totalShares * pct) / 100n).toString(),
+                totalShares: totalShares.toString(),
+                osmoAmount: ((safeBigInt(p.reserve0) * pct) / 100n).toString(),
+                tokenAmount: ((safeBigInt(p.reserve1) * pct) / 100n).toString(),
+            };
+        });
+}
+
+export async function queryLpPositions(
+    walletAddress: string,
+    pools: PoolSummary[],
+): Promise<chain.LpPosition[]> {
+    if (await onChain()) return chain.chainQueryLpPositions(walletAddress, pools).catch(() => []);
+    return mockQueryLpPositions(walletAddress, pools);
+}
+
 export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {
     if (await onChain()) return chain.chainQueryPoolPair(poolAddress).catch(() => null);
     return mockQueryPoolPair(poolAddress);
