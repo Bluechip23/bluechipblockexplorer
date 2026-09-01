@@ -43,6 +43,7 @@ import PoolPieChart from '../../components/individual-pages/PoolPieChart';
 import { useWallet } from '../../context/WalletContext';
 import { compareMicro, microToNumber, safeBigInt } from '../../utils/bigintMath';
 import { timeAgo } from '../../utils/datetime';
+import { bpsPct, feeShare, useCommitFeeRates } from '../../hooks/useCommitFeeRates';
 
 function computeTokenPrice(reserve0: string, reserve1: string): string {
     const r0 = microToNumber(reserve0, 0);
@@ -93,12 +94,8 @@ function computeLargestCommit(committers: CommitterInfo[]): string {
     return '$' + formatMicroAmount(max);
 }
 
-function computeCreatorFeeRevenue(committers: CommitterInfo[], feeRate: number): string {
-    const totalUsd = sumPaidUsd(committers);
-    // feeRate is a Number ratio (e.g. 0.05). Scale to 10_000 bps for integer math.
-    const feeBps = BigInt(Math.round(feeRate * 10_000));
-    const revenue = (totalUsd * feeBps) / 10_000n;
-    return '$' + formatMicroAmount(revenue);
+function computeCreatorFeeRevenue(committers: CommitterInfo[], bps: bigint): string {
+    return '$' + formatMicroAmount(feeShare(sumPaidUsd(committers), bps));
 }
 
 function commitDaysSpan(sorted: CommitterInfo[]): number {
@@ -161,6 +158,8 @@ const CreatorPoolPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [isCreator, setIsCreator] = useState(false);
     const [poolTypeLabel, setPoolTypeLabel] = useState('-');
+    const feeRates = useCommitFeeRates();
+    const netToPoolBps = 10_000n - feeRates.creatorBps - feeRates.platformBps;
 
     useEffect(() => {
         async function loadPool() {
@@ -427,7 +426,10 @@ const CreatorPoolPage: React.FC = () => {
                                                 <StatCard label="USD Raised" value={'$' + formatMicroAmount(analytics.total_usd_raised)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
-                                                <StatCard label="OSMO Raised" value={formatMicroAmount(analytics.total_bluechip_raised)} />
+                                                {/* The contract's total_bluechip_raised is net of commit
+                                                    fees, unlike the gross per-wallet totals in the
+                                                    leaderboard below — label it so the numbers add up. */}
+                                                <StatCard label="OSMO Raised (net of fees)" value={formatMicroAmount(analytics.total_bluechip_raised)} />
                                             </Grid>
                                             {analytics.analytics.last_trade_timestamp > 0 && (
                                                 <Grid item xs={6} sm={3}>
@@ -464,21 +466,21 @@ const CreatorPoolPage: React.FC = () => {
                                         <Grid container spacing={2}>
                                             <Grid item xs={6} sm={4}>
                                                 <StatCard
-                                                    label="Your Fee Revenue (5%)"
-                                                    value={computeCreatorFeeRevenue(committers, 0.05)}
+                                                    label={`Your Fee Revenue (${bpsPct(feeRates.creatorBps)}%)`}
+                                                    value={computeCreatorFeeRevenue(committers, feeRates.creatorBps)}
                                                     highlight
                                                 />
                                             </Grid>
                                             <Grid item xs={6} sm={4}>
                                                 <StatCard
-                                                    label="Platform Fee (1%)"
-                                                    value={computeCreatorFeeRevenue(committers, 0.01)}
+                                                    label={`Platform Fee (${bpsPct(feeRates.platformBps)}%)`}
+                                                    value={computeCreatorFeeRevenue(committers, feeRates.platformBps)}
                                                 />
                                             </Grid>
                                             <Grid item xs={6} sm={4}>
                                                 <StatCard
                                                     label="Net to Pool"
-                                                    value={computeCreatorFeeRevenue(committers, 0.94)}
+                                                    value={computeCreatorFeeRevenue(committers, netToPoolBps)}
                                                 />
                                             </Grid>
                                             {!pool.thresholdReached && (

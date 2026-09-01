@@ -48,6 +48,7 @@ import {
 } from '../utils/contractQueries';
 import { microToNumber, safeBigInt } from '../utils/bigintMath';
 import { timeAgo } from '../utils/datetime';
+import { bpsPct, feeShare, useCommitFeeRates } from '../hooks/useCommitFeeRates';
 
 type TimePeriod = '1m' | '3m' | '1y';
 
@@ -80,11 +81,11 @@ export function computeCurrentPrice(pool: PoolSummary): string {
     return price.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
-function computeCreatorFeeRevenue(committers: CommitterInfo[]): string {
-    // The creator's 5% share (commit_fee_creator = 0.05) of gross commit
-    // USD — BigInt math to preserve precision on large totals.
+function computeCreatorFeeRevenue(committers: CommitterInfo[], creatorBps: bigint): string {
+    // The creator's commit-fee share of gross commit USD, at the rate
+    // from the factory config — BigInt math to preserve precision.
     const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
-    return ((totalUsd * 500n) / 10_000n).toString();
+    return feeShare(totalUsd, creatorBps).toString();
 }
 
 function computeCirculatingSupply(pool: PoolSummary): {
@@ -333,6 +334,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
     const [thresholdAnalytics, setThresholdAnalytics] = useState<ThresholdAnalytics | null>(null);
     const [onChainAnalytics, setOnChainAnalytics] = useState<PoolAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const feeRates = useCommitFeeRates();
 
     useEffect(() => {
         let cancelled = false;
@@ -377,7 +379,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
         : computeCurrentPrice(pool);
     const activeSubscribers = getActiveSubscribers(committers, period);
     const totalSubscribers = pool.totalCommitters;
-    const creatorFeeRevenue = computeCreatorFeeRevenue(committers);
+    const creatorFeeRevenue = computeCreatorFeeRevenue(committers, feeRates.creatorBps);
     const supply = computeCirculatingSupply(pool);
 
     const avgCommitSize = committers.length > 0
@@ -418,9 +420,13 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     value={`Block #${pool.createdAtBlock.toLocaleString()}`}
                 />
                 <MetricRow
-                    icon={<ViewInArIcon color={pool.thresholdCrossedAtBlock ? 'success' : 'disabled'} />}
+                    icon={<ViewInArIcon color={pool.thresholdReached ? 'success' : 'disabled'} />}
                     label="Threshold Crossed"
-                    value={pool.thresholdCrossedAtBlock ? `Block #${pool.thresholdCrossedAtBlock.toLocaleString()}` : 'Pending'}
+                    value={
+                        pool.thresholdCrossedAt
+                            ? new Date(pool.thresholdCrossedAt * 1000).toLocaleDateString()
+                            : pool.thresholdReached ? 'Crossed' : 'Pending'
+                    }
                 />
 
                 <Divider sx={{ my: 1 }} />
@@ -557,7 +563,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                     icon={<MonetizationOnIcon sx={{ color: '#ffd700' }} />}
                     label="Creator Fee Revenue"
                     value={`$${formatMicroAmount(creatorFeeRevenue)}`}
-                    subtext="5% commit fee earned by the creator"
+                    subtext={`${bpsPct(feeRates.creatorBps)}% commit fee earned by the creator`}
                 />
                 <MetricRow
                     icon={<AccountBalanceIcon color="success" />}

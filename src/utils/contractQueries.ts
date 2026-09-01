@@ -292,7 +292,9 @@ export interface PoolSummary {
     totalCommitters: number;
     blockTimeLast: number;
     createdAtBlock: number;
-    thresholdCrossedAtBlock: number | null;
+    // Unix seconds of the threshold crossing (from the indexer's event
+    // history), null when uncrossed or when no indexer is available.
+    thresholdCrossedAt: number | null;
     // New fields from Analytics query
     totalSwapCount: number;
     totalCommitCount: number;
@@ -401,7 +403,7 @@ const MOCK_POOLS: PoolSummary[] = [
         totalCommitters: 8,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 45,
         createdAtBlock: 1_024_300,
-        thresholdCrossedAtBlock: 1_187_650,
+        thresholdCrossedAt: Math.floor(now / 1000) - 86400 * 45,
         totalSwapCount: 1_247,
         totalCommitCount: 42,
         totalVolume0: '89500000000000',
@@ -436,7 +438,7 @@ const MOCK_POOLS: PoolSummary[] = [
         totalCommitters: 12,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 30,
         createdAtBlock: 1_310_800,
-        thresholdCrossedAtBlock: 1_425_100,
+        thresholdCrossedAt: Math.floor(now / 1000) - 86400 * 30,
         totalSwapCount: 583,
         totalCommitCount: 28,
         totalVolume0: '32100000000000',
@@ -471,7 +473,7 @@ const MOCK_POOLS: PoolSummary[] = [
         totalCommitters: 6,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 60,
         createdAtBlock: 892_150,
-        thresholdCrossedAtBlock: 1_053_400,
+        thresholdCrossedAt: Math.floor(now / 1000) - 86400 * 60,
         totalSwapCount: 312,
         totalCommitCount: 15,
         totalVolume0: '18700000000000',
@@ -506,7 +508,7 @@ const MOCK_POOLS: PoolSummary[] = [
         totalCommitters: 5,
         blockTimeLast: 0,
         createdAtBlock: 1_502_900,
-        thresholdCrossedAtBlock: null,
+        thresholdCrossedAt: null,
         totalSwapCount: 0,
         totalCommitCount: 12,
         totalVolume0: '0',
@@ -541,7 +543,7 @@ const MOCK_POOLS: PoolSummary[] = [
         totalCommitters: 3,
         blockTimeLast: 0,
         createdAtBlock: 1_580_200,
-        thresholdCrossedAtBlock: null,
+        thresholdCrossedAt: null,
         totalSwapCount: 0,
         totalCommitCount: 5,
         totalVolume0: '0',
@@ -1035,6 +1037,44 @@ export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitR
 export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
     if (await onChain()) return chain.chainQueryPositions(poolAddress).catch(() => null);
     return mockQueryPositions(poolAddress);
+}
+
+// ---- Native GAMM LP positions (gamm share balances per graduated pool) ----
+
+export type { LpPosition } from './chainQueries';
+
+// Demo-mode LP positions for the connected demo wallet: a 5% and a 2%
+// share of the first two graduated pools, so the portfolio's LP views
+// stay browsable for UI testing without a chain.
+function mockQueryLpPositions(walletAddress: string, pools: PoolSummary[]): chain.LpPosition[] {
+    if (walletAddress !== MOCK_WALLET) return [];
+    const sharePcts = [5n, 2n];
+    return pools
+        .filter((p) => p.thresholdReached)
+        .slice(0, sharePcts.length)
+        .map((p, i) => {
+            const pct = sharePcts[i];
+            const gammPoolId = 100 + i;
+            const totalShares = 100_000_000_000_000_000_000n;   // 100 shares, 18-dec
+            return {
+                poolAddress: p.poolAddress,
+                tokenSymbol: p.tokenSymbol,
+                gammPoolId,
+                shareDenom: `gamm/pool/${gammPoolId}`,
+                shareBalance: ((totalShares * pct) / 100n).toString(),
+                totalShares: totalShares.toString(),
+                osmoAmount: ((safeBigInt(p.reserve0) * pct) / 100n).toString(),
+                tokenAmount: ((safeBigInt(p.reserve1) * pct) / 100n).toString(),
+            };
+        });
+}
+
+export async function queryLpPositions(
+    walletAddress: string,
+    pools: PoolSummary[],
+): Promise<chain.LpPosition[]> {
+    if (await onChain()) return chain.chainQueryLpPositions(walletAddress, pools).catch(() => []);
+    return mockQueryLpPositions(walletAddress, pools);
 }
 
 export async function queryPoolPair(poolAddress: string): Promise<PoolPairInfo | null> {

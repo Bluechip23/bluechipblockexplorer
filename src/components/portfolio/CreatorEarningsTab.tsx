@@ -37,9 +37,8 @@ import {
     humanizeContractError,
     sanitizeOnChainString,
 } from '../../utils/security';
+import { bpsPct, feeShare, useCommitFeeRates } from '../../hooks/useCommitFeeRates';
 
-// Creator share of every commit (commit_fee_creator = 5%), in basis points.
-const CREATOR_COMMIT_FEE_BPS = 500n;
 // Creator tokens granted to the creator wallet at threshold crossing
 // (THRESHOLD_PAYOUT_CREATOR_BASE_UNITS, 6-decimal base units).
 const CREATOR_THRESHOLD_GRANT_MICRO = 325_000_000_000n;
@@ -51,8 +50,8 @@ interface CreatorEarningsTabProps {
     pool: PoolSummary;
 }
 
-function commitFeeRevenueMicroUsd(pool: PoolSummary): bigint {
-    return (safeBigInt(pool.totalUsdRaised) * CREATOR_COMMIT_FEE_BPS) / 10_000n;
+function commitFeeRevenueMicroUsd(pool: PoolSummary, creatorBps: bigint): bigint {
+    return feeShare(safeBigInt(pool.totalUsdRaised), creatorBps);
 }
 
 // Micro-units → plain decimal string for spreadsheets (no thousands
@@ -91,6 +90,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
     const [exporting, setExporting] = useState(false);
     // Per-transaction statements need the time-series indexer.
     const [indexerOk, setIndexerOk] = useState<boolean | null>(null);
+    const feeRates = useCommitFeeRates();
 
     useEffect(() => {
         let cancelled = false;
@@ -128,7 +128,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
     const symbol = sanitizeOnChainString(pool.tokenSymbol, 16) || 'Token';
     const isCreatorWallet = !!earnings && earnings.creator_wallet_address === address;
 
-    const feeRevenueMicroUsd = commitFeeRevenueMicroUsd(pool);
+    const feeRevenueMicroUsd = commitFeeRevenueMicroUsd(pool, feeRates.creatorBps);
     const grantValueBluechip = pool.thresholdReached && parseFloat(pool.currentPrice1to0) > 0
         ? 325_000 * parseFloat(pool.currentPrice1to0)
         : null;
@@ -184,7 +184,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     p.poolAddress,
                     p.thresholdReached ? 'active' : 'pre-threshold',
                     microToCsvDecimal(p.totalUsdRaised),
-                    microToCsvDecimal(commitFeeRevenueMicroUsd(p)),
+                    microToCsvDecimal(commitFeeRevenueMicroUsd(p, feeRates.creatorBps)),
                     p.thresholdReached ? '325000' : '0',
                     microToCsvDecimal(earn?.excess?.bluechip_amount),
                     microToCsvDecimal(earn?.excess?.token_amount),
@@ -250,7 +250,9 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
         try {
             const rows: string[][] = [];
             for (const p of pools) {
-                const lines = await fetchCreatorStatement(p.poolAddress);
+                const lines = await fetchCreatorStatement(
+                    p.poolAddress, 0, undefined, Number(feeRates.creatorBps),
+                );
                 for (const ln of lines ?? []) {
                     rows.push([
                         new Date(ln.ts * 1000).toISOString(),
@@ -326,7 +328,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                             <Typography variant="caption" color="text.secondary">Commit Fee Revenue (est.)</Typography>
                             <Typography variant="h6" fontWeight="bold">${formatMicroAmount(feeRevenueMicroUsd.toString())}</Typography>
                             <Typography variant="caption" color="text.secondary">
-                                Your 5% share of ${formatMicroAmount(pool.totalUsdRaised)} gross commits
+                                Your {bpsPct(feeRates.creatorBps)}% share of ${formatMicroAmount(pool.totalUsdRaised)} gross commits
                             </Typography>
                         </CardContent>
                     </Card>
