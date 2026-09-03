@@ -17,6 +17,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import { useWallet } from '../../context/WalletContext';
 import { NATIVE_DENOM } from '../../defi/types';
+import { stdFee } from '../../utils/fees';
 import { factoryAddress } from '../universal/IndividualPage.const';
 import {
     validateBech32Address,
@@ -224,7 +225,7 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                 address,
                 FACTORY,
                 createMsg,
-                { amount: [], gas: '2000000' },
+                stdFee(3000000),
                 'Create Creator Pool',
                 funds
             );

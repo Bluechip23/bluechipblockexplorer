@@ -63,13 +63,16 @@ function computeReserveRatio(reserve0: string, reserve1: string): string {
     return `${pct0.toFixed(1)}% / ${pct1.toFixed(1)}%`;
 }
 
-function computeMarketCap(reserve0: string, reserve1: string, totalSupply: string, decimals: number): string {
+function computeMarketCap(reserve0: string, reserve1: string, totalSupply: string): string {
     const r0 = microToNumber(reserve0, 0);
     const r1 = microToNumber(reserve1, 0);
     const supply = microToNumber(totalSupply, 0);
     if (!r0 || !r1 || !supply) return '-';
+    // price is OSMO-per-token on raw micro reserves (decimals cancel), so
+    // price * micro-supply stays in micro-OSMO — exactly what
+    // formatMicroAmount expects. Mirrors portfolio/poolMetrics.ts.
     const pricePerToken = r0 / r1;
-    const mcap = (pricePerToken * supply) / Math.pow(10, decimals);
+    const mcap = pricePerToken * supply;
     return formatMicroAmount(Math.floor(mcap).toString());
 }
 
@@ -205,7 +208,7 @@ const CreatorPoolPage: React.FC = () => {
     const avgCommit = computeAvgCommit(committers);
     const largestCommit = computeLargestCommit(committers);
     const marketCap = pool
-        ? computeMarketCap(pool.reserve0, pool.reserve1, pool.totalSupply, pool.tokenDecimals)
+        ? computeMarketCap(pool.reserve0, pool.reserve1, pool.totalSupply)
         : '-';
 
     return (

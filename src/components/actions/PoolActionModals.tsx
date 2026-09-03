@@ -23,6 +23,7 @@ import SellIcon from '@mui/icons-material/Sell';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import { useWallet } from '../../context/WalletContext';
 import { NATIVE_DENOM, COIN_DECIMALS } from '../../defi/types';
+import { stdFee } from '../../utils/fees';
 import {
     validateTokenAmount,
     validateBech32Address,
@@ -216,6 +217,14 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
             const { bluechipDenom } = await resolvePoolAssets(client, poolAddress);
             const offerInfo = { bluechip: { denom: bluechipDenom } };
             const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+            if (!beliefPrice) {
+                // The contract rejects a direct simple_swap without a
+                // belief_price — abort with a clear message instead of
+                // broadcasting a doomed tx.
+                setErrorMsg('Could not fetch a price quote from the pool, so the swap has no slippage protection. Try again in a moment.');
+                setStage('error');
+                return;
+            }
 
             const msg = {
                 simple_swap: {
@@ -260,7 +269,7 @@ export const BuyPanel: React.FC<BasePanelProps> = ({ onClose, poolAddress, token
                 return;
             }
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Buy Token', funds);
+            const result = await client.execute(address, poolAddress, msg, stdFee(500000), 'Buy Token', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -429,6 +438,14 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenDenom?: string }
 
             const offerInfo = { creator_token: { denom: tokenDenom } };
             const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+            if (!beliefPrice) {
+                // The contract rejects a direct simple_swap without a
+                // belief_price — abort with a clear message instead of
+                // broadcasting a doomed tx.
+                setErrorMsg('Could not fetch a price quote from the pool, so the swap has no slippage protection. Try again in a moment.');
+                setStage('error');
+                return;
+            }
 
             const msg = {
                 simple_swap: {
@@ -470,7 +487,7 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenDenom?: string }
                 return;
             }
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '500000' }, 'Sell Token', funds);
+            const result = await client.execute(address, poolAddress, msg, stdFee(500000), 'Sell Token', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {
@@ -691,7 +708,13 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
                 return;
             }
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', funds);
+            // A pre-threshold commit can be the one that CROSSES the
+            // threshold, which creates the native GAMM pool and seeds
+            // liquidity in the same tx — budget gas for that path
+            // (mirrors the contract repo's reference frontend: 3M
+            // pre-threshold, 800k for post-threshold swap commits).
+            const commitGas = thresholdReached ? 800000 : 3000000;
+            const result = await client.execute(address, poolAddress, msg, stdFee(commitGas), 'Commit', funds);
             setTxHash(result.transactionHash);
             setStage('success');
         } catch (err) {

@@ -6,7 +6,7 @@ import { getConfig, keplrChainInfo } from './config.ts';
 import {
     beliefPriceFromSimulation,
     buildCommitMsg,
-    COMMIT_GAS,
+    commitFee,
     commitFunds,
     committingInfoQuery,
     evaluateGate,
@@ -130,7 +130,7 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
         address,
         pool,
         msg,
-        { amount: [], gas: COMMIT_GAS },
+        commitFee(cfg.nativeDenom, cfg.gasPrice.average, thresholdHit),
         'BlueChip subscribe',
         funds,
     );

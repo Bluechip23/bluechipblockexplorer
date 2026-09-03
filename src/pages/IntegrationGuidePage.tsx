@@ -45,7 +45,10 @@ const widgetInitCode = `<script src="https://cdn.jsdelivr.net/gh/Bluechip23/blue
 <script>
   BluechipWidget.init({
     pool: "osmo1YOUR_POOL_ADDRESS",   // default pool for every widget on the page
-    // rpc / rest / chainId default to Osmosis mainnet — override only if you self-host a node
+    // The published bundle defaults to the osmo-test-5 TESTNET. For a
+    // mainnet pool, pin the network explicitly:
+    // chainId: "osmosis-1", chainName: "Osmosis",
+    // rpc: "https://rpc.osmosis.zone", rest: "https://lcd.osmosis.zone",
   });
 <\/script>
 
@@ -304,7 +307,15 @@ async function handleSubscribe() {
             window.bluechipAddress,
             bluechip_CONFIG.poolAddress,
             msg,
-            { amount: [], gas: "600000" },
+            // Osmosis enforces a non-zero base fee — never send an empty
+            // fee amount (0.025uosmo per gas is the registry average).
+            // A pre-threshold commit can be the one that crosses the
+            // threshold, which creates the native pool in the same tx —
+            // budget gas for it.
+            {
+                amount: [{ denom: "uosmo", amount: isThresholdCrossed ? "20000" : "75000" }],
+                gas: isThresholdCrossed ? "800000" : "3000000"
+            },
             "Commit",
             funds
         );
@@ -386,7 +397,7 @@ async function handleBuy() {
             window.bluechipAddress,
             bluechip_CONFIG.poolAddress,
             msg,
-            { amount: [], gas: "500000" },
+            { amount: [{ denom: "uosmo", amount: "12500" }], gas: "500000" },
             "Buy Token",
             funds
         );
@@ -474,7 +485,7 @@ async function handleSell() {
             window.bluechipAddress,
             bluechip_CONFIG.poolAddress,   // the pool contract, NOT a token contract
             msg,
-            { amount: [], gas: "500000" },
+            { amount: [{ denom: "uosmo", amount: "12500" }], gas: "500000" },
             "Sell Token",
             funds
         );
@@ -553,7 +564,7 @@ async function crossTokenSwap(fromDenom, fromPool, toDenom, toPool, amountMicro,
                 recipient:       null
             }
         },
-        { amount: [], gas: "900000" },
+        { amount: [{ denom: "uosmo", amount: "22500" }], gas: "900000" },
         "Cross-Token Swap",
         [{ denom: fromDenom, amount: amountMicro }]
     );
@@ -649,7 +660,7 @@ async function handleCreatePool() {
             window.bluechipAddress,
             bluechip_CONFIG.factoryAddress,
             msg,
-            { amount: [], gas: "2000000" },
+            { amount: [{ denom: "uosmo", amount: "75000" }], gas: "3000000" },
             "Create Commit Pool",
             funds
         );
@@ -931,6 +942,8 @@ async function loginWithWallet() {
 // ============================================================
 const { verifyADR36Amino } = require("@keplr-wallet/cosmos");
 
+// Match your pool's network: mainnet is https://lcd.osmosis.zone,
+// testnet is https://lcd.osmotest5.osmosis.zone.
 const REST_ENDPOINT = "https://lcd.osmosis.zone";
 const POOL_ADDRESS  = "osmo1your_pool_address_here";
 const BECH32_PREFIX = "osmo";
@@ -1267,7 +1280,9 @@ const IntegrationGuidePage: React.FC = () => {
                                 The widget is a single self-contained script (the wallet library is compiled in — nothing
                                 else to load). Paste the script tag once, then drop a tagged <code>&lt;div&gt;</code>
                                 wherever you want a button. The <strong>only value you must supply is your pool address</strong>;
-                                the chain, endpoints, denom, and gas settings all default to Osmosis mainnet.
+                                the chain, endpoints, denom, and gas settings default to the osmo-test-5 testnet — for a
+                                mainnet pool, add one <code>BluechipWidget.init(&#123;...&#125;)</code> call pinning
+                                <code>chainId: "osmosis-1"</code> and the mainnet RPC/LCD endpoints (see the init example below).
                             </Typography>
                             <CodeBlock code={widgetQuickStartCode} language="HTML" />
 
