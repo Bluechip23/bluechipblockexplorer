@@ -5,6 +5,7 @@ import BlockExpTopBar from '../../navigation/BlockExpTopBar';
 import BlockExpSideBar from '../../navigation/BlockExpSideBar';
 import BlockExplorerNavBar from '../../navigation/BlockExplorerNavBar';
 import GeneralStats from '../../navigation/GeneralStats';
+import DemoDataBanner from './DemoDataBanner';
 
 export interface PageShellProps {
     /** Optional page heading shown left of the explorer nav menus. */
@@ -51,6 +52,7 @@ const PageShell: React.FC<PageShellProps> = ({
                     </Stack>
                     {headerExtra}
                 </Stack>
+                <DemoDataBanner />
                 {showStats && <GeneralStats />}
             </Grid>
             {children}

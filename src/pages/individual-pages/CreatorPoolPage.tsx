@@ -144,8 +144,8 @@ function computeEstimatedTimeToThreshold(
     return `~${Math.ceil(daysLeft / 30)} months`;
 }
 
-function getPoolTypeLabel(pair: { pool_type: { xyk?: Record<string, never>; stable?: Record<string, never> } } | null): string {
-    if (!pair) return '-';
+function getPoolTypeLabel(pair: { pool_type?: { xyk?: Record<string, never>; stable?: Record<string, never> } } | null): string {
+    if (!pair?.pool_type) return '-';
     if ('xyk' in pair.pool_type) return 'XYK (Constant Product)';
     if ('stable' in pair.pool_type) return 'Stable';
     return 'Unknown';
@@ -169,19 +169,22 @@ const CreatorPoolPage: React.FC = () => {
             if (!id) return;
             setLoading(true);
             try {
-                const [summary, commits, pair, analyticsData] = await Promise.all([
+                // allSettled, not all: one transient RPC failure on a
+                // secondary read (committers, pair, analytics) must not
+                // blank the whole page — render whatever loaded.
+                const [summaryRes, commitsRes, pairRes, analyticsRes] = await Promise.allSettled([
                     fetchPoolSummary(id),
                     queryPoolCommits(id),
                     queryPoolPair(id),
                     queryPoolAnalytics(id),
                 ]);
-                setPool(summary);
-                setCommitters(commits?.committers || []);
-                setPoolTypeLabel(getPoolTypeLabel(pair));
-                setAnalytics(analyticsData);
+                setPool(summaryRes.status === 'fulfilled' ? summaryRes.value : null);
+                setCommitters(commitsRes.status === 'fulfilled' ? commitsRes.value?.committers || [] : []);
+                setPoolTypeLabel(pairRes.status === 'fulfilled' ? getPoolTypeLabel(pairRes.value) : '-');
+                setAnalytics(analyticsRes.status === 'fulfilled' ? analyticsRes.value : null);
 
                 if (address) {
-                    const creator = await queryPoolCreator(id);
+                    const creator = await queryPoolCreator(id).catch(() => null);
                     setIsCreator(creator === address);
                 }
             } catch (error) {
