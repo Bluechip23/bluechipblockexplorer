@@ -77,6 +77,19 @@ const FindCreatorsPage: React.FC = () => {
         runSearch(query);
     };
 
+    // Profile search only covers creators who registered a links page —
+    // also match the on-chain pool list itself (token name/symbol,
+    // pool address, creator token denom) so searching for a pool works
+    // even when no profile exists or the profiles service is down.
+    const activeQuery = (searchParams.get('q') ?? '').trim().toLowerCase();
+    const visiblePools = activeQuery
+        ? pools.filter((p) =>
+            p.tokenName.toLowerCase().includes(activeQuery)
+            || p.tokenSymbol.toLowerCase().includes(activeQuery)
+            || p.poolAddress.toLowerCase() === activeQuery
+            || (p.creatorTokenAddress ?? '').toLowerCase() === activeQuery)
+        : pools;
+
     return (
         <PageShell title="Find Creators" showStats={false}>
             <Grid item xs={12} md={8}>
@@ -131,18 +144,24 @@ const FindCreatorsPage: React.FC = () => {
                 <Card>
                     <CardContent>
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                            <Typography variant="h6">Creators with pools</Typography>
+                            <Typography variant="h6">
+                                {activeQuery ? `Pools matching "${searchParams.get('q')}"` : 'Creators with pools'}
+                            </Typography>
                             <Button component={RouterLink} to="/topcreatorpools" size="small" startIcon={<HotTubIcon />}>
                                 Full pool table
                             </Button>
                         </Stack>
                         {loadingPools ? (
                             <Typography variant="body2" color="text.secondary">Loading pools…</Typography>
-                        ) : pools.length === 0 ? (
-                            <Typography variant="body2" color="text.secondary">No creator pools found.</Typography>
+                        ) : visiblePools.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary">
+                                {activeQuery
+                                    ? 'No pool matched that search — token names and symbols match partially; addresses and denoms must match exactly.'
+                                    : 'No creator pools found.'}
+                            </Typography>
                         ) : (
                             <List dense>
-                                {pools.map((p) => (
+                                {visiblePools.map((p) => (
                                     <ListItemButton
                                         key={p.poolAddress}
                                         onClick={() => navigate(`/creator/${p.poolAddress}`)}

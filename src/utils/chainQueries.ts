@@ -48,13 +48,20 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 // One cheap probe decides chain-vs-demo mode for the session.
 export async function chainAvailable(): Promise<boolean> {
-    try {
-        const client = await withTimeout(getCosmWasmClient(), 4000);
-        await withTimeout(client.getHeight(), 4000);
-        return true;
-    } catch {
-        return false;
+    // Two attempts: a cold connect against a public RPC (TLS handshake +
+    // status round-trip) can exceed a single window, and a false negative
+    // here silently flips the WHOLE session to built-in demo data — a
+    // completely different set of pools than the chain has.
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const client = await withTimeout(getCosmWasmClient(), 6000);
+            await withTimeout(client.getHeight(), 6000);
+            return true;
+        } catch {
+            // getCosmWasmClient self-resets on failure; retry once.
+        }
     }
+    return false;
 }
 
 async function smart<T>(contract: string, msg: Record<string, unknown>): Promise<T> {
@@ -108,6 +115,13 @@ interface PoolListEntry {
 // Enumerate the registry via the factory's paginated `pools` query, with
 // the indexer's /pools as fallback for factories deployed before the
 // query existed.
+//
+// The last successful factory listing is kept so a transient RPC failure
+// re-serves it instead of swapping the whole list for the indexer's view
+// (which can be stale, empty, or a different deployment) — otherwise the
+// visible set of pools flaps between two sources across refetches.
+let lastFactoryPools: PoolListEntry[] | null = null;
+
 export async function chainListPools(): Promise<PoolListEntry[]> {
     try {
         const all: PoolListEntry[] = [];
@@ -120,8 +134,10 @@ export async function chainListPools(): Promise<PoolListEntry[]> {
             if (res.pools.length < 100) break;
             startAfter = res.pools[res.pools.length - 1].pool_id;
         }
+        lastFactoryPools = all;
         return all;
     } catch {
+        if (lastFactoryPools) return lastFactoryPools;
         const indexed = await fetchIndexedPools();
         return (indexed ?? []).map((p) => ({
             pool_id: p.pool_id ?? 0,
