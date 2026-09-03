@@ -21,6 +21,7 @@ import {
 import { formatMicroAmount } from '../utils/bigintMath';
 import { isFullyCommitted } from '../utils/contractQueries';
 import { deadlineNs } from '../utils/datetime';
+import { stdFee } from '../utils/fees';
 import { deriveBeliefPrice, resolvePoolAssets } from '../utils/poolActions';
 import { chainQueryNativePoolId, NativePoolIdResponse } from '../utils/chainQueries';
 
@@ -140,7 +141,7 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
                 },
             };
 
-            const result = await client.execute(address, FACTORY, createMsg, { amount: [], gas: '2000000' }, 'Create Commit Pool', funds);
+            const result = await client.execute(address, FACTORY, createMsg, stdFee(3000000), 'Create Commit Pool', funds);
             setTxHash(result.transactionHash);
             setStatus('Success! Commit pool creation submitted.');
             setTokenName('');
@@ -237,7 +238,11 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
                 },
             };
 
-            const result = await client.execute(address, poolAddress, msg, { amount: [], gas: '600000' }, 'Commit', [{ denom: bluechipDenom, amount: micro }]);
+            // Pre-threshold budget covers the crossing case (native GAMM
+            // pool creation + seeding in the same tx); post-threshold
+            // commits are single swaps.
+            const commitGas = isThresholdCrossed ? 800000 : 3000000;
+            const result = await client.execute(address, poolAddress, msg, stdFee(commitGas), 'Commit', [{ denom: bluechipDenom, amount: micro }]);
             setTxHash(result.transactionHash);
             setStatus('Success! Transaction confirmed.');
         } catch (err) {
@@ -327,7 +332,13 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 
             // Fix belief_price from a live quote — a front-run that moves
             // the pool reverts the swap instead of filling at a worse price.
+            // The contract rejects a direct simple_swap without one, so a
+            // failed quote aborts here rather than broadcasting a doomed tx.
             const beliefPrice = await deriveBeliefPrice(client, poolAddress, offerInfo, micro);
+            if (!beliefPrice) {
+                setStatus('Error: could not fetch a price quote from the pool — try again in a moment.');
+                return;
+            }
 
             const msg = {
                 simple_swap: {
@@ -343,7 +354,7 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
                 address,
                 poolAddress,
                 msg,
-                { amount: [], gas: '500000' },
+                stdFee(500000),
                 'Swap',
                 [{ denom: offerDenom, amount: micro }],
             );

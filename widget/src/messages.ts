@@ -70,7 +70,22 @@ export function commitFunds(denom: string, amountMicro: string) {
     return [{ denom, amount: amountMicro }];
 }
 
-export const COMMIT_GAS = '600000';
+/** Gas budgets, mirroring the contract repo's reference frontend: a
+ * pre-threshold commit can be the one that CROSSES the threshold, which
+ * creates and seeds the native GAMM pool inside the same tx; a
+ * post-threshold commit is a single AMM swap. */
+export const COMMIT_GAS_PRE_THRESHOLD = '3000000';
+export const COMMIT_GAS_POST_THRESHOLD = '800000';
+
+/** Explicit StdFee for the commit tx. Osmosis enforces a non-zero base
+ * fee (EIP-1559-style fee market), so a `{ amount: [], ... }` fee is
+ * rejected by mainnet nodes — price the gas at the configured average
+ * (0.025uosmo/gas, the Osmosis registry default). */
+export function commitFee(denom: string, gasPricePerUnit: number, thresholdHit: boolean) {
+    const gas = thresholdHit ? COMMIT_GAS_POST_THRESHOLD : COMMIT_GAS_PRE_THRESHOLD;
+    const amount = Math.ceil(Number(gas) * gasPricePerUnit).toString();
+    return { amount: [{ denom, amount }], gas };
+}
 
 // ---------------------------------------------------------------------------
 // Queries

@@ -29,6 +29,7 @@ import {
 } from '../utils/security';
 import { deadlineNs } from '../utils/datetime';
 import { minAmountAfterSlippage } from '../utils/poolActions';
+import { stdFee } from '../utils/fees';
 
 // Cross-token swaps through the router contract. Creator tokens never
 // share a pool with each other — every pair routes through OSMO — so
@@ -160,7 +161,7 @@ const CrossTokenSwapTab: React.FC<{ client: SigningCosmWasmClient | null; addres
                 address,
                 routerAddress,
                 { execute_multi_hop: hopArgs },
-                { amount: [], gas: '900000' },
+                stdFee(900000),
                 'Cross-Token Swap',
                 [{ denom: offerDenom, amount: micro }],
             );

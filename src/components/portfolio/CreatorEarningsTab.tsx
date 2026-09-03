@@ -31,6 +31,7 @@ import {
 } from '../../utils/contractQueries';
 import { safeBigInt } from '../../utils/bigintMath';
 import { nsToDate } from '../../utils/datetime';
+import { stdFee } from '../../utils/fees';
 import { fetchCreatorStatement, indexerHealth } from '../../utils/indexerApi';
 import {
     assertWalletOnExpectedChain,
@@ -160,7 +161,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 address,
                 pool.poolAddress,
                 msg,
-                { amount: [], gas: '400000' },
+                stdFee(400000),
                 'Claim Creator Excess Liquidity',
             );
             setClaimStatus(`Success! Tx: ${result.transactionHash}`);
