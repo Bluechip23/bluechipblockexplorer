@@ -44,6 +44,7 @@ import { useWallet } from '../../context/WalletContext';
 import { compareMicro, microToNumber, safeBigInt } from '../../utils/bigintMath';
 import { timeAgo } from '../../utils/datetime';
 import { bpsPct, feeShare, useCommitFeeRates } from '../../hooks/useCommitFeeRates';
+import { approxUsd, useNativeUsdRate } from '../../hooks/useNativeUsdRate';
 
 function computeTokenPrice(reserve0: string, reserve1: string): string {
     const r0 = microToNumber(reserve0, 0);
@@ -76,29 +77,31 @@ function computeMarketCap(reserve0: string, reserve1: string, totalSupply: strin
     return formatMicroAmount(Math.floor(mcap).toString());
 }
 
-function sumPaidUsd(committers: CommitterInfo[]): bigint {
-    return committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n);
+// Ledger amounts are gross micro-OSMO (the contracts value nothing in
+// USD since the oracle removal).
+function sumPaidNative(committers: CommitterInfo[]): bigint {
+    return committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_native), 0n);
 }
 
 function computeAvgCommit(committers: CommitterInfo[]): string {
-    if (committers.length === 0) return '$0';
-    const total = sumPaidUsd(committers);
+    if (committers.length === 0) return '0 OSMO';
+    const total = sumPaidNative(committers);
     const avg = total / BigInt(committers.length);
-    return '$' + formatMicroAmount(avg);
+    return formatMicroAmount(avg) + ' OSMO';
 }
 
 function computeLargestCommit(committers: CommitterInfo[]): string {
-    if (committers.length === 0) return '$0';
+    if (committers.length === 0) return '0 OSMO';
     let max = 0n;
     for (const c of committers) {
-        const v = safeBigInt(c.total_paid_usd);
+        const v = safeBigInt(c.total_paid_native);
         if (v > max) max = v;
     }
-    return '$' + formatMicroAmount(max);
+    return formatMicroAmount(max) + ' OSMO';
 }
 
 function computeCreatorFeeRevenue(committers: CommitterInfo[], bps: bigint): string {
-    return '$' + formatMicroAmount(feeShare(sumPaidUsd(committers), bps));
+    return formatMicroAmount(feeShare(sumPaidNative(committers), bps)) + ' OSMO';
 }
 
 function commitDaysSpan(sorted: CommitterInfo[]): number {
@@ -117,9 +120,9 @@ function computeCommitVelocity(committers: CommitterInfo[]): string {
     );
     const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
-    const totalUsd = microToNumber(sumPaidUsd(committers), 0);
-    const perDay = totalUsd / days;
-    return '$' + formatMicroAmount(Math.floor(perDay).toString()) + '/day';
+    const totalNative = microToNumber(sumPaidNative(committers), 0);
+    const perDay = totalNative / days;
+    return formatMicroAmount(Math.floor(perDay).toString()) + ' OSMO/day';
 }
 
 function computeEstimatedTimeToThreshold(
@@ -133,8 +136,8 @@ function computeEstimatedTimeToThreshold(
     );
     const days = commitDaysSpan(sorted);
     if (days <= 0) return '-';
-    const totalUsd = microToNumber(sumPaidUsd(committers), 0);
-    const perDay = totalUsd / days;
+    const totalNative = microToNumber(sumPaidNative(committers), 0);
+    const perDay = totalNative / days;
     if (perDay <= 0) return '-';
     const remaining = safeBigInt(target) - safeBigInt(raised);
     if (remaining <= 0n) return 'Reached';
@@ -162,6 +165,8 @@ const CreatorPoolPage: React.FC = () => {
     const [isCreator, setIsCreator] = useState(false);
     const [poolTypeLabel, setPoolTypeLabel] = useState('-');
     const feeRates = useCommitFeeRates();
+    // Display-only OSMO/USD reference for the leaderboard's ≈ USD column.
+    const usdRate = useNativeUsdRate();
     const netToPoolBps = 10_000n - feeRates.creatorBps - feeRates.platformBps;
 
     useEffect(() => {
@@ -330,7 +335,7 @@ const CreatorPoolPage: React.FC = () => {
                                                 />
                                             </Box>
                                             <Typography variant='body2' sx={{ minWidth: 160, textAlign: 'right' }}>
-                                                ${formatMicroAmount(pool.raised)} / ${formatMicroAmount(pool.target)}
+                                                {formatMicroAmount(pool.raised)} / {formatMicroAmount(pool.target)} OSMO
                                             </Typography>
                                         </Box>
                                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
@@ -429,7 +434,9 @@ const CreatorPoolPage: React.FC = () => {
                                                 <StatCard label={`Volume (${pool?.tokenSymbol || 'Token'})`} value={formatMicroAmount(analytics.analytics.total_volume_1)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
-                                                <StatCard label="USD Raised" value={'$' + formatMicroAmount(analytics.total_usd_raised)} />
+                                                {/* total_usd_raised is the historical wire name: it is the
+                                                    GROSS micro-OSMO committed toward the threshold. */}
+                                                <StatCard label="OSMO Committed (gross)" value={formatMicroAmount(analytics.total_usd_raised)} />
                                             </Grid>
                                             <Grid item xs={6} sm={3}>
                                                 {/* The contract's total_bluechip_raised is net of commit
@@ -557,23 +564,23 @@ const CreatorPoolPage: React.FC = () => {
                                                 <TableRow>
                                                     <TableCell sx={{ width: 50 }}>Rank</TableCell>
                                                     <TableCell>Wallet</TableCell>
-                                                    <TableCell>Total Paid (USD)</TableCell>
-                                                    <TableCell>Total Paid (OSMO)</TableCell>
-                                                    <TableCell>Last Payment (USD)</TableCell>
+                                                    <TableCell>Total Committed (OSMO)</TableCell>
+                                                    <TableCell>≈ USD</TableCell>
+                                                    <TableCell>Last Commit (OSMO)</TableCell>
                                                     <TableCell>% of Total</TableCell>
                                                 </TableRow>
                                             </TableHead>
                                             <TableBody>
                                                 {(() => {
                                                     const sorted = [...committers].sort(
-                                                        (a, b) => compareMicro(b.total_paid_usd, a.total_paid_usd)
+                                                        (a, b) => compareMicro(b.total_paid_native, a.total_paid_native)
                                                     );
                                                     const grandTotal = sorted.reduce<bigint>(
-                                                        (sum, c) => sum + safeBigInt(c.total_paid_usd), 0n
+                                                        (sum, c) => sum + safeBigInt(c.total_paid_native), 0n
                                                     );
                                                     return sorted.map((c, idx) => {
                                                         const pct = grandTotal > 0n
-                                                            ? (Number((safeBigInt(c.total_paid_usd) * 10000n) / grandTotal) / 100).toFixed(1)
+                                                            ? (Number((safeBigInt(c.total_paid_native) * 10000n) / grandTotal) / 100).toFixed(1)
                                                             : '0';
                                                         return (
                                                             <TableRow key={c.wallet} hover>
@@ -594,9 +601,9 @@ const CreatorPoolPage: React.FC = () => {
                                                                 <TableCell>
                                                                     <CopyableId value={c.wallet}>{abbreviateAddress(c.wallet)}</CopyableId>
                                                                 </TableCell>
-                                                                <TableCell>${formatMicroAmount(c.total_paid_usd)}</TableCell>
-                                                                <TableCell>{formatMicroAmount(c.total_paid_bluechip)}</TableCell>
-                                                                <TableCell>${formatMicroAmount(c.last_payment_usd)}</TableCell>
+                                                                <TableCell>{formatMicroAmount(c.total_paid_native)}</TableCell>
+                                                                <TableCell>{approxUsd(c.total_paid_native, usdRate) || '—'}</TableCell>
+                                                                <TableCell>{formatMicroAmount(c.last_payment_native)}</TableCell>
                                                                 <TableCell>{pct}%</TableCell>
                                                             </TableRow>
                                                         );

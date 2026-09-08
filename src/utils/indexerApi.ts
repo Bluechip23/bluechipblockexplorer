@@ -54,14 +54,17 @@ export interface IndexedCommit {
     ts: number;
     committer: string;
     phase: string;
+    // Gross micro-OSMO attached to the commit (commit_amount_bluechip /
+    // total_amount_bluechip on the event).
     amount_bluechip: string | null;
-    amount_usd: string | null;          // legacy pre-Osmosis events only
-    // Micro-USD running total after this commit (funding-phase commits).
-    usd_raised_after: string | null;
-    // Per-commit micro-USD, derived by the indexer from consecutive
-    // running totals (legacy amount_usd when present). NULL for
-    // post-threshold "active" commits, which carry no USD information.
-    commit_usd: string | null;
+    // Pool's gross micro-OSMO running total after this commit (the
+    // event's total_raised_after; funding-phase commits only). This is
+    // the accumulator the threshold check runs against.
+    raised_after: string | null;
+    // This commit's contribution toward the threshold, in micro-OSMO,
+    // derived by the indexer from consecutive running totals. NULL for
+    // post-threshold "active" commits, which no longer count.
+    commit_native: string | null;
     tokens_received: string | null;
 }
 
@@ -71,8 +74,9 @@ export interface StatementLine {
     txhash: string;
     counterparty: string | null;
     phase: string | null;
-    gross_usd: string | null;
-    fee_share_usd: string | null;
+    // Gross micro-OSMO of the commit and the creator's fee share of it.
+    gross_native: string | null;
+    fee_share_native: string | null;
     gross_bluechip: string | null;
     amount_0: string | null;
     amount_1: string | null;
@@ -119,8 +123,7 @@ export interface WalletCommit {
     pool: string;
     phase: string;
     amount_bluechip: string | null;
-    amount_usd: string | null;          // legacy pre-Osmosis events only
-    commit_usd: string | null;          // derived per-commit micro-USD (see IndexedCommit)
+    commit_native: string | null;       // derived per-commit micro-OSMO (see IndexedCommit)
     tokens_received: string | null;
 }
 

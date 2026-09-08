@@ -53,16 +53,25 @@ All endpoints are `GET`, return JSON, and allow CORS. Time parameters are
 unix **seconds**; token amounts are micro-unit **strings** (6 decimals);
 `price` is OSMO-per-token.
 
-USD figures come from the `total_raised_after` attribute (micro-USD)
-emitted on **funding-phase** commits — the running total the pool prices
-at commit time. Current contracts emit no per-commit USD amount, so each
-commit's USD is **derived** as the difference between consecutive running
-totals and served as `commit_usd` on commit rows (and summed into the
-series/stats/statement USD aggregates). Legacy pre-Osmosis rows keep their
-explicit `amount_usd` and take precedence when present. Post-threshold
-("active") commits carry no USD information at all, so their `commit_usd`
-is `NULL`. Caveat: if `START_HEIGHT` skips part of a pool's history, the
-first indexed commit's derived USD absorbs everything raised before it.
+Every amount is OSMO — the contracts have no price oracle, so a commit's
+value toward the pool's threshold is exactly the OSMO attached. Funding-
+phase commits carry the pool's gross running total in the
+`total_raised_after` attribute (micro-OSMO), stored as `raised_after`.
+Each commit's contribution toward the threshold is **derived** as the
+difference between consecutive running totals and served as
+`commit_native` on commit rows (and summed into the series/stats
+aggregates); for the commit that crosses the threshold this is only the
+part up to the threshold (the excess is swapped or refunded). Post-
+threshold ("active") commits no longer count, so their `commit_native` is
+`NULL`, while `amount_bluechip` (the gross OSMO attached, which the
+creator's fee is taken on) is always present. Caveat: if `START_HEIGHT`
+skips part of a pool's history, the first indexed commit's derived value
+absorbs everything raised before it.
+
+Databases created before the oracle removal are migrated in place on
+startup (`usd_raised_after` → `raised_after`, `amount_usd` dropped); the
+old contracts cannot run on the current factory, so re-index from
+scratch when repointing at a redeployed one.
 
 | Endpoint | Query params | Returns |
 |---|---|---|
@@ -70,13 +79,13 @@ first indexed commit's derived USD absorbs everything raised before it.
 | `/pools` | — | every discovered pool with kind, creation time, creator-token denom (`token_address` field, a TokenFactory denom), threshold-crossing time |
 | `/pools/:address/price-series` | `bucket` (sec), `from`, `to` | OHLC + OSMO volume per bucket |
 | `/pools/:address/volume-series` | `bucket`, `from`, `to` | buys/sells counts and OSMO volume per bucket |
-| `/pools/:address/commit-series` | `bucket`, `from`, `to` | commits, USD (derived — see USD note above), unique committers per bucket |
+| `/pools/:address/commit-series` | `bucket`, `from`, `to` | commits, gross OSMO toward the threshold (`native`, derived — see note above), unique committers per bucket |
 | `/pools/:address/trades` | `limit`, `before_ts`, `side`, `min_bluechip` | newest-first trade feed (swaps + post-threshold commits); `min_bluechip` is the whale filter |
-| `/pools/:address/commits` | `limit`, `before_ts`, `wallet` | newest-first per-transaction commit history (includes derived `commit_usd`) |
+| `/pools/:address/commits` | `limit`, `before_ts`, `wallet` | newest-first per-transaction commit history (includes derived `commit_native`) |
 | `/wallets/:address/commits` | `limit`, `before_ts` | newest-first cross-pool commit history for one wallet |
 | `/wallets/:address/trades` | `limit`, `before_ts` | newest-first cross-pool trade history (buys/sells) for one wallet |
 | `/pools/:address/creator-statement` | `from`, `to`, `fee_bps` (default 500) | chronological creator income lines: the creator's fee share of every commit + fee-pot/excess claim events |
-| `/pools/:address/stats` | `window` (sec, default 86400) | current-vs-previous window totals (trades, buys, sells, volume, commits, USD, unique committers) |
+| `/pools/:address/stats` | `window` (sec, default 86400) | current-vs-previous window totals (trades, buys, sells, volume, commits, gross OSMO toward the threshold, unique committers) |
 
 ## How it works
 
@@ -105,7 +114,7 @@ swap through the Osmosis pool and only report `swap_amount_bluechip` /
 - **Pruned nodes:** if your RPC node prunes history, backfill from an
   archive node first (or set `START_HEIGHT` to the oldest unpruned height
   and accept the gap).
-- **Accounting precision:** aggregate sums (`volume_bluechip`, `usd`, ...)
+- **Accounting precision:** aggregate sums (`volume_bluechip`, `native`, ...)
   are computed as floats — fine for charts, not for accounting. The
   per-row micro-unit strings and the on-chain ledger are authoritative;
   `creator-statement` fee shares use integer string math.

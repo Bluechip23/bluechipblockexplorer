@@ -50,6 +50,9 @@ import { microToNumber, safeBigInt } from '../utils/bigintMath';
 import { timeAgo } from '../utils/datetime';
 import { bpsPct, feeShare, useCommitFeeRates } from '../hooks/useCommitFeeRates';
 
+// Committer tiers are OSMO amounts (see utils/commitTiers.ts).
+const COMMITTER_TIER_LEGEND = 'Whale (10K+ OSMO) / Mid (1K–10K OSMO) / Small (<1K OSMO)';
+
 type TimePeriod = '1m' | '3m' | '1y';
 
 const PERIOD_LABELS: Record<TimePeriod, string> = {
@@ -82,10 +85,10 @@ export function computeCurrentPrice(pool: PoolSummary): string {
 }
 
 function computeCreatorFeeRevenue(committers: CommitterInfo[], creatorBps: bigint): string {
-    // The creator's commit-fee share of gross commit USD, at the rate
+    // The creator's commit-fee share of gross OSMO committed, at the rate
     // from the factory config — BigInt math to preserve precision.
-    const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
-    return feeShare(totalUsd, creatorBps).toString();
+    const totalNative = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_native), 0n);
+    return feeShare(totalNative, creatorBps).toString();
 }
 
 function computeCirculatingSupply(pool: PoolSummary): {
@@ -212,7 +215,7 @@ const ThresholdSection: React.FC<{
 
     if (!pool.thresholdReached) {
         // ── Pre-threshold: show progress bar and live stats ──
-        const avgCommitUsd = committers.length > 0
+        const avgCommitNative = committers.length > 0
             ? raised / BigInt(committers.length)
             : 0n;
 
@@ -222,10 +225,10 @@ const ThresholdSection: React.FC<{
                 <Box sx={{ px: 2, pb: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                         <Typography variant="body2" fontWeight="bold">
-                            ${formatMicroAmount(raised.toString())} raised
+                            {formatMicroAmount(raised.toString())} OSMO raised
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                            ${formatMicroAmount(target.toString())} target
+                            {formatMicroAmount(target.toString())} OSMO target
                         </Typography>
                     </Box>
                     <LinearProgress
@@ -240,10 +243,10 @@ const ThresholdSection: React.FC<{
                 <MetricRow
                     icon={<MonetizationOnIcon fontSize="small" color="primary" />}
                     label="Total Committed"
-                    value={`$${formatMicroAmount(
-                        committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_usd), 0n).toString()
-                    )}`}
-                    subtext="Aggregate of all commit contributions"
+                    value={`${formatMicroAmount(
+                        committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_native), 0n).toString()
+                    )} OSMO`}
+                    subtext="Aggregate of all commit contributions (gross, before fees)"
                 />
                 <MetricRow
                     icon={<GroupIcon fontSize="small" color="primary" />}
@@ -256,13 +259,13 @@ const ThresholdSection: React.FC<{
                         <MetricRow
                             icon={<MonetizationOnIcon fontSize="small" color="action" />}
                             label="Avg Commit Value"
-                            value={`$${formatMicroAmount(avgCommitUsd.toString())}`}
+                            value={`${formatMicroAmount(avgCommitNative.toString())} OSMO`}
                         />
                         <MetricRow
                             icon={<GroupIcon fontSize="small" color="action" />}
                             label="Committer Breakdown"
                             value={`${analytics.walletBreakdown.whaleCommitters}W / ${analytics.walletBreakdown.midCommitters}M / ${analytics.walletBreakdown.smallCommitters}S`}
-                            subtext="Whale ($5K+) / Mid ($500–$5K) / Small (<$500)"
+                            subtext={COMMITTER_TIER_LEGEND}
                         />
                     </Box>
                 )}
@@ -277,16 +280,16 @@ const ThresholdSection: React.FC<{
             <MetricRow
                 icon={<EmojiEventsIcon fontSize="small" sx={{ color: '#ffd700' }} />}
                 label="Total Raised"
-                value={`$${formatMicroAmount(pool.raised)}`}
-                subtext={`Target: $${formatMicroAmount(pool.target)}`}
+                value={`${formatMicroAmount(pool.raised)} OSMO`}
+                subtext={`Target: ${formatMicroAmount(pool.target)} OSMO`}
             />
             <MetricRow
                 icon={<MonetizationOnIcon fontSize="small" color="primary" />}
                 label="Total Committed"
-                value={`$${formatMicroAmount(
-                    committers.reduce((sum, c) => sum + parseInt(c.total_paid_usd || '0'), 0).toString()
-                )}`}
-                subtext="Aggregate of all commit contributions"
+                value={`${formatMicroAmount(
+                    committers.reduce<bigint>((sum, c) => sum + safeBigInt(c.total_paid_native), 0n).toString()
+                )} OSMO`}
+                subtext="Aggregate of all commit contributions (gross, before fees)"
             />
             <MetricRow
                 icon={<GroupIcon fontSize="small" color="primary" />}
@@ -307,14 +310,14 @@ const ThresholdSection: React.FC<{
                     <MetricRow
                         icon={<MonetizationOnIcon fontSize="small" color="action" />}
                         label="Avg Commit to Cross"
-                        value={`$${formatMicroAmount(analytics.avgCommitValueUsd)}`}
+                        value={`${formatMicroAmount(analytics.avgCommitValueNative)} OSMO`}
                         subtext={`${analytics.totalCommittersAtThreshold} committers`}
                     />
                     <MetricRow
                         icon={<GroupIcon fontSize="small" color="action" />}
                         label="Committer Breakdown"
                         value={`${analytics.walletBreakdown.whaleCommitters}W / ${analytics.walletBreakdown.midCommitters}M / ${analytics.walletBreakdown.smallCommitters}S`}
-                        subtext="Whale ($5K+) / Mid ($500–$5K) / Small (<$500)"
+                        subtext={COMMITTER_TIER_LEGEND}
                     />
                 </>
             )}
@@ -384,7 +387,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
 
     const avgCommitSize = committers.length > 0
         ? (
-              committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n) / BigInt(committers.length)
+              committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_native), 0n) / BigInt(committers.length)
           ).toString()
         : '0';
 
@@ -579,7 +582,7 @@ const TokenPerformanceMetrics: React.FC<TokenPerformanceMetricsProps> = ({ pool 
                 <MetricRow
                     icon={<MonetizationOnIcon color="action" />}
                     label="Avg Commitment Size"
-                    value={`$${formatMicroAmount(avgCommitSize)}`}
+                    value={`${formatMicroAmount(avgCommitSize)} OSMO`}
                     subtext={`Across ${committers.length} committer${committers.length !== 1 ? 's' : ''}`}
                 />
 

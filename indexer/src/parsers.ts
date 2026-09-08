@@ -8,8 +8,10 @@ import { decodeEventAttrs, RawEvent } from './rpc';
 //     action=commit, phase, committer, total_commit_count, pool_contract,
 //     block_height, block_time + per-phase amount attributes:
 //       funding             – pre-threshold commit:
-//                             commit_amount_bluechip (micro-OSMO),
-//                             total_raised_after (running total, micro-USD),
+//                             commit_amount_bluechip (gross micro-OSMO),
+//                             total_raised_after (pool's gross running
+//                             total, micro-OSMO — what the threshold
+//                             check runs against),
 //                             total_bluechip_raised_after (net micro-OSMO)
 //       active              – post-threshold commit routed through the
 //                             Osmosis AMM: commit_amount_bluechip,
@@ -21,10 +23,11 @@ import { decodeEventAttrs, RawEvent } from './rpc';
 //                             bluechip_excess_refunded
 //       threshold_hit_exact – hit the threshold exactly (no excess swap):
 //                             commit_amount_bluechip, total_raised_after
-//     Legacy (pre-Osmosis) commits also carried per-commit USD attributes
-//     (commit_amount_usd, total_usd_raised_after, threshold_amount_usd,
-//     swap_amount_usd) — no longer emitted, still parsed when present so
-//     historical backfills keep their USD figures.
+//     Every amount is OSMO: the contracts have no price oracle, so a
+//     commit's value toward the threshold is its attached amount. (Older
+//     contract generations emitted USD attributes — commit_amount_usd,
+//     total_usd_raised_after, ... — those pools cannot run on the current
+//     factory and the attributes are ignored.)
 //   swap (pool-core/src/swap.rs):
 //     Swaps are async on the Osmosis-native contracts: the dispatch emits
 //     action=swap (sender, receiver, offer_asset, ask_asset, offer_amount,
@@ -93,17 +96,6 @@ function num(s: string | undefined): number | null {
     if (s === undefined) return null;
     const n = parseFloat(s);
     return Number.isFinite(n) ? n : null;
-}
-
-// Sum two micro-unit attribute strings; null when neither is present or
-// either is malformed.
-function sumMicro(a: string | undefined, b: string | undefined): string | null {
-    if (a === undefined && b === undefined) return null;
-    try {
-        return (BigInt(a ?? '0') + BigInt(b ?? '0')).toString();
-    } catch {
-        return null;
-    }
 }
 
 // OSMO-per-token price from micro amounts (decimals cancel: both
@@ -207,14 +199,9 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                     // commit_amount_bluechip; the threshold_crossing
                     // (with excess) path reports total_amount_bluechip.
                     amount_bluechip: a['commit_amount_bluechip'] ?? a['total_amount_bluechip'] ?? null,
-                    // Per-commit USD is legacy-only (pre-Osmosis events);
-                    // current events carry no commit_amount_usd, so this
-                    // is null on the live chain. Kept for historical txs.
-                    amount_usd: a['commit_amount_usd'] ?? sumMicro(a['threshold_amount_usd'], a['swap_amount_usd']),
-                    // Running USD total: total_raised_after (micro-USD,
-                    // funding-phase commits) on current events, with the
-                    // legacy total_usd_raised_after as fallback.
-                    usd_raised_after: a['total_raised_after'] ?? a['total_usd_raised_after'] ?? null,
+                    // Pool's gross micro-OSMO running total after the
+                    // commit (funding-phase and exact-hit commits).
+                    raised_after: a['total_raised_after'] ?? null,
                     bluechip_raised_after: a['total_bluechip_raised_after'] ?? null,
                     tokens_received: a['tokens_received'] ?? null,
                 });

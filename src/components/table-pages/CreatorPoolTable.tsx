@@ -41,7 +41,7 @@ const columns: readonly Column[] = [
     { id: 'address', label: 'Pool Address' },
     { id: 'status', label: 'Status' },
     { id: 'liquidity', label: 'Liquidity (OSMO)' },
-    { id: 'raised', label: 'Raised (USD)' },
+    { id: 'raised', label: 'Raised (OSMO)' },
     { id: 'committers', label: 'Committers' },
     { id: 'actions', label: '' },
 ];
@@ -168,7 +168,7 @@ const CreatorPoolTable: React.FC = () => {
                                             <PoolStatusChip thresholdReached={row.thresholdReached} />
                                         </TableCell>
                                         <TableCell>{formatMicroAmount(row.reserve0)}</TableCell>
-                                        <TableCell>${formatMicroAmount(row.raised)}</TableCell>
+                                        <TableCell>{formatMicroAmount(row.raised)}</TableCell>
                                         <TableCell>{row.totalCommitters}</TableCell>
                                         <TableCell align="right">
                                             <PoolActionMenu

@@ -6,18 +6,19 @@ import {
     formatMicroAmount,
     queryDistributionState,
     queryFactoryNotifyStatus,
-    queryNativeUsdRate,
+    queryPendingChanges,
 } from '../../utils/contractQueries';
+import { describeRateSource, fetchNativeUsdRate, NativeUsdRate } from '../../utils/nativeUsdPrice';
 import { indexerHealth } from '../../utils/indexerApi';
 import { NATIVE_SYMBOL } from '../../defi/types';
 import { factoryAddress } from './IndividualPage.const';
 
-// Protocol-health strip for the front page. Commits are valued through
-// the Pyth native/USD price feed configured on the factory (kept fresh
-// on-chain by a price keeper) and fail closed when the price is stale,
-// low-confidence, or unavailable — so surfacing these signals publicly
-// turns "the site is broken" support pings into "the price feed is
-// down / a distribution is stalled".
+// Protocol-health strip for the front page. There is no price oracle in
+// the protocol any more (commits count in OSMO), so the operational
+// signals are the post-threshold payout distributions, factory notify
+// retries, the factory's 48h-timelocked pending changes (the timelock's
+// value is community observability), and the indexer. The OSMO/USD chip
+// is a market reference only.
 
 // How many crossed pools to health-scan (keeps front-page load bounded).
 const POOL_SCAN_CAP = 12;
@@ -25,12 +26,14 @@ const POOL_SCAN_CAP = 12;
 type Tone = 'success' | 'warning' | 'error' | 'default';
 
 interface StripState {
-    // micro-USD per native token; null = the factory's Pyth-backed
-    // conversion query failing (stale/low-confidence/unavailable price).
-    usdRate: string | null;
+    // OSMO/USD reference rate; null = no price source answered (display
+    // only — commits are unaffected).
+    usdRate: NativeUsdRate | null;
     pendingNotifies: number;
     stalledDistributions: number;
     activeDistributions: number;
+    // In-flight 48h-timelocked factory changes; null = query unsupported.
+    pendingChanges: number | null;
     indexerHeight: number | null;
     loaded: boolean;
 }
@@ -38,6 +41,7 @@ interface StripState {
 const EMPTY: StripState = {
     usdRate: null,
     pendingNotifies: 0, stalledDistributions: 0, activeDistributions: 0,
+    pendingChanges: null,
     indexerHeight: null, loaded: false,
 };
 
@@ -47,10 +51,11 @@ const OpsStatusStrip: React.FC = () => {
     useEffect(() => {
         let cancelled = false;
         async function load() {
-            const [rate, idx, pools] = await Promise.all([
-                queryNativeUsdRate(),
+            const [rate, idx, pools, pending] = await Promise.all([
+                fetchNativeUsdRate().catch(() => null),
                 indexerHealth(),
                 fetchAllPoolSummaries(factoryAddress).catch(() => []),
+                queryPendingChanges().catch(() => null),
             ]);
 
             const crossed = pools.filter((p) => p.thresholdReached).slice(0, POOL_SCAN_CAP);
@@ -64,10 +69,14 @@ const OpsStatusStrip: React.FC = () => {
 
             if (cancelled) return;
             setS({
-                usdRate: rate?.rate_used ?? null,
+                usdRate: rate,
                 pendingNotifies: healths.filter((h) => h.pending).length,
                 stalledDistributions: healths.filter((h) => h.dist?.is_stalled).length,
                 activeDistributions: healths.filter((h) => h.dist?.is_distributing && !h.dist.is_stalled).length,
+                pendingChanges: pending
+                    ? (pending.config ? 1 : 0) + (pending.router ? 1 : 0) + (pending.pool_upgrade ? 1 : 0)
+                        + pending.pool_configs.length
+                    : null,
                 indexerHeight: idx?.lastIndexedHeight ?? null,
                 loaded: true,
             });
@@ -79,16 +88,23 @@ const OpsStatusStrip: React.FC = () => {
 
     if (!s.loaded) return null;
 
-    // The factory's conversion query is fail-closed over the Pyth feed
-    // (staleness + confidence gates), so an erroring query means commits
-    // are being rejected on-chain too.
-    const priceTone: Tone = s.usdRate === null ? 'error' : 'success';
+    // Reference price only: nothing on-chain reads it, so a missing rate
+    // is neutral rather than an outage.
+    const priceTone: Tone = s.usdRate === null ? 'default' : 'success';
     const priceLabel = s.usdRate === null
-        ? `${NATIVE_SYMBOL}/USD: unavailable`
-        : `${NATIVE_SYMBOL}/USD: $${formatMicroAmount(s.usdRate, 6, 4)}`;
+        ? `${NATIVE_SYMBOL}/USD: n/a`
+        : `${NATIVE_SYMBOL}/USD: $${formatMicroAmount(s.usdRate.rateMicroUsd, 6, 4)}`;
     const priceTip = s.usdRate === null
-        ? `The factory's ${NATIVE_SYMBOL}/USD price query is failing (Pyth price stale, low-confidence, or unavailable) — commits are valued through it and are being rejected until the feed recovers.`
-        : `Live ${NATIVE_SYMBOL}/USD rate from the Pyth feed configured on the factory. A price keeper keeps the feed fresh on-chain; the read fails closed past the staleness/confidence gates.`;
+        ? `No ${NATIVE_SYMBOL}/USD reference price is reachable (Osmosis pool TWAP and CoinGecko both failed). Display only — commits are counted in ${NATIVE_SYMBOL} and are unaffected.`
+        : `${NATIVE_SYMBOL}/USD reference from ${describeRateSource(s.usdRate.source)}. Display only — the contracts value commits in ${NATIVE_SYMBOL}, not USD.`;
+
+    const timelockTone: Tone = s.pendingChanges === null ? 'default'
+        : s.pendingChanges > 0 ? 'warning' : 'success';
+    const timelockLabel = s.pendingChanges === null ? 'Timelock: n/a'
+        : s.pendingChanges > 0 ? `Timelock: ${s.pendingChanges} pending` : 'Timelock: clear';
+    const timelockTip = s.pendingChanges === null
+        ? 'This factory does not expose the pending_changes query.'
+        : 'Factory changes proposed by the admin and waiting out the 48h timelock (config replacement, router rotation, pool upgrades, per-pool config). Review them before they become effective.';
 
     const payoutsTone: Tone = s.stalledDistributions > 0 ? 'error'
         : s.activeDistributions > 0 ? 'warning' : 'success';
@@ -115,6 +131,7 @@ const OpsStatusStrip: React.FC = () => {
         { label: priceLabel, tone: priceTone, tip: priceTip },
         { label: payoutsLabel, tone: payoutsTone, tip: payoutsTip },
         { label: notifyLabel, tone: notifyTone, tip: notifyTip },
+        { label: timelockLabel, tone: timelockTone, tip: timelockTip },
         { label: indexerLabel, tone: indexerTone, tip: indexerTip },
     ];
 

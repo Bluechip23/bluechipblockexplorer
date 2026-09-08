@@ -17,6 +17,7 @@ import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import PoolActionMenu from '../actions/PoolActionMenu';
 import { formatMicroAmount } from '../../utils/contractQueries';
+import { approxUsd, useNativeUsdRate } from '../../hooks/useNativeUsdRate';
 import { MyCommitment } from './types';
 
 interface PortfolioCommitmentsTableProps {
@@ -25,6 +26,8 @@ interface PortfolioCommitmentsTableProps {
 }
 
 const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ commitments, loading }) => {
+    // Display-only OSMO/USD reference (the ledger itself is OSMO).
+    const usdRate = useNativeUsdRate();
     if (loading) {
         return (
             <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -52,9 +55,9 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                         <TableRow>
                             <TableCell>Pool</TableCell>
                             <TableCell>Status</TableCell>
-                            <TableCell>My Total (USD)</TableCell>
                             <TableCell>My Total (OSMO)</TableCell>
-                            <TableCell>Last Payment</TableCell>
+                            <TableCell>≈ USD</TableCell>
+                            <TableCell>Last Commit (OSMO)</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>
                     </TableHead>
@@ -74,9 +77,9 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                                 <TableCell>
                                     <PoolStatusChip thresholdReached={c.pool.thresholdReached} />
                                 </TableCell>
-                                <TableCell>${formatMicroAmount(c.commit.total_paid_usd)}</TableCell>
-                                <TableCell>{formatMicroAmount(c.commit.total_paid_bluechip)}</TableCell>
-                                <TableCell>${formatMicroAmount(c.commit.last_payment_usd)}</TableCell>
+                                <TableCell>{formatMicroAmount(c.commit.total_paid_native)}</TableCell>
+                                <TableCell>{approxUsd(c.commit.total_paid_native, usdRate) || '—'}</TableCell>
+                                <TableCell>{formatMicroAmount(c.commit.last_payment_native)}</TableCell>
                                 <TableCell align="right">
                                     <PoolActionMenu
                                         poolAddress={c.pool.poolAddress}

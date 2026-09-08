@@ -2,6 +2,7 @@ import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { factoryAddress, rpcEndpoint, apiEndpoint } from '../components/universal/IndividualPage.const';
 import { fetchIndexedPools, IndexedPool } from './indexerApi';
 import { safeBigInt } from './bigintMath';
+import { MID_COMMIT_NATIVE, WHALE_COMMIT_NATIVE } from './commitTiers';
 import type {
     CommitStatus,
     CommitterInfo,
@@ -324,7 +325,7 @@ export async function chainQueryPoolCommits(poolAddress: string): Promise<PoolCo
         const res: PoolCommitResponse = await smart(poolAddress, {
             pool_commits: {
                 pool_contract_address: poolAddress,
-                min_payment_usd: null,
+                min_payment_native: null,
                 after_timestamp: null,
                 start_after: startAfter,
                 limit: 100,
@@ -366,8 +367,11 @@ export async function chainFetchPoolSummary(poolAddress: string): Promise<PoolSu
 
         const thresholdReached = isFully(analytics.threshold_status);
         const progress = progressOf(analytics.threshold_status);
+        // All micro-OSMO: the in-progress target is the pool's own
+        // threshold; a crossed pool falls back to the factory's current
+        // threshold, then to the gross committed total.
         const target = progress?.target
-            ?? factoryCfg?.commit_threshold_limit_usd
+            ?? factoryCfg?.commit_threshold_limit_native
             ?? analytics.total_usd_raised;
         const idx = indexed.get(poolAddress);
 
@@ -403,7 +407,7 @@ export async function chainFetchPoolSummary(poolAddress: string): Promise<PoolSu
             currentPrice1to0: analytics.current_price_1_to_0,
             feeReserve0: analytics.fee_reserve_0,
             feeReserve1: analytics.fee_reserve_1,
-            totalUsdRaised: analytics.total_usd_raised,
+            totalNativeRaised: analytics.total_usd_raised,
             totalBluechipRaised: analytics.total_bluechip_raised,
         };
     } catch (err) {
@@ -500,10 +504,8 @@ export async function chainQueryThresholdAnalytics(
 ): Promise<ThresholdAnalytics | null> {
     const idx = (await indexedPoolMap()).get(poolAddress);
 
-    const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
-    const avgUsd = committers.length > 0 ? totalUsd / BigInt(committers.length) : 0n;
-    const WHALE_USD = 5_000_000_000n;   // $5,000
-    const MID_USD = 500_000_000n;       // $500
+    const totalNative = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_native), 0n);
+    const avgNative = committers.length > 0 ? totalNative / BigInt(committers.length) : 0n;
 
     const crossedAt = idx?.threshold_crossed_at ?? null;
     const createdAt = idx?.created_at ?? null;
@@ -515,42 +517,43 @@ export async function chainQueryThresholdAnalytics(
             ? Math.max(0, Math.round((crossedAt - createdAt) / 86_400))
             : null,
         totalCommittersAtThreshold: committers.length,
-        avgCommitValueUsd: avgUsd.toString(),
-        totalRaisedUsd: totalUsd.toString(),
+        avgCommitValueNative: avgNative.toString(),
+        totalRaisedNative: totalNative.toString(),
         walletBreakdown: {
-            whaleCommitters: committers.filter((c) => safeBigInt(c.total_paid_usd) >= WHALE_USD).length,
+            whaleCommitters: committers.filter((c) => safeBigInt(c.total_paid_native) >= WHALE_COMMIT_NATIVE).length,
             midCommitters: committers.filter((c) => {
-                const v = safeBigInt(c.total_paid_usd);
-                return v >= MID_USD && v < WHALE_USD;
+                const v = safeBigInt(c.total_paid_native);
+                return v >= MID_COMMIT_NATIVE && v < WHALE_COMMIT_NATIVE;
             }).length,
-            smallCommitters: committers.filter((c) => safeBigInt(c.total_paid_usd) < MID_USD).length,
+            smallCommitters: committers.filter((c) => safeBigInt(c.total_paid_native) < MID_COMMIT_NATIVE).length,
         },
     };
 }
 
 // ---------------------------------------------------------------------------
-// USD pricing (Pyth native/USD feed, via the factory's convert_native_to_usd)
+// Factory timelock observability (`pending_changes {}`)
 // ---------------------------------------------------------------------------
 
-// Mirrors pool-factory-interfaces `ConversionResponse`. `rate_used` is
-// micro-USD per native token (1_000_000 = $1.00/OSMO); `timestamp` is
-// the unix-seconds block time the valuation was performed at. The
-// factory reads the Pyth feed configured on it (kept fresh on-chain by
-// a price keeper) and fails CLOSED: a stale price (older than
-// max_pyth_staleness_seconds), a too-wide confidence interval, or an
-// out-of-band rate makes this query error rather than return a bad rate.
-export interface ConversionResponse {
-    amount: string;       // USD value (6 decimals) of the queried amount
-    rate_used: string;    // micro-USD per OSMO
-    timestamp: number;    // unix seconds (current block time)
+// Mirrors factory `PendingChangesResponse`: every in-flight 48h-timelocked
+// change in one read. The nested bodies mirror the factory's PendingConfig /
+// PendingRouter / PoolUpgrade / PendingPoolConfig records; only the fields
+// the explorer surfaces are typed, the rest is passed through.
+export interface PendingChangesResponse {
+    config: { new_config: FactoryConfig; effective_after: string } | null;
+    router: { router: string; effective_after: string } | null;
+    pool_upgrade: {
+        new_code_id: number;
+        pools_to_upgrade: number[];
+        upgraded_count: number;
+        effective_after: string;
+        [key: string]: unknown;
+    } | null;
+    // (pool_id, pending) pairs; capped at 100 entries per read.
+    pool_configs: Array<[number, { pool_id: number; effective_after: string; update: Record<string, unknown> }]>;
 }
 
-// Values 1 OSMO (1_000_000 uosmo) in USD via the factory's Pyth-backed
-// conversion. A failed query means commits fail closed on-chain too.
-export function chainQueryNativeUsdRate(): Promise<ConversionResponse> {
-    return smart<ConversionResponse>(factoryAddress, {
-        pool_factory_query: { convert_native_to_usd: { amount: '1000000' } },
-    });
+export function chainQueryPendingChanges(): Promise<PendingChangesResponse> {
+    return smart<PendingChangesResponse>(factoryAddress, { pending_changes: {} });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,9 @@
 import { safeBigInt } from './bigintMath';
 import { sanitizeOnChainString } from './security';
 import * as chain from './chainQueries';
+import { MID_COMMIT_NATIVE, WHALE_COMMIT_NATIVE } from './commitTiers';
+
+export { MID_COMMIT_NATIVE, WHALE_COMMIT_NATIVE } from './commitTiers';
 
 const MOCK_WALLET = 'osmo1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 
@@ -77,12 +80,19 @@ export function commitProgress(status: CommitStatus | null | undefined): { raise
     return null;
 }
 
+// Per-wallet commit ledger entry (creator-pool `pool_commits` /
+// `committing_info`). Every amount is micro-OSMO (6 decimals): the
+// contracts no longer value commits in USD — a commit's value toward the
+// threshold IS its attached OSMO. `total_paid_native` /
+// `last_payment_native` are the gross (pre-fee) amounts that count toward
+// the threshold; the `*_bluechip` twins carry the same values and are
+// kept by the contract for response-shape stability.
 export interface CommitterInfo {
     wallet: string;
     last_payment_bluechip: string;
-    last_payment_usd: string;
+    last_payment_native: string;
     last_committed: string;
-    total_paid_usd: string;
+    total_paid_native: string;
     total_paid_bluechip: string;
 }
 
@@ -109,13 +119,17 @@ export interface TokenDisplayInfo {
 export type CW20TokenInfo = TokenDisplayInfo;
 
 // Mirrors the factory's FactoryInstantiate struct (returned by the
-// `factory {}` query wrapped as `{ factory: {...} }`). USD pricing comes
-// from the Pyth native/USD feed (pyth_* fields below), kept fresh
-// on-chain by a price keeper and gated fail-closed for staleness and
-// confidence. There are no standard pools.
+// `factory {}` query wrapped as `{ factory: {...} }`). There is no price
+// oracle anywhere in the protocol: the commit threshold is denominated in
+// the native asset (base units of bluechip_denom), and the only price
+// read left is the fee-swap TWAP that budgets the GAMM pool-creation fee
+// at threshold crossing. There are no standard pools.
 export interface FactoryConfig {
     factory_admin_address: string;
-    commit_threshold_limit_usd: string;
+    // Commit threshold in native base units (micro-OSMO, 6 decimals):
+    // "500000000000" = 500,000 OSMO. Applies to pools created after the
+    // value was set (governance retunes it over time).
+    commit_threshold_limit_native: string;
     // Vestigial ids from the CW20/NFT era; the current contracts mint
     // TokenFactory denoms and no longer instantiate either contract.
     cw20_token_contract_id: number;
@@ -128,18 +142,14 @@ export interface FactoryConfig {
     creator_excess_liquidity_lock_days: number;
     // Canonical native denom pools pair against (uosmo).
     bluechip_denom: string;
-    // Fee-swap EXECUTION route only (acquires the usd_quote_denom-
-    // denominated GAMM creation fee at threshold crossing). NOT a price
-    // source — USD pricing is Pyth-based since the oracle migration.
+    // Osmosis pool used ONLY to acquire the fee_quote_denom-denominated
+    // GAMM creation fee at threshold crossing (its 600s arithmetic TWAP
+    // budgets the swap; the swap executes through it). Never a price
+    // source for the threshold. 0 = unused (native-denominated fee).
     pricing_pool_id: number;
-    usd_quote_denom: string;
-    // Pyth oracle config (replaces the old twap_window_seconds). All
-    // serde(default) contract-side, so treat as possibly absent when
-    // pointed at a pre-Pyth factory.
-    pyth_contract_addr?: string;
-    pyth_native_usd_feed_id?: string;
-    max_pyth_staleness_seconds?: number;
-    pyth_conf_threshold_bps?: number;
+    // The non-native quote denom of gamm_pool_creation_fee (osmosis-1:
+    // alloyed USDC). Empty = unused.
+    fee_quote_denom: string;
     // FLAT creation fee in base units of bluechip_denom (uosmo). "0" = disabled.
     pool_creation_fee: string;
     // GAMM pool-creation fee the pool holds until threshold crossing.
@@ -190,7 +200,8 @@ export interface DistributionStateResponse {
     is_stalled: boolean;
     consecutive_failures: number;
     total_to_distribute: string;
-    total_committed_usd: string;
+    // Gross micro-OSMO committed at threshold-cross (share denominator).
+    total_committed_native: string;
     distributed_so_far: string;
 }
 
@@ -239,12 +250,12 @@ export interface ThresholdAnalytics {
     poolCreatedAt: number | null;        // unix timestamp (seconds) when pool was created
     daysToThreshold: number | null;      // days from creation to threshold crossing
     totalCommittersAtThreshold: number;
-    avgCommitValueUsd: string;           // micro USD average per committer
-    totalRaisedUsd: string;
+    avgCommitValueNative: string;        // micro-OSMO average (gross) per committer
+    totalRaisedNative: string;           // gross micro-OSMO committed
     walletBreakdown: {
-        whaleCommitters: number;         // $5,000+ USD committed
-        midCommitters: number;           // $500 – $5,000
-        smallCommitters: number;         // < $500
+        whaleCommitters: number;         // >= WHALE_COMMIT_NATIVE
+        midCommitters: number;           // MID_COMMIT_NATIVE .. WHALE_COMMIT_NATIVE
+        smallCommitters: number;         // < MID_COMMIT_NATIVE
     };
 }
 
@@ -268,6 +279,10 @@ export interface PoolAnalyticsResponse {
     fee_reserve_0: string;
     fee_reserve_1: string;
     threshold_status: CommitStatus;
+    // Wire name is historical: since the oracle removal this is the GROSS
+    // (pre-fee) micro-OSMO committed pre-threshold — the accumulator the
+    // threshold check runs against. total_bluechip_raised is the NET
+    // (post-fee) micro-OSMO that actually entered the pool.
     total_usd_raised: string;
     total_bluechip_raised: string;
     total_positions: number;
@@ -308,7 +323,9 @@ export interface PoolSummary {
     currentPrice1to0: string;
     feeReserve0: string;
     feeReserve1: string;
-    totalUsdRaised: string;
+    // Gross micro-OSMO committed toward the threshold (analytics
+    // total_usd_raised) vs. the net-of-fee micro-OSMO retained.
+    totalNativeRaised: string;
     totalBluechipRaised: string;
 }
 
@@ -319,65 +336,65 @@ const day = 86400000;
 const MOCK_COMMITTERS: CommitterInfo[] = [
     {
         wallet: MOCK_WALLET,
-        total_paid_usd: '5200000000',
+        total_paid_native: '41600000000',
         total_paid_bluechip: '41600000000',
-        last_payment_usd: '1200000000',
+        last_payment_native: '9600000000',
         last_payment_bluechip: '9600000000',
         last_committed: ((now - 2 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
-        total_paid_usd: '8400000000',
+        total_paid_native: '67200000000',
         total_paid_bluechip: '67200000000',
-        last_payment_usd: '3000000000',
+        last_payment_native: '24000000000',
         last_payment_bluechip: '24000000000',
         last_committed: ((now - 1 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
-        total_paid_usd: '3100000000',
+        total_paid_native: '24800000000',
         total_paid_bluechip: '24800000000',
-        last_payment_usd: '800000000',
+        last_payment_native: '6400000000',
         last_payment_bluechip: '6400000000',
         last_committed: ((now - 18 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
-        total_paid_usd: '2750000000',
+        total_paid_native: '22000000000',
         total_paid_bluechip: '22000000000',
-        last_payment_usd: '2750000000',
+        last_payment_native: '22000000000',
         last_payment_bluechip: '22000000000',
         last_committed: ((now - 45 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
-        total_paid_usd: '1500000000',
+        total_paid_native: '12000000000',
         total_paid_bluechip: '12000000000',
-        last_payment_usd: '500000000',
+        last_payment_native: '4000000000',
         last_payment_bluechip: '4000000000',
         last_committed: ((now - 60 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1hodl6n3m8k2f5wp4xr7qt0jv9ydclhsab3ue2',
-        total_paid_usd: '950000000',
+        total_paid_native: '7600000000',
         total_paid_bluechip: '7600000000',
-        last_payment_usd: '950000000',
+        last_payment_native: '7600000000',
         last_payment_bluechip: '7600000000',
         last_committed: ((now - 75 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1moon5r7t2n8xm3k4wqp6jf9v0ychlsab2dge1',
-        total_paid_usd: '680000000',
+        total_paid_native: '5440000000',
         total_paid_bluechip: '5440000000',
-        last_payment_usd: '680000000',
+        last_payment_native: '5440000000',
         last_payment_bluechip: '5440000000',
         last_committed: ((now - 150 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1tiny3m7k2f8n5wp4xr6qt0jv9ydclhsab1ue4',
-        total_paid_usd: '250000000',
+        total_paid_native: '2000000000',
         total_paid_bluechip: '2000000000',
-        last_payment_usd: '250000000',
+        last_payment_native: '2000000000',
         last_payment_bluechip: '2000000000',
         last_committed: ((now - 300 * day) * 1000000).toString(),
     },
@@ -398,8 +415,8 @@ const MOCK_POOLS: PoolSummary[] = [
         totalFeesCollected1: '8200000000',
         totalPositions: 14,
         thresholdReached: true,
-        raised: '25000000000',
-        target: '25000000000',
+        raised: '500000000000',
+        target: '500000000000',
         totalCommitters: 8,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 45,
         createdAtBlock: 1_024_300,
@@ -416,8 +433,8 @@ const MOCK_POOLS: PoolSummary[] = [
         currentPrice1to0: '0.5',
         feeReserve0: '1200000000',
         feeReserve1: '800000000',
-        totalUsdRaised: '25000000000',
-        totalBluechipRaised: '200000000000',
+        totalNativeRaised: '500000000000',
+        totalBluechipRaised: '470000000000',
     },
     {
         poolAddress: 'osmo1pool_beta_4m2n7xp8wk5dv3qt6rj0yfscalh9z',
@@ -433,8 +450,8 @@ const MOCK_POOLS: PoolSummary[] = [
         totalFeesCollected1: '2800000000',
         totalPositions: 7,
         thresholdReached: true,
-        raised: '25000000000',
-        target: '25000000000',
+        raised: '500000000000',
+        target: '500000000000',
         totalCommitters: 12,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 30,
         createdAtBlock: 1_310_800,
@@ -451,8 +468,8 @@ const MOCK_POOLS: PoolSummary[] = [
         currentPrice1to0: '0.620689',
         feeReserve0: '650000000',
         feeReserve1: '420000000',
-        totalUsdRaised: '25000000000',
-        totalBluechipRaised: '200000000000',
+        totalNativeRaised: '500000000000',
+        totalBluechipRaised: '470000000000',
     },
     {
         poolAddress: 'osmo1pool_gamma_9p4r6t2n7xm3k5wqv8jf0ychlsa',
@@ -468,8 +485,8 @@ const MOCK_POOLS: PoolSummary[] = [
         totalFeesCollected1: '3500000000',
         totalPositions: 4,
         thresholdReached: true,
-        raised: '25000000000',
-        target: '25000000000',
+        raised: '500000000000',
+        target: '500000000000',
         totalCommitters: 6,
         blockTimeLast: Math.floor(now / 1000) - 86400 * 60,
         createdAtBlock: 892_150,
@@ -486,8 +503,8 @@ const MOCK_POOLS: PoolSummary[] = [
         currentPrice1to0: '0.153225',
         feeReserve0: '300000000',
         feeReserve1: '580000000',
-        totalUsdRaised: '25000000000',
-        totalBluechipRaised: '200000000000',
+        totalNativeRaised: '500000000000',
+        totalBluechipRaised: '470000000000',
     },
     {
         poolAddress: 'osmo1pool_delta_2k8f5n3m7wp4xr6qt9jv0ydclhga',
@@ -503,8 +520,8 @@ const MOCK_POOLS: PoolSummary[] = [
         totalFeesCollected1: '0',
         totalPositions: 0,
         thresholdReached: false,
-        raised: '16800000000',
-        target: '25000000000',
+        raised: '336000000000',
+        target: '500000000000',
         totalCommitters: 5,
         blockTimeLast: 0,
         createdAtBlock: 1_502_900,
@@ -521,8 +538,8 @@ const MOCK_POOLS: PoolSummary[] = [
         currentPrice1to0: '0',
         feeReserve0: '0',
         feeReserve1: '0',
-        totalUsdRaised: '16800000000',
-        totalBluechipRaised: '134400000000',
+        totalNativeRaised: '336000000000',
+        totalBluechipRaised: '315840000000',
     },
     {
         poolAddress: 'osmo1pool_epsilon_6n3m8k2f5wp4xr7qt0jv9ydclhs',
@@ -538,8 +555,8 @@ const MOCK_POOLS: PoolSummary[] = [
         totalFeesCollected1: '0',
         totalPositions: 0,
         thresholdReached: false,
-        raised: '3200000000',
-        target: '25000000000',
+        raised: '64000000000',
+        target: '500000000000',
         totalCommitters: 3,
         blockTimeLast: 0,
         createdAtBlock: 1_580_200,
@@ -556,8 +573,8 @@ const MOCK_POOLS: PoolSummary[] = [
         currentPrice1to0: '0',
         feeReserve0: '0',
         feeReserve1: '0',
-        totalUsdRaised: '3200000000',
-        totalBluechipRaised: '25600000000',
+        totalNativeRaised: '64000000000',
+        totalBluechipRaised: '60160000000',
     },
 ];
 
@@ -603,41 +620,41 @@ const MOCK_POSITIONS: PositionResponse[] = [
 const MOCK_DELTA_COMMITTERS: CommitterInfo[] = [
     {
         wallet: MOCK_WALLET,
-        total_paid_usd: '4200000000',
+        total_paid_native: '33600000000',
         total_paid_bluechip: '33600000000',
-        last_payment_usd: '1500000000',
+        last_payment_native: '12000000000',
         last_payment_bluechip: '12000000000',
         last_committed: ((now - 3 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1whale8k3jx9f7tn2m4qp6rz0sdvwcyahg5e72n',
-        total_paid_usd: '6500000000',
+        total_paid_native: '52000000000',
         total_paid_bluechip: '52000000000',
-        last_payment_usd: '2000000000',
+        last_payment_native: '16000000000',
         last_payment_bluechip: '16000000000',
         last_committed: ((now - 1 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1early4m2n7xp8wk5dv3qt6rj0yfscalh9zu8e3',
-        total_paid_usd: '3500000000',
+        total_paid_native: '28000000000',
         total_paid_bluechip: '28000000000',
-        last_payment_usd: '3500000000',
+        last_payment_native: '28000000000',
         last_payment_bluechip: '28000000000',
         last_committed: ((now - 40 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1degen9p4r6t2n7xm3k5wqv8jf0ychlsab2ue6',
-        total_paid_usd: '1800000000',
+        total_paid_native: '14400000000',
         total_paid_bluechip: '14400000000',
-        last_payment_usd: '1800000000',
+        last_payment_native: '14400000000',
         last_payment_bluechip: '14400000000',
         last_committed: ((now - 55 * day) * 1000000).toString(),
     },
     {
         wallet: 'osmo1saver2k8f5n3m7wp4xr6qt9jv0ydclhgab1u3e',
-        total_paid_usd: '800000000',
+        total_paid_native: '6400000000',
         total_paid_bluechip: '6400000000',
-        last_payment_usd: '800000000',
+        last_payment_native: '6400000000',
         last_payment_bluechip: '6400000000',
         last_committed: ((now - 200 * day) * 1000000).toString(),
     },
@@ -691,12 +708,12 @@ const MOCK_ALPHA_THRESHOLD: ThresholdAnalytics = {
     poolCreatedAt: Math.floor(now / 1000) - 86400 * 72,
     daysToThreshold: 27,
     totalCommittersAtThreshold: 8,
-    avgCommitValueUsd: '3125000000',   // $3,125 avg per committer
-    totalRaisedUsd: '25000000000',
+    avgCommitValueNative: '62500000000',   // 62,500 OSMO avg per committer
+    totalRaisedNative: '500000000000',
     walletBreakdown: {
-        whaleCommitters: 2,   // $5,000+
-        midCommitters: 4,     // $500 – $5,000
-        smallCommitters: 2,   // < $500
+        whaleCommitters: 2,   // 10,000+ OSMO
+        midCommitters: 4,     // 1,000 – 10,000 OSMO
+        smallCommitters: 2,   // < 1,000 OSMO
     },
 };
 
@@ -807,26 +824,23 @@ async function mockQueryThresholdAnalytics(
         };
     }
 
-    const totalUsd = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_usd), 0n);
-    const avgUsd = committers.length > 0 ? totalUsd / BigInt(committers.length) : 0n;
-
-    const WHALE_USD = 5_000_000_000n;  // $5,000 in micro
-    const MID_USD = 500_000_000n;      // $500 in micro
+    const totalNative = committers.reduce<bigint>((s, c) => s + safeBigInt(c.total_paid_native), 0n);
+    const avgNative = committers.length > 0 ? totalNative / BigInt(committers.length) : 0n;
 
     return {
         thresholdCrossedAt: null,
         poolCreatedAt: Math.floor(now / 1000) - 86400 * 90,
         daysToThreshold: null,
         totalCommittersAtThreshold: committers.length,
-        avgCommitValueUsd: avgUsd.toString(),
-        totalRaisedUsd: pool.raised,
+        avgCommitValueNative: avgNative.toString(),
+        totalRaisedNative: pool.raised,
         walletBreakdown: {
-            whaleCommitters: committers.filter(c => safeBigInt(c.total_paid_usd) >= WHALE_USD).length,
+            whaleCommitters: committers.filter(c => safeBigInt(c.total_paid_native) >= WHALE_COMMIT_NATIVE).length,
             midCommitters: committers.filter(c => {
-                const v = safeBigInt(c.total_paid_usd);
-                return v >= MID_USD && v < WHALE_USD;
+                const v = safeBigInt(c.total_paid_native);
+                return v >= MID_COMMIT_NATIVE && v < WHALE_COMMIT_NATIVE;
             }).length,
-            smallCommitters: committers.filter(c => safeBigInt(c.total_paid_usd) < MID_USD).length,
+            smallCommitters: committers.filter(c => safeBigInt(c.total_paid_native) < MID_COMMIT_NATIVE).length,
         },
     };
 }
@@ -857,7 +871,7 @@ async function mockQueryPoolAnalytics(poolAddress: string): Promise<PoolAnalytic
         threshold_status: pool.thresholdReached
             ? 'fully_committed'
             : { in_progress: { raised: pool.raised, target: pool.target } },
-        total_usd_raised: pool.totalUsdRaised,
+        total_usd_raised: pool.totalNativeRaised,
         total_bluechip_raised: pool.totalBluechipRaised,
         total_positions: pool.totalPositions,
     };
@@ -1152,14 +1166,15 @@ export function getCosmWasmClient() {
     return chain.getCosmWasmClient();
 }
 
-// ---- Native/USD rate (drives the commit pricing banner) ----
+// ---- Factory timelock observability (`pending_changes {}`) ----
 
-export type { ConversionResponse } from './chainQueries';
+export type { PendingChangesResponse } from './chainQueries';
 
-export async function queryNativeUsdRate(): Promise<chain.ConversionResponse | null> {
-    if (await onChain()) return chain.chainQueryNativeUsdRate().catch(() => null);
-    // Demo mode: a healthy Pyth reading ($0.50 per OSMO).
-    return { amount: '500000', rate_used: '500000', timestamp: Math.floor(Date.now() / 1000) };
+// Every in-flight 48h-timelocked factory change in one read; null when
+// the factory predates the query. Demo mode reports nothing pending.
+export async function queryPendingChanges(): Promise<chain.PendingChangesResponse | null> {
+    if (await onChain()) return chain.chainQueryPendingChanges().catch(() => null);
+    return { config: null, router: null, pool_upgrade: null, pool_configs: [] };
 }
 
 // ---- Factory config (pool creation fee, threshold, payout splits) ----
@@ -1169,7 +1184,7 @@ export async function queryFactoryConfig(): Promise<FactoryConfig | null> {
     // Demo mode: mirrors the osmo_testnet_v2 deployment values.
     return {
         factory_admin_address: MOCK_WALLET,
-        commit_threshold_limit_usd: '20000000',   // $20 testnet target
+        commit_threshold_limit_native: '250000000',   // 250 OSMO testnet target
         cw20_token_contract_id: 1,
         cw721_nft_contract_id: 2,
         create_pool_wasm_contract_id: 3,
@@ -1179,12 +1194,8 @@ export async function queryFactoryConfig(): Promise<FactoryConfig | null> {
         max_bluechip_lock_per_pool: '100000000000',
         creator_excess_liquidity_lock_days: 365,
         bluechip_denom: 'uosmo',
-        pricing_pool_id: 1,
-        usd_quote_denom: 'ibc/mock_usdc_denom',
-        pyth_contract_addr: 'osmo1mock_pyth_contract_address',
-        pyth_native_usd_feed_id: '5867f5683c757393a0670ef0f701490950fe93fdb006d181c8265a831ac0c5c6',
-        max_pyth_staleness_seconds: 300,
-        pyth_conf_threshold_bps: 200,
+        pricing_pool_id: 314,
+        fee_quote_denom: 'ibc/DE6792CF9E521F6AD6E9A4BDF6225C9571A3B74ACC0A529F92BC5122A39D2E58',
         pool_creation_fee: '1000000',             // 1 OSMO flat fee
         gamm_pool_creation_fee: { denom: 'uosmo', amount: '1000000' },
         threshold_payout_amounts: {

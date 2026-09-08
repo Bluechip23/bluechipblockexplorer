@@ -148,7 +148,8 @@ export async function subscribe(opts: { pool?: string; amount: string | number }
 export async function checkSubscription(opts: {
     pool?: string;
     address?: string;
-    minUsd?: number;
+    /** Minimum lifetime OSMO committed (whole OSMO) to pass the gate. */
+    minOsmo?: number;
 }): Promise<GateResult> {
     const cfg = getConfig();
     const pool = opts.pool ?? cfg.pool;
@@ -161,5 +162,5 @@ export async function checkSubscription(opts: {
         throw new Error(`Subscription lookup failed: HTTP ${res.status}`);
     }
     const body = (await res.json()) as { data: CommitRecord | null };
-    return evaluateGate(body.data ?? null, opts.minUsd ?? 0);
+    return evaluateGate(body.data ?? null, opts.minOsmo ?? 0);
 }

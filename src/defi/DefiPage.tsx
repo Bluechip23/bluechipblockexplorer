@@ -6,7 +6,7 @@ import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import PageShell from '../components/universal/PageShell';
 import PoolPickerField from '../components/universal/PoolPickerField';
 import CommitTracker from './CommitTracker';
-import OracleStatusBanner from '../components/universal/OracleStatusBanner';
+import NativePriceBanner from '../components/universal/NativePriceBanner';
 import CrossTokenSwapTab from './CrossTokenSwapTab';
 import { NATIVE_DENOM, COIN_DECIMALS } from './types';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
@@ -158,7 +158,7 @@ const CreatePoolTab: React.FC<{ client: SigningCosmWasmClient | null; address: s
             <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                 <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Pool Configuration</Typography>
                 <Typography variant="body2">
-                    All commit-phase economics (threshold, fees, lock caps, Pyth USD pricing) are read from the
+                    All commit-phase economics (OSMO commit threshold, fees, lock caps, fee-swap pool) are read from the
                     factory's stored config — the create payload only carries the token pair. Your token is
                     minted as a native Osmosis TokenFactory denom, and the flat OSMO creation fee is read
                     live from the factory and attached automatically (surplus is refunded on-chain).
@@ -258,7 +258,7 @@ const CommitTab: React.FC<{ client: SigningCosmWasmClient | null; address: strin
             </Tabs>
             {subTab === 0 && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <OracleStatusBanner />
+                    <NativePriceBanner />
                     <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Pool" />
                     <TextField label="Amount (OSMO)" value={amount} onChange={(e) => setAmount(e.target.value)} type="number" />
                     <TextField label="Max Spread" value={maxSpread} onChange={(e) => setMaxSpread(e.target.value)} helperText="e.g. 0.005 for 0.5% (applies post-threshold)" />

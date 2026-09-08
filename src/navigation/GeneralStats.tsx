@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { factoryAddress, profilesApiUrl } from '../components/universal/IndividualPage.const';
 import { getCosmWasmClient } from '../utils/contractQueries';
 import { formatMicroAmount } from '../utils/bigintMath';
+import { fetchNativeUsdRate } from '../utils/nativeUsdPrice';
 import { NATIVE_SYMBOL } from '../defi/types';
 
 // Search + protocol stats strip. Everything here reads from the factory /
@@ -46,23 +47,23 @@ const GeneralStats: React.FC = () => {
         let cancelled = false;
 
         const fetchStats = async () => {
-            // Live OSMO/USD rate (Pyth-backed) the contracts use to value commits.
+            // OSMO/USD reference price (Osmosis pool TWAP, CoinGecko fallback).
+            // Display only: the contracts value nothing in USD any more.
             try {
-                const conv = await smartQuery<{ rate_used: string }>(factoryAddress, {
-                    pool_factory_query: { convert_native_to_usd: { amount: '1000000' } },
-                });
-                if (!cancelled && conv?.rate_used) {
-                    setPrice(`$${formatMicroAmount(conv.rate_used, 6, 4)}`);
+                const rate = await fetchNativeUsdRate();
+                if (!cancelled && rate) {
+                    setPrice(`$${formatMicroAmount(rate.rateMicroUsd, 6, 4)}`);
                 }
-            } catch { /* factory unreachable — leave the dash */ }
+            } catch { /* no price source — leave the dash */ }
 
+            // Commit threshold is OSMO-denominated (micro-OSMO base units).
             try {
-                const cfg = await smartQuery<{ factory: { commit_threshold_limit_usd: string } }>(
+                const cfg = await smartQuery<{ factory: { commit_threshold_limit_native: string } }>(
                     factoryAddress,
                     { factory: {} },
                 );
-                if (!cancelled && cfg?.factory?.commit_threshold_limit_usd) {
-                    setThreshold(`$${formatMicroAmount(cfg.factory.commit_threshold_limit_usd, 6, 0)}`);
+                if (!cancelled && cfg?.factory?.commit_threshold_limit_native) {
+                    setThreshold(`${formatMicroAmount(cfg.factory.commit_threshold_limit_native, 6, 0)} ${NATIVE_SYMBOL}`);
                 }
             } catch { /* ignore */ }
 
@@ -172,7 +173,7 @@ const GeneralStats: React.FC = () => {
                 </Stack>
                 {error && <Typography variant="body2" color="error">{error}</Typography>}
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1, md: 4 }} flexWrap="wrap">
-                    <Typography variant="body2">{NATIVE_SYMBOL} Price (Pyth): {price || '—'}</Typography>
+                    <Typography variant="body2">{NATIVE_SYMBOL} Price: {price || '—'}</Typography>
                     <Typography variant="body2">Commit Threshold: {threshold || '—'}</Typography>
                     <Typography variant="body2">Creator Pools: {poolCount || '—'}</Typography>
                 </Stack>

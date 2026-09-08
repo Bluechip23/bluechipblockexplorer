@@ -64,10 +64,11 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
     // Commit fees (the creator's share of gross commits, at the factory's
     // configured rate) are the real creator revenue; LP swap fees accrue
     // on the native Osmosis pool.
-    const totalRaisedUsd = createdPools.reduce<bigint>(
+    // Gross micro-OSMO committed across the creator's pools.
+    const totalRaisedNative = createdPools.reduce<bigint>(
         (sum, p) => sum + safeBigInt(p.raised), 0n
     );
-    const totalCommitFeeUsd = feeShare(totalRaisedUsd, feeRates.creatorBps);
+    const totalCommitFeeNative = feeShare(totalRaisedNative, feeRates.creatorBps);
     const totalPoolTvl = createdPools.reduce<bigint>(
         (sum, p) => sum + poolTvlOsmoMicro(p), 0n
     );
@@ -88,10 +89,10 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                     <StatCard label="Total TVL (OSMO)" value={formatMicroAmount(totalPoolTvl.toString())} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Total Raised (USD)" value={`$${formatMicroAmount(totalRaisedUsd.toString())}`} />
+                    <StatCard label="Total Raised (OSMO)" value={formatMicroAmount(totalRaisedNative.toString())} />
                 </Grid>
                 <Grid item xs={6} sm={4}>
-                    <StatCard label="Commit Fee Revenue (est.)" value={`$${formatMicroAmount(totalCommitFeeUsd.toString())}`} />
+                    <StatCard label="Commit Fee Revenue (OSMO, est.)" value={formatMicroAmount(totalCommitFeeNative.toString())} />
                 </Grid>
             </Grid>
 
@@ -103,7 +104,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                                 <TableCell>Pool</TableCell>
                                 <TableCell>Status</TableCell>
                                 <TableCell>TVL (OSMO)</TableCell>
-                                <TableCell>Raised (USD)</TableCell>
+                                <TableCell>Raised (OSMO)</TableCell>
                                 <TableCell>Subscribers</TableCell>
                                 <TableCell align="right">Actions</TableCell>
                             </TableRow>
@@ -125,7 +126,7 @@ const PortfolioCreatedPoolsTable: React.FC<PortfolioCreatedPoolsTableProps> = ({
                                         <PoolStatusChip thresholdReached={pool.thresholdReached} />
                                     </TableCell>
                                     <TableCell>{formatMicroAmount(poolTvlOsmoMicro(pool).toString())}</TableCell>
-                                    <TableCell>${formatMicroAmount(pool.raised)}</TableCell>
+                                    <TableCell>{formatMicroAmount(pool.raised)}</TableCell>
                                     <TableCell>{pool.totalCommitters}</TableCell>
                                     <TableCell align="right">
                                         <PoolActionMenu

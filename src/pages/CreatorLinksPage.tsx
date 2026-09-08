@@ -65,7 +65,7 @@ const PoolStatsRow: React.FC<{ pool: PoolSummary }> = ({ pool }) => {
         <Box>
             <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
                 <Typography variant="body2" color="text.secondary">
-                    Raised ${formatMicroAmount(pool.raised)} of ${formatMicroAmount(pool.target)}
+                    Raised {formatMicroAmount(pool.raised)} of {formatMicroAmount(pool.target)} OSMO
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                     {pool.totalCommitters} subscribers

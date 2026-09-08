@@ -186,11 +186,11 @@ async function main() {
             body: JSON.stringify({
                 data: {
                     committer: WALLET,
-                    total_paid_usd: '7500000',
-                    total_paid_bluechip: '60000000',
+                    total_paid_native: '150500000',
+                    total_paid_bluechip: '150500000',
                     last_committed: '1700000000000000000',
-                    last_payment_usd: '5000000',
-                    last_payment_bluechip: '40000000',
+                    last_payment_native: '115000000',
+                    last_payment_bluechip: '115000000',
                 },
             }),
         });
@@ -199,7 +199,7 @@ async function main() {
     await page.setContent(`
         <div id="pre" data-bluechip-subscribe data-pool="${POOL}" data-amount="25"></div>
         <div id="post" data-bluechip-subscribe data-pool="${POOL_FULL}" data-amount="25"></div>
-        <div id="secret" data-bluechip-gate data-pool="${POOL}" data-min-usd="5">MEMBERS ONLY</div>
+        <div id="secret" data-bluechip-gate data-pool="${POOL}" data-min-osmo="115">MEMBERS ONLY</div>
     `);
     // setContent rewrites the existing document without a navigation, so
     // addInitScript never fires — install the Keplr stub directly before

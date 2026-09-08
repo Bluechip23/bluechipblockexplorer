@@ -74,8 +74,9 @@ const CreatorPortfolioPage: React.FC = () => {
     // Commit fees (the creator's share of gross commits, at the factory's
     // configured rate) are the real creator revenue; LP swap fees accrue
     // on the native Osmosis pool.
-    const totalRaisedUsd = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.raised), 0n);
-    const totalCommitFeeUsd = feeShare(totalRaisedUsd, feeRates.creatorBps);
+    // Gross micro-OSMO committed across the creator's pools.
+    const totalRaisedNative = createdPools.reduce<bigint>((s, p) => s + safeBigInt(p.raised), 0n);
+    const totalCommitFeeNative = feeShare(totalRaisedNative, feeRates.creatorBps);
     const totalPoolTvl = createdPools.reduce<bigint>((s, p) => s + poolTvlOsmoMicro(p), 0n);
     const totalSubscribers = createdPools.reduce((s, p) => s + p.totalCommitters, 0);
 
@@ -117,8 +118,8 @@ const CreatorPortfolioPage: React.FC = () => {
                                 <Grid item xs={6} sm={4}><StatCard label="Pools Created" value={createdPools.length} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total Subscribers" value={totalSubscribers} /></Grid>
                                 <Grid item xs={6} sm={4}><StatCard label="Total TVL (OSMO)" value={formatMicroAmount(totalPoolTvl.toString())} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Total Raised (USD)" value={`$${formatMicroAmount(totalRaisedUsd.toString())}`} /></Grid>
-                                <Grid item xs={6} sm={4}><StatCard label="Commit Fee Revenue (est.)" value={`$${formatMicroAmount(totalCommitFeeUsd.toString())}`} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Total Raised (OSMO)" value={formatMicroAmount(totalRaisedNative.toString())} /></Grid>
+                                <Grid item xs={6} sm={4}><StatCard label="Commit Fee Revenue (OSMO, est.)" value={formatMicroAmount(totalCommitFeeNative.toString())} /></Grid>
                             </Grid>
 
                             <PoolSelectorDropdown

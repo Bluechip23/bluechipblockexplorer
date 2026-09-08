@@ -7,7 +7,7 @@
 
 import type { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import type { Coin } from '@cosmjs/stargate';
-import { compareMicro } from './bigintMath';
+import { compareMicro, formatMicroAmount } from './bigintMath';
 import { CHAIN_CONFIG } from '../defi/types';
 
 // SECURITY: The only chain this frontend is allowed to broadcast against.
@@ -370,6 +370,23 @@ export function humanizeContractError(err: unknown): string {
         const offer = capMatch[1];
         const cap = capMatch[2];
         return `This pool just crossed its commit threshold and is in a 100-block trade-size ramp. Your trade (${offer}) is larger than the current per-tx cap (${cap}). Reduce the trade size or wait a few blocks for the cap to widen.`;
+    }
+
+    // Minimum commit floors are OSMO amounts (the contract prints them in
+    // micro-OSMO base units; 115 OSMO pre-threshold / 25 OSMO post by default).
+    const tooSmall = raw.match(/Commit too small:\s*(\d+)\s+native base units attached\s*\(minimum\s+(\d+)\s*([^)]*)\)/i);
+    if (tooSmall) {
+        const got = formatMicroAmount(tooSmall[1]);
+        const min = formatMicroAmount(tooSmall[2]);
+        const phase = tooSmall[3].trim();
+        return `Commit too small: ${got} OSMO attached, but this pool requires at least ${min} OSMO${phase ? ` ${phase}` : ''}. Increase the amount.`;
+    }
+
+    // The only price read left in the protocol: the fee-swap TWAP that
+    // budgets the GAMM pool-creation fee at threshold crossing. It fails
+    // closed, so the commit reverts and funds never move.
+    if (/fee-swap TWAP|plausibility ceiling|TWAP price is zero|failed live TWAP probe/i.test(raw)) {
+        return 'The fee-pricing route is temporarily unavailable, so the pool refused to proceed rather than mis-budget its network fee. Your funds were not moved — please try again in a few minutes.';
     }
 
     return raw;

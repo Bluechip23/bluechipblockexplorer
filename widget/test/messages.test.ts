@@ -111,15 +111,20 @@ test('smartQueryUrl base64-encodes the query into the LCD path', () => {
 
 const RECORD: CommitRecord = {
     committer: 'osmo1fan',
-    total_paid_usd: '7500000',       // $7.50
-    total_paid_bluechip: '60000000',
+    total_paid_native: '150500000',      // 150.5 OSMO (gross)
+    total_paid_bluechip: '150500000',    // same value, compat twin
     last_committed: '1700000000000000000',
-    last_payment_usd: '5000000',
-    last_payment_bluechip: '40000000',
+    last_payment_native: '115000000',
+    last_payment_bluechip: '115000000',
 };
 
-test('evaluateGate grants and denies on the USD floor', () => {
-    assert.deepEqual(evaluateGate(RECORD, 5), { subscribed: true, totalUsd: 7.5, record: RECORD });
-    assert.equal(evaluateGate(RECORD, 10).subscribed, false);
-    assert.deepEqual(evaluateGate(null, 0), { subscribed: false, totalUsd: 0, record: null });
+test('evaluateGate grants and denies on the OSMO floor', () => {
+    assert.deepEqual(evaluateGate(RECORD, 115), { subscribed: true, totalOsmo: 150.5, record: RECORD });
+    assert.equal(evaluateGate(RECORD, 200).subscribed, false);
+    assert.deepEqual(evaluateGate(null, 0), { subscribed: false, totalOsmo: 0, record: null });
+});
+
+test('evaluateGate reads total_paid_native, not the compat bluechip twin', () => {
+    const skewed: CommitRecord = { ...RECORD, total_paid_bluechip: '999000000000' };
+    assert.equal(evaluateGate(skewed, 200).subscribed, false);
 });

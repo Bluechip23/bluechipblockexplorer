@@ -5,7 +5,7 @@
 import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 
 export interface CommittingInfo {
-    total_paid_usd: string;     // micro-USD string
+    total_paid_native: string;  // gross micro-OSMO committed (string)
     last_committed: string;     // nanosecond timestamp string
     [key: string]: unknown;
 }
