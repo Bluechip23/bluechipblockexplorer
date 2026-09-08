@@ -137,29 +137,36 @@ export function smartQueryUrl(rest: string, contract: string, query: unknown): s
 }
 
 /** On-chain per-wallet commit record (creator-pool `committing_info`).
- * The query returns null for wallets that never committed. */
+ * The query returns null for wallets that never committed. Every amount
+ * is micro-OSMO: the contracts have no price oracle, so a commit is
+ * recorded (and counts toward the pool's threshold) at exactly the OSMO
+ * attached. `total_paid_native` is the wallet's cumulative GROSS (pre-fee)
+ * OSMO committed; `total_paid_bluechip` carries the same value and is
+ * kept by the contract for response-shape stability. */
 export interface CommitRecord {
     committer: string;
-    total_paid_usd: string;       // micro-USD
-    total_paid_bluechip: string;  // micro-bluechip
+    total_paid_native: string;    // gross micro-OSMO, cumulative
+    total_paid_bluechip: string;  // same value (compat)
     last_committed: string;       // nanoseconds
-    last_payment_usd: string;
+    last_payment_native: string;  // gross micro-OSMO of the last commit
     last_payment_bluechip: string;
 }
 
 export interface GateResult {
     subscribed: boolean;
-    /** Total lifetime USD committed (whole dollars). */
-    totalUsd: number;
+    /** Total lifetime OSMO committed (whole OSMO, gross before fees). */
+    totalOsmo: number;
     /** Raw on-chain record, null if the wallet never committed. */
     record: CommitRecord | null;
 }
 
-export function evaluateGate(record: CommitRecord | null, minUsd = 0): GateResult {
-    const totalUsd = fromMicro(record?.total_paid_usd);
+/** Gate on the wallet's lifetime OSMO committed. `minOsmo` is the site's
+ * own floor in whole OSMO (0 = any commit record passes). */
+export function evaluateGate(record: CommitRecord | null, minOsmo = 0): GateResult {
+    const totalOsmo = fromMicro(record?.total_paid_native);
     return {
-        subscribed: record !== null && totalUsd >= minUsd,
-        totalUsd,
+        subscribed: record !== null && totalOsmo >= minOsmo,
+        totalOsmo,
         record,
     };
 }

@@ -32,10 +32,10 @@ const widgetQuickStartCode = `<!-- 1. Load the BlueChip widget (self-contained, 
 <script src="https://cdn.jsdelivr.net/gh/Bluechip23/bluechipblockexplorer@main/widget/dist/bluechip-widget.min.js"><\/script>
 
 <!-- 2. Subscribe button — the ONLY thing you edit is your pool address -->
-<div data-bluechip-subscribe data-pool="osmo1YOUR_POOL_ADDRESS" data-amount="25"></div>
+<div data-bluechip-subscribe data-pool="osmo1YOUR_POOL_ADDRESS" data-amount="115"></div>
 
 <!-- 3. Optional: gate content behind a subscription -->
-<div data-bluechip-gate data-pool="osmo1YOUR_POOL_ADDRESS" data-min-usd="5">
+<div data-bluechip-gate data-pool="osmo1YOUR_POOL_ADDRESS" data-min-osmo="115">
     Subscriber-only content.
 </div>`;
 
@@ -53,7 +53,7 @@ const widgetInitCode = `<script src="https://cdn.jsdelivr.net/gh/Bluechip23/blue
 <\/script>
 
 <!-- Now buttons can omit data-pool entirely -->
-<div data-bluechip-subscribe data-amount="25"></div>`;
+<div data-bluechip-subscribe data-amount="115"></div>`;
 
 // Build your own UI with the same primitives the buttons use.
 const widgetJsApiCode = `<script>
@@ -63,17 +63,17 @@ const widgetJsApiCode = `<script>
   // Subscribe: commit OSMO to a pool. Returns the tx hash.
   const { txHash } = await BluechipWidget.subscribe({
     pool: "osmo1YOUR_POOL_ADDRESS",
-    amount: 25,                    // whole OSMO; converted to micro-units for you
+    amount: 115,                   // whole OSMO; converted to micro-units for you
   });
 
   // Check a wallet's subscription (read-only — no signing needed).
   const gate = await BluechipWidget.checkSubscription({
     pool: "osmo1YOUR_POOL_ADDRESS",
     address,                       // omit to use the connected wallet
-    minUsd: 5,                     // threshold in lifetime USD committed
+    minOsmo: 115,                  // floor in lifetime OSMO committed (gross)
   });
   if (gate.subscribed) {
-    console.log("Subscriber — $" + gate.totalUsd + " committed");
+    console.log("Subscriber — " + gate.totalOsmo + " OSMO committed");
   }
 <\/script>`;
 
@@ -580,7 +580,7 @@ const createPoolCode = `<script>
 //
 // The new pool mints its own native TokenFactory denom
 // (factory/{pool_address}/{subdenom}) and starts in a funding (commit)
-// phase; once the USD threshold is crossed it seeds a NATIVE Osmosis
+// phase; once the OSMO commit threshold is crossed it seeds a NATIVE Osmosis
 // GAMM pool and flips to active trading. The factory's own stored
 // config is the source of truth for the commit threshold, fee splits,
 // threshold-payout amounts, and lock caps — pool_msg only carries the
@@ -721,9 +721,12 @@ const querySubscriptionCode = `async function getSubscriptionInfo(poolAddress, w
         committing_info: { wallet: walletAddress }
     });
 
+    // Returns null if never committed, or a Committing object.
+    // total_paid_native is the wallet's cumulative OSMO committed (gross,
+    // before the 6% fee), in micro-OSMO. total_paid_bluechip carries the
+    // same value — kept for response-shape stability.
     if (info) {
-        console.log("Total paid (USD):",  parseInt(info.total_paid_usd) / 1000000);
-        console.log("Total paid (OSMO):", parseInt(info.total_paid_bluechip) / 1000000);
+        console.log("Total committed (OSMO):", parseInt(info.total_paid_native) / 1000000);
     } else {
         console.log("User has not subscribed yet.");
     }
@@ -797,18 +800,10 @@ async function listPools() {
     return all;
 }
 
-// Convert an OSMO amount to USD with the exact same Pyth-backed conversion
-// the pools use (micro-units in, micro-USD out). The factory reads its
-// configured Pyth native/USD feed and fails closed on a stale or
-// low-confidence price — so expect this query to error (rather than
-// return a bad rate) if the price keeper falls behind:
-async function osmoToUsd(microOsmo) {
-    var client = await CosmWasmClient.CosmWasmClient.connect(bluechip_CONFIG.rpc);
-    var res = await client.queryContractSmart(bluechip_CONFIG.factoryAddress, {
-        pool_factory_query: { convert_native_to_usd: { amount: microOsmo } }
-    });
-    return res;   // { amount, rate_used, timestamp }
-}`;
+// There is no USD conversion in the contracts any more: commits, the
+// threshold and every ledger amount are OSMO. If your site wants to show
+// a USD figure, use any market price (e.g. the Osmosis OSMO/USDC pool or
+// CoinGecko) — it is display-only and never affects the pool.`;
 
 const privClientGateCode = `<script>
 // ============================================================
@@ -817,9 +812,10 @@ const privClientGateCode = `<script>
 //  of the page based on how much they have committed.
 // ============================================================
 
-// Tier thresholds in micro-USD (6 decimals): $5,000 / $500.
-var TIER_GOLD_MICRO_USD   = 5000000000;
-var TIER_SILVER_MICRO_USD = 500000000;
+// Tier thresholds in micro-OSMO (6 decimals): 10,000 / 1,000 OSMO.
+// These are YOUR site's policy — pick whatever cutoffs you like.
+var TIER_GOLD_MICRO_OSMO   = 10000000000;
+var TIER_SILVER_MICRO_OSMO = 1000000000;
 
 // How recent the last commit must be to count as an "active"
 // subscriber. The chain never expires commit records — recency
@@ -839,11 +835,12 @@ async function getSupporterStatus(walletAddress) {
         return { isSupporter: false, tier: "none", isActive: false };
     }
 
-    // total_paid_usd is micro-USD (1000000 = $1.00), as a string.
-    var totalUsd = parseInt(info.total_paid_usd);
+    // total_paid_native is micro-OSMO (1000000 = 1 OSMO), as a string —
+    // the wallet's cumulative gross OSMO committed to this pool.
+    var totalOsmo = parseInt(info.total_paid_native);
     var tier = "bronze";
-    if (totalUsd >= TIER_GOLD_MICRO_USD)        tier = "gold";
-    else if (totalUsd >= TIER_SILVER_MICRO_USD) tier = "silver";
+    if (totalOsmo >= TIER_GOLD_MICRO_OSMO)        tier = "gold";
+    else if (totalOsmo >= TIER_SILVER_MICRO_OSMO) tier = "silver";
 
     // last_committed is a timestamp in NANOSECONDS (as a string).
     var lastCommitMs = parseInt(info.last_committed) / 1000000;
@@ -854,7 +851,7 @@ async function getSupporterStatus(walletAddress) {
         isSupporter: true,
         tier: tier,
         isActive: isActive,
-        totalPaidUsd: totalUsd / 1000000,
+        totalPaidOsmo: totalOsmo / 1000000,
         lastCommitted: new Date(lastCommitMs)
     };
 }
@@ -980,14 +977,15 @@ async function handleVerify(req, res) {
     const record = await queryCommitRecord(address);
     if (!record) return res.json({ role: "visitor" });
 
-    // 4. Map the record to YOUR privileges. total_paid_usd is micro-USD.
-    const totalUsd = Number(record.total_paid_usd) / 1e6;
-    const role = totalUsd >= 5000 ? "gold"
-               : totalUsd >= 500  ? "silver"
+    // 4. Map the record to YOUR privileges. total_paid_native is the
+    //    wallet's cumulative gross OSMO committed, in micro-OSMO.
+    const totalOsmo = Number(record.total_paid_native) / 1e6;
+    const role = totalOsmo >= 10000 ? "gold"
+               : totalOsmo >= 1000  ? "silver"
                : "bronze";
 
     // 5. Issue your normal session (cookie / JWT / Discord role grant...).
-    res.json({ role: role, totalUsd: totalUsd, lastCommitted: record.last_committed });
+    res.json({ role: role, totalOsmo: totalOsmo, lastCommitted: record.last_committed });
 }`;
 
 const privEventWatchCode = `// ============================================================
@@ -1000,11 +998,11 @@ const privEventWatchCode = `// =================================================
 //    commit_amount_bluechip: OSMO committed (micro-units)
 //    total_commit_count, pool_contract, block_height, block_time
 //    total_raised_after / total_bluechip_raised_after:
-//               pool totals after a funding-phase commit
-//               (micro-USD and net micro-OSMO)
-//  NOTE: commit_amount_usd is NO LONGER emitted — for a USD value,
-//  query committing_info (last_payment_usd) or convert via the
-//  factory's convert_native_to_usd.
+//               pool OSMO totals after a funding-phase commit
+//               (gross and net-of-fee, micro-OSMO)
+//  NOTE: total_raised_after is the gross OSMO committed (what counts
+//  toward the threshold). For a single wallet's cumulative record, query
+//  committing_info (total_paid_native / last_payment_native, micro-OSMO).
 //  Subscribe over the RPC websocket and grant perks instantly
 //  (unlock a chat, ping Discord, send a thank-you email...).
 // ============================================================
@@ -1335,9 +1333,9 @@ const IntegrationGuidePage: React.FC = () => {
                                             <TableCell>Hide the amount input and always commit <code>data-amount</code>.</TableCell>
                                         </TableRow>
                                         <TableRow>
-                                            <TableCell><code>data-min-usd</code></TableCell>
+                                            <TableCell><code>data-min-osmo</code></TableCell>
                                             <TableCell>gate</TableCell>
-                                            <TableCell>Minimum lifetime USD committed required to unlock.</TableCell>
+                                            <TableCell>Minimum lifetime OSMO committed (gross) required to unlock.</TableCell>
                                         </TableRow>
                                         <TableRow>
                                             <TableCell><code>data-label</code></TableCell>
@@ -1427,13 +1425,16 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="subscribe" number="4" title="Subscribe Button (Commit)">
                             <Typography paragraph>
                                 The <strong>Subscribe</strong> button lets your fans commit OSMO to your creator pool.
-                                This is how people support you. Before the pool reaches its USD threshold ($25,000
-                                by default), commits are recorded in a ledger. After the threshold is crossed,
-                                commits are swapped through the native Osmosis pool and your supporter receives your
-                                creator tokens.
+                                This is how people support you. Before the pool reaches its OSMO commit threshold
+                                (500,000 OSMO for pools created under the current factory config — governance retunes
+                                this over time for newly created pools), commits are recorded in a ledger. After the
+                                threshold is crossed, commits are swapped through the native Osmosis pool and your
+                                supporter receives your creator tokens. A commit's value toward the threshold is simply
+                                the OSMO attached to it — there is no price conversion involved.
                             </Typography>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 A 6% fee is deducted: 1% goes to the BlueChip protocol, 5% goes to you the creator.
+                                Minimum commit: 115 OSMO before the threshold, 25 OSMO after it (per-pool defaults).
                             </Alert>
                             <Alert severity="warning" sx={{ mb: 2 }}>
                                 <strong>Post-threshold commits require a <code>belief_price</code>.</strong> Once the
@@ -1450,8 +1451,8 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="buy" number="5" title="Buy Button (Swap OSMO for Creator Tokens)">
                             <Typography paragraph>
                                 The <strong>Buy</strong> button lets people swap their OSMO for your
-                                creator tokens. This only works <strong>after</strong> the pool has crossed the
-                                USD threshold and its native Osmosis pool exists. (Since it's a normal Osmosis
+                                creator tokens. This only works <strong>after</strong> the pool has crossed its
+                                OSMO commit threshold and its native Osmosis pool exists. (Since it's a normal Osmosis
                                 pool, buyers can also just trade it on app.osmosis.zone — the contract's{' '}
                                 <code>simple_swap</code> is a convenience venue with the same result.)
                             </Typography>
@@ -1547,7 +1548,7 @@ const IntegrationGuidePage: React.FC = () => {
                                 Anyone can create a new pool through the factory. There is a single creation
                                 path — the <strong>commit (creator) pool</strong>: the new pool mints its own
                                 native TokenFactory denom and starts in a funding (commit) phase. Once the
-                                configured USD threshold is crossed, 1,200,000 creator tokens are minted
+                                configured OSMO commit threshold is crossed, 1,200,000 creator tokens are minted
                                 and distributed (500k to subscribers, 325k to the creator, 25k to BlueChip,
                                 350k seeded into the native Osmosis pool as initial liquidity).
                             </Typography>
@@ -1622,7 +1623,7 @@ const IntegrationGuidePage: React.FC = () => {
 
                             <Accordion>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography sx={{ fontWeight: 'bold' }}>List Every Pool + USD Conversion</Typography>
+                                    <Typography sx={{ fontWeight: 'bold' }}>List Every Pool</Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
                                     <CodeBlock code={queryListPoolsCode} language="JavaScript" />
@@ -1634,7 +1635,7 @@ const IntegrationGuidePage: React.FC = () => {
                         <SectionCard id="special-privileges" number="11" title="Granting Special Privileges to Committed Users">
                             <Typography paragraph>
                                 Every commit writes a permanent, public record to your pool's ledger:
-                                who committed, how much (in USD and OSMO), and when. After the
+                                who committed, how much OSMO, and when. After the
                                 threshold, supporters also receive your creator tokens. Your website
                                 can read either of these to give supporters <strong>special privileges</strong> —
                                 subscriber-only pages, download links, badges, Discord roles, early access,
@@ -1687,8 +1688,8 @@ const IntegrationGuidePage: React.FC = () => {
                             <CodeBlock code={privEventWatchCode} language="JavaScript" />
 
                             <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
-                                <strong>Design notes:</strong> amounts are micro-units
-                                (<code>total_paid_usd</code> of 5000000000 = $5,000);&nbsp;
+                                <strong>Design notes:</strong> amounts are micro-OSMO
+                                (<code>total_paid_native</code> of 5000000000 = 5,000 OSMO);&nbsp;
                                 <code>last_committed</code> is in nanoseconds; commit records never expire
                                 on-chain, so "active subscriber" windows (e.g. committed within 30 days) are
                                 your site's policy, enforced from <code>last_committed</code>. For
@@ -1732,8 +1733,8 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['"Route exceeds the maximum of 3 hops"', 'The router caps routes at 3 hops. Any creator-token pair needs at most 2 (token → OSMO → token)'],
                                             ['"not registered with the factory" (router)', "A hop's pool address is not in the factory registry. Use pool addresses from the factory's pools query or this explorer"],
                                             ['Router swap reverts with a minimum_receive error', 'Price moved past your tolerance between simulation and execution. Re-quote and retry, or widen slippage slightly'],
-                                            ['"Commit too small"', 'Each pool enforces a minimum commit value in USD (separate pre- and post-threshold floors). Increase the amount'],
-                                            ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses the USD threshold. Use Subscribe instead'],
+                                            ['"Commit too small"', 'Each pool enforces a minimum commit in OSMO: 115 OSMO pre-threshold, 25 OSMO post-threshold by default (the error prints the amounts in micro-OSMO base units). Increase the amount'],
+                                            ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses its OSMO commit threshold. Use Subscribe instead'],
                                             ['Swap refunded, pool paused (circuit breaker)', "The pool's liquidity breaker latched (a reserve fell below 25% of its seed). Your offer was refunded in the same tx; trading resumes when the admin unpauses"],
                                             ['Calls to deposit_liquidity / collect_fees / position fail', 'Those entry points no longer exist — liquidity lives in the native Osmosis pool. LP directly on app.osmosis.zone (Section 8)'],
                                             ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on an Osmosis explorer (e.g. Mintscan)'],

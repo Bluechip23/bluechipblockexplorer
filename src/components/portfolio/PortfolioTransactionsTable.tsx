@@ -60,12 +60,13 @@ function describeTrade(t: WalletTrade, symbol: string): TxRow {
 }
 
 function describeCommit(c: WalletCommit, symbol: string): TxRow {
-    const usd = c.commit_usd ?? c.amount_usd;
-    const bluechip = c.amount_bluechip !== null ? `${formatMicroAmount(c.amount_bluechip)} OSMO` : '';
+    // amount_bluechip is the gross OSMO attached to the commit; commit_native
+    // is the part that counted toward the threshold (null post-threshold).
+    const native = c.amount_bluechip ?? c.commit_native;
     return {
         ts: c.ts, height: c.height, txhash: c.txhash, pool: c.pool,
         kind: 'commit',
-        amount: usd !== null ? `$${formatMicroAmount(usd)}` : bluechip,
+        amount: native !== null ? `${formatMicroAmount(native)} OSMO` : '',
         received: c.tokens_received !== null ? `${formatMicroAmount(c.tokens_received)} ${symbol}` : '',
     };
 }
@@ -171,7 +172,7 @@ const PortfolioTransactionsTable: React.FC<PortfolioTransactionsTableProps> = ({
                                         <TableCell>
                                             <Chip label="Commitment" color="info" size="small" variant="outlined" />
                                         </TableCell>
-                                        <TableCell>${formatMicroAmount(c.commit.total_paid_usd)}</TableCell>
+                                        <TableCell>{formatMicroAmount(c.commit.total_paid_native)} OSMO</TableCell>
                                         <TableCell>{formatNsTimestamp(c.commit.last_committed)}</TableCell>
                                     </TableRow>
                                 ))}

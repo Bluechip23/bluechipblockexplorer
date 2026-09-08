@@ -8,9 +8,10 @@ What it does:
 
 - **Subscribe button** — connects Keplr, registers the Osmosis chain,
   and commits native OSMO to your creator pool (a "subscription").
-  Handles pre- vs post-threshold commits correctly. Commits are valued
-  in USD via the Pyth price oracle; the contract enforces a $5 minimum
-  before the pool's threshold is hit and $1 after.
+  Handles pre- vs post-threshold commits correctly. Commits are counted
+  in OSMO — there is no price oracle; the pool enforces a minimum of
+  115 OSMO before its threshold is hit and 25 OSMO after (per-pool
+  defaults).
 - **Subscription gate** — hides a block of your page until the viewer's
   wallet has a qualifying on-chain commit record for your pool.
 - **JS API** — the same primitives (`connect`, `subscribe`,
@@ -29,12 +30,12 @@ src="unpkg/...">` approaches do not work). ~300 KB gzipped.
 <!-- 2. Drop a subscribe button anywhere -->
 <div data-bluechip-subscribe
      data-pool="osmo1YOUR_POOL_ADDRESS"
-     data-amount="25"></div>
+     data-amount="115"></div>
 
 <!-- 3. Optionally gate content behind a subscription -->
 <div data-bluechip-gate
      data-pool="osmo1YOUR_POOL_ADDRESS"
-     data-min-usd="5">
+     data-min-osmo="115">
     Subscriber-only content here.
 </div>
 ```
@@ -80,7 +81,7 @@ BluechipWidget.init({
 | `data-amount` | subscribe | Pre-filled amount in whole OSMO (converted to `uosmo` micro-units) |
 | `data-fixed-amount` | subscribe | Hide the input; always use `data-amount` |
 | `data-label` | both | Button text |
-| `data-min-usd` | gate | Minimum lifetime USD committed to unlock |
+| `data-min-osmo` | gate | Minimum lifetime OSMO committed (gross, whole OSMO) to unlock |
 | `data-denied-text` | gate | Message when the viewer doesn't qualify |
 
 Elements added after page load can be mounted with
@@ -94,8 +95,8 @@ BluechipWidget.init(overrides?)                    // configure; returns active 
 BluechipWidget.connect()                           // -> { address, client }
 BluechipWidget.getAddress()                        // address via Keplr only (no RPC)
 BluechipWidget.subscribe({ pool, amount })         // -> { txHash, address }
-BluechipWidget.checkSubscription({ pool, address?, minUsd? })
-//   -> { subscribed, totalUsd, record }           // record = raw committing_info
+BluechipWidget.checkSubscription({ pool, address?, minOsmo? })
+//   -> { subscribed, totalOsmo, record }          // record = raw committing_info
 BluechipWidget.mountSubscribe(elOrSelector, opts)
 BluechipWidget.mountGate(elOrSelector, opts)
 BluechipWidget.toMicro('1.5') / BluechipWidget.fromMicro('1500000')

@@ -4,15 +4,18 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { compareMicro, microToNumber, safeBigInt } from '../utils/bigintMath';
 import { fetchRecentCommits } from '../utils/indexerApi';
+import { approxUsd, useNativeUsdRate } from '../hooks/useNativeUsdRate';
+import { NATIVE_SYMBOL } from './types';
 
 interface CommitTrackerProps {
     client: SigningCosmWasmClient | null;
     contractAddress: string;
 }
 
+// Per-wallet ledger entry (creator-pool `pool_commits`). Amounts are
+// gross micro-OSMO — the contracts value nothing in USD any more.
 interface Commit {
-    total_paid_usd: string;
-    total_paid_bluechip: string;
+    total_paid_native: string;
     last_committed: string;
 }
 
@@ -25,13 +28,16 @@ interface GraphDataPoint {
 
 const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }) => {
     const [uniqueCommitters, setUniqueCommitters] = useState(0);
+    // Whole OSMO (gross, before the 6% fee split) — what counts toward
+    // the pool's threshold.
     const [totalRaised, setTotalRaised] = useState(0);
-    const [totalBluechips, setTotalBluechips] = useState(0);
     const [graphData, setGraphData] = useState<GraphDataPoint[]>([]);
-    // Funding goal in whole USD. The real target is per-factory config
-    // (commit_threshold_limit_usd), read from the pool's
-    // `is_fully_commited` query; 25,000 is only the display fallback.
-    const [goalUsd, setGoalUsd] = useState(25000);
+    // Funding goal in whole OSMO. The real target is the pool's own
+    // threshold (factory commit_threshold_limit_native at creation),
+    // read from the pool's `is_fully_commited` query; 500,000 is only
+    // the display fallback.
+    const [goalOsmo, setGoalOsmo] = useState(500000);
+    const usdRate = useNativeUsdRate();
 
     useEffect(() => {
         if (!client || !contractAddress) return;
@@ -42,7 +48,7 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                 const target = status && typeof status === 'object' && 'in_progress' in status
                     ? microToNumber((status as { in_progress: { target: string } }).in_progress.target)
                     : 0;
-                if (!cancelled && target > 0) setGoalUsd(target);
+                if (!cancelled && target > 0) setGoalOsmo(target);
             } catch {
                 // keep the fallback goal
             }
@@ -58,28 +64,24 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
         const rows = await fetchRecentCommits(contractAddress, 1000);
         if (!rows || rows.length === 0) return false;
 
-        // Only commits that carry USD information belong on the funding
-        // curve: current-chain funding commits report a running total
-        // (usd_raised_after) from which the indexer derives commit_usd;
-        // legacy rows carry amount_usd. Post-threshold "active" commits
-        // are AMM buys with no USD attribution and are excluded.
-        const funded = rows.filter(
-            (c) => c.commit_usd !== null || c.amount_usd !== null || c.usd_raised_after !== null,
-        );
+        // Only funding-phase commits belong on the curve: they report the
+        // pool's running gross-OSMO total (raised_after), from which the
+        // indexer derives each commit's contribution (commit_native).
+        // Post-threshold "active" commits are AMM buys that no longer
+        // count toward the threshold and are excluded.
+        const funded = rows.filter((c) => c.commit_native !== null || c.raised_after !== null);
         if (funded.length === 0) return false;
 
         const ordered = [...funded].sort((a, b) => a.ts - b.ts || a.height - b.height);
         let cumulative = 0n;
-        let bluechipTotal = 0n;
         const wallets = new Set<string>();
         const data: GraphDataPoint[] = ordered.map((c) => {
-            const value = safeBigInt(c.commit_usd ?? c.amount_usd ?? '0');
+            const value = safeBigInt(c.commit_native ?? '0');
             // Prefer the contract's own running total when present — it is
             // exact even if some earlier commits fell outside this page.
-            cumulative = c.usd_raised_after !== null
-                ? safeBigInt(c.usd_raised_after)
+            cumulative = c.raised_after !== null
+                ? safeBigInt(c.raised_after)
                 : cumulative + value;
-            bluechipTotal += safeBigInt(c.amount_bluechip ?? '0');
             wallets.add(c.committer);
             return {
                 name: '',
@@ -91,7 +93,6 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
 
         setUniqueCommitters(wallets.size);
         setTotalRaised(microToNumber(cumulative));
-        setTotalBluechips(microToNumber(bluechipTotal));
         setGraphData(data);
         return true;
     }, [contractAddress]);
@@ -115,11 +116,9 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                 });
 
                 let cumulative = 0n;
-                let bluechipTotal = 0n;
                 const data: GraphDataPoint[] = sortedCommits.map((commit: Commit) => {
-                    const value = safeBigInt(commit.total_paid_usd);
+                    const value = safeBigInt(commit.total_paid_native);
                     cumulative += value;
-                    bluechipTotal += safeBigInt(commit.total_paid_bluechip);
                     // Cosmos SDK timestamps are nanoseconds — divide by 1e6 for ms.
                     const tsNs = safeBigInt(commit.last_committed);
                     const tsMs = tsNs === 0n ? NaN : Number(tsNs / 1_000_000n);
@@ -133,7 +132,6 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
 
                 setUniqueCommitters(sortedCommits.length);
                 setTotalRaised(microToNumber(cumulative));
-                setTotalBluechips(microToNumber(bluechipTotal));
                 setGraphData(data);
             }
         } catch (err) {
@@ -151,7 +149,9 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
         return () => { cancelled = true; };
     }, [contractAddress, loadFromIndexer, loadFromChain]);
 
-    const progress = Math.min((totalRaised / goalUsd) * 100, 100);
+    const progress = Math.min((totalRaised / goalOsmo) * 100, 100);
+    const raisedUsd = approxUsd(Math.round(totalRaised * 1_000_000), usdRate);
+    const goalUsd = approxUsd(Math.round(goalOsmo * 1_000_000), usdRate);
 
     return (
         <Card sx={{ mb: 2 }}>
@@ -159,12 +159,17 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                 <Typography variant="h6" gutterBottom>Subscription Tracker</Typography>
                 <Box sx={{ mb: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                        <Typography variant="body2">Raised: ${totalRaised.toLocaleString()}</Typography>
-                        <Typography variant="body2">Goal: ${goalUsd.toLocaleString()}</Typography>
+                        <Typography variant="body2">
+                            Raised: {totalRaised.toLocaleString()} {NATIVE_SYMBOL}{raisedUsd ? ` (${raisedUsd})` : ''}
+                        </Typography>
+                        <Typography variant="body2">
+                            Goal: {goalOsmo.toLocaleString()} {NATIVE_SYMBOL}{goalUsd ? ` (${goalUsd})` : ''}
+                        </Typography>
                     </Box>
                     <LinearProgress variant="determinate" value={progress} sx={{ height: 10, borderRadius: 5 }} />
                     <Typography variant="caption" color="textSecondary">
-                        OSMO Committed (gross, before fees): {totalBluechips.toLocaleString()}
+                        Gross {NATIVE_SYMBOL} committed (before the 6% fee split) — this is what counts toward the threshold.
+                        USD figures are a market reference only.
                     </Typography>
                 </Box>
                 <Box sx={{ height: 300, width: '100%' }}>
@@ -173,16 +178,16 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
                             <CartesianGrid stroke="#ccc" strokeDasharray="5 5" />
                             <XAxis dataKey="name" label={{ value: `Users Committed: ${uniqueCommitters}`, offset: -10 }} />
                             <YAxis
-                                domain={[0, Math.max(goalUsd, totalRaised * 1.1)]}
-                                label={{ value: 'Subscription Amount', angle: -90, position: 'left', dy: -60, offset: -10 }}
+                                domain={[0, Math.max(goalOsmo, totalRaised * 1.1)]}
+                                label={{ value: `Committed (${NATIVE_SYMBOL})`, angle: -90, position: 'left', dy: -60, offset: -10 }}
                                 tick={{ fontSize: 10 }}
                             />
                             <Tooltip
                                 contentStyle={{ backgroundColor: '#333', border: 'none', color: '#fff' }}
                                 labelStyle={{ color: '#aaa' }}
-                                formatter={(value: any, name: any) => [`$${value}`, name === 'total' ? 'Cumulative Total' : 'Transaction Value']}
+                                formatter={(value: any, name: any) => [`${value} ${NATIVE_SYMBOL}`, name === 'total' ? 'Cumulative Total' : 'Transaction Value']}
                             />
-                            <ReferenceLine y={goalUsd} label="Goal" stroke="red" strokeDasharray="3 3" />
+                            <ReferenceLine y={goalOsmo} label="Goal" stroke="red" strokeDasharray="3 3" />
                             <Line type="monotone" dataKey="total" stroke="#8884d8" strokeWidth={2} dot={false} activeDot={{ r: 8 }} />
                         </LineChart>
                     </ResponsiveContainer>

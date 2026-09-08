@@ -47,10 +47,9 @@ CREATE TABLE IF NOT EXISTS commits (
     pool TEXT NOT NULL,
     committer TEXT NOT NULL,
     phase TEXT NOT NULL,               -- funding | active | threshold_crossing | threshold_hit_exact
-    amount_bluechip TEXT,
-    amount_usd TEXT,                   -- legacy events only; NULL on current-chain commits
-    usd_raised_after TEXT,             -- micro-USD running total (funding-phase commits)
-    bluechip_raised_after TEXT,
+    amount_bluechip TEXT,              -- gross micro-OSMO attached to the commit
+    raised_after TEXT,                 -- pool's GROSS micro-OSMO running total (funding-phase commits)
+    bluechip_raised_after TEXT,        -- pool's NET-of-fee micro-OSMO running total
     tokens_received TEXT,
     PRIMARY KEY (txhash, event_index)
 );
@@ -109,6 +108,29 @@ CREATE TABLE IF NOT EXISTS creator_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_claims_pool_ts ON creator_claims(pool, ts);
 `);
+    migrateCommitsToNative(db);
+}
+
+// Pre-oracle-removal databases stored the pool's running total as
+// `usd_raised_after` (the contracts then valued commits in USD) plus a
+// legacy per-commit `amount_usd`. The current contracts denominate
+// everything in OSMO: `total_raised_after` is gross micro-OSMO, and no
+// USD attribute exists. Rename the running-total column so its name
+// matches what it now holds, and drop the dead USD column. Rows indexed
+// from the old contracts keep their (USD) values under the new name —
+// those pools cannot exist on a factory running the current contracts,
+// so a database is either all-old or all-new; re-index from scratch
+// when repointing at a redeployed factory.
+function migrateCommitsToNative(db: Db): void {
+    const cols = new Set(
+        (db.prepare('PRAGMA table_info(commits)').all() as { name: string }[]).map((c) => c.name),
+    );
+    if (cols.has('usd_raised_after') && !cols.has('raised_after')) {
+        db.exec('ALTER TABLE commits RENAME COLUMN usd_raised_after TO raised_after');
+    }
+    if (cols.has('amount_usd')) {
+        db.exec('ALTER TABLE commits DROP COLUMN amount_usd');
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -126,8 +148,12 @@ export interface PoolRow {
 export interface CommitRow {
     txhash: string; event_index: number; height: number; ts: number;
     pool: string; committer: string; phase: string;
-    amount_bluechip: string | null; amount_usd: string | null;
-    usd_raised_after: string | null; bluechip_raised_after: string | null;
+    // Gross micro-OSMO attached to the commit.
+    amount_bluechip: string | null;
+    // Pool's gross micro-OSMO running total after the commit (funding
+    // phase only) — the accumulator the threshold check runs against.
+    raised_after: string | null;
+    bluechip_raised_after: string | null;
     tokens_received: string | null;
 }
 
@@ -180,8 +206,8 @@ export function markThresholdCrossed(db: Db, pool: string, ts: number): void {
 
 export function insertCommit(db: Db, r: CommitRow): void {
     db.prepare(`INSERT OR REPLACE INTO commits
-        (txhash, event_index, height, ts, pool, committer, phase, amount_bluechip, amount_usd, usd_raised_after, bluechip_raised_after, tokens_received)
-        VALUES (@txhash, @event_index, @height, @ts, @pool, @committer, @phase, @amount_bluechip, @amount_usd, @usd_raised_after, @bluechip_raised_after, @tokens_received)`).run(r);
+        (txhash, event_index, height, ts, pool, committer, phase, amount_bluechip, raised_after, bluechip_raised_after, tokens_received)
+        VALUES (@txhash, @event_index, @height, @ts, @pool, @committer, @phase, @amount_bluechip, @raised_after, @bluechip_raised_after, @tokens_received)`).run(r);
 }
 
 export function insertTrade(db: Db, r: TradeRow): void {
@@ -207,26 +233,27 @@ export function insertClaim(db: Db, r: ClaimRow): void {
 // be unit-tested against an in-memory database)
 // ---------------------------------------------------------------------------
 
-// Current contracts emit no per-commit USD attribute — only the running
-// total (usd_raised_after, from the event's total_raised_after). Derive
-// each commit's USD as the difference between consecutive running totals;
-// legacy rows keep their explicit amount_usd via COALESCE at the use site.
+// A commit's contribution toward the threshold is derived from the
+// pool's gross running total (raised_after, from the event's
+// total_raised_after) as the difference between consecutive totals. For
+// plain funding commits this equals amount_bluechip; for the commit that
+// crosses the threshold only the part up to the threshold counts (the
+// excess is swapped/refunded), which is exactly what the delta captures.
 // The window deliberately ignores any time filter so deltas at a query
 // window's edge stay correct. Caveat: if indexing started mid-history
 // (START_HEIGHT after the pool's first commit), the first indexed commit's
 // delta absorbs everything raised before it.
-const DERIVED_USD_CTE = `derived_usd AS (
+const DERIVED_NATIVE_CTE = `derived_native AS (
     SELECT txhash, event_index,
-           usd_raised_after - COALESCE(LAG(usd_raised_after) OVER (
-               PARTITION BY pool ORDER BY ts, height, event_index), 0) AS delta_usd
+           raised_after - COALESCE(LAG(raised_after) OVER (
+               PARTITION BY pool ORDER BY ts, height, event_index), 0) AS delta_native
     FROM commits
-    WHERE usd_raised_after IS NOT NULL
+    WHERE raised_after IS NOT NULL
 )`;
 
-// Per-row USD as a micro-USD TEXT value (NULL when unknown, e.g. post-
-// threshold "active" commits, which carry no USD information at all).
-const COMMIT_USD_EXPR =
-    `CAST(COALESCE(c.amount_usd, CAST(ROUND(d.delta_usd) AS INTEGER)) AS TEXT)`;
+// Per-row threshold contribution as a micro-OSMO TEXT value (NULL for
+// post-threshold "active" commits, which no longer count toward it).
+const COMMIT_NATIVE_EXPR = `CAST(CAST(ROUND(d.delta_native) AS INTEGER) AS TEXT)`;
 
 export function healthCounts(db: Db) {
     const count = (table: string) =>
@@ -301,17 +328,18 @@ export function volumeSeries(db: Db, p: SeriesParams) {
         ORDER BY t ASC`).all(seriesBind(p));
 }
 
-// Commit activity per bucket (count, USD, unique wallets).
+// Commit activity per bucket (count, gross OSMO toward the threshold,
+// unique wallets).
 export function commitSeries(db: Db, p: SeriesParams) {
     return db.prepare(`
-        WITH ${DERIVED_USD_CTE}
+        WITH ${DERIVED_NATIVE_CTE}
         SELECT
             (c.ts / @bucket) * @bucket AS t,
             COUNT(*) AS commits,
-            SUM(COALESCE(CAST(c.amount_usd AS REAL), d.delta_usd)) AS usd,
+            SUM(d.delta_native) AS native,
             COUNT(DISTINCT c.committer) AS unique_committers
         FROM commits c
-        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.pool = @pool AND c.ts >= @from AND c.ts < @to
         GROUP BY t
         ORDER BY t ASC`).all(seriesBind(p));
@@ -337,12 +365,12 @@ export function listCommits(db: Db, opts: {
     pool: string; limit: number; beforeTs: number | null; wallet: string | null;
 }) {
     return db.prepare(`
-        WITH ${DERIVED_USD_CTE}
-        SELECT c.txhash, c.height, c.ts, c.committer, c.phase, c.amount_bluechip, c.amount_usd,
-               c.usd_raised_after, c.bluechip_raised_after, c.tokens_received,
-               ${COMMIT_USD_EXPR} AS commit_usd
+        WITH ${DERIVED_NATIVE_CTE}
+        SELECT c.txhash, c.height, c.ts, c.committer, c.phase, c.amount_bluechip,
+               c.raised_after, c.bluechip_raised_after, c.tokens_received,
+               ${COMMIT_NATIVE_EXPR} AS commit_native
         FROM commits c
-        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.pool = @pool
           AND (@beforeTs IS NULL OR c.ts < @beforeTs)
           AND (@wallet IS NULL OR c.committer = @wallet)
@@ -357,15 +385,15 @@ export function creatorStatement(db: Db, opts: {
     pool: string; from: number; to: number; feeBps: number;
 }) {
     const commits = db.prepare(`
-        WITH ${DERIVED_USD_CTE}
+        WITH ${DERIVED_NATIVE_CTE}
         SELECT c.txhash, c.ts, c.committer, c.phase, c.amount_bluechip,
-               ${COMMIT_USD_EXPR} AS commit_usd
+               ${COMMIT_NATIVE_EXPR} AS commit_native
         FROM commits c
-        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.pool = @pool AND c.ts >= @from AND c.ts < @to
         ORDER BY c.ts ASC, c.height ASC, c.event_index ASC`).all(opts) as {
         txhash: string; ts: number; committer: string; phase: string;
-        commit_usd: string | null; amount_bluechip: string | null;
+        commit_native: string | null; amount_bluechip: string | null;
     }[];
     const claims = db.prepare(`
         SELECT txhash, ts, action, creator, amount_0, amount_1
@@ -383,11 +411,16 @@ export function creatorStatement(db: Db, opts: {
             txhash: c.txhash,
             counterparty: c.committer,
             phase: c.phase,
-            gross_usd: c.commit_usd,
+            // The creator's fee is taken on the gross OSMO attached to
+            // every commit (pre- and post-threshold alike), so the fee
+            // share keys off amount_bluechip; commit_native (the part
+            // that counted toward the threshold) is exposed alongside.
+            gross_native: c.amount_bluechip,
             // String math on micro-units: amount * feeBps / 10000.
-            fee_share_usd: c.commit_usd !== null
-                ? ((BigInt(c.commit_usd) * BigInt(opts.feeBps)) / 10_000n).toString()
+            fee_share_native: c.amount_bluechip !== null
+                ? ((BigInt(c.amount_bluechip) * BigInt(opts.feeBps)) / 10_000n).toString()
                 : null,
+            commit_native: c.commit_native,
             gross_bluechip: c.amount_bluechip,
             amount_0: null as string | null,
             amount_1: null as string | null,
@@ -398,8 +431,9 @@ export function creatorStatement(db: Db, opts: {
             txhash: c.txhash,
             counterparty: c.creator,
             phase: null as string | null,
-            gross_usd: null as string | null,
-            fee_share_usd: null as string | null,
+            gross_native: null as string | null,
+            fee_share_native: null as string | null,
+            commit_native: null as string | null,
             gross_bluechip: null as string | null,
             amount_0: c.amount_0,
             amount_1: c.amount_1,
@@ -419,12 +453,12 @@ export function windowStats(db: Db, pool: string, windowSec: number, now: number
                    SUM(CAST(CASE side WHEN 'buy' THEN offer_amount ELSE return_amount END AS REAL)) AS volume_bluechip
             FROM trades WHERE pool = ? AND ts >= ? AND ts < ?`).get(pool, from, to) as Record<string, number | null>;
         const c = db.prepare(`
-            WITH ${DERIVED_USD_CTE}
+            WITH ${DERIVED_NATIVE_CTE}
             SELECT COUNT(*) AS commits,
-                   SUM(COALESCE(CAST(c.amount_usd AS REAL), d.delta_usd)) AS commit_usd,
+                   SUM(d.delta_native) AS commit_native,
                    COUNT(DISTINCT c.committer) AS unique_committers
             FROM commits c
-            LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+            LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
             WHERE c.pool = ? AND c.ts >= ? AND c.ts < ?`).get(pool, from, to) as Record<string, number | null>;
         return { ...t, ...c };
     };
@@ -441,11 +475,11 @@ export function listCommitsByWallet(db: Db, opts: {
     wallet: string; limit: number; beforeTs: number | null;
 }) {
     return db.prepare(`
-        WITH ${DERIVED_USD_CTE}
-        SELECT c.txhash, c.height, c.ts, c.pool, c.phase, c.amount_bluechip, c.amount_usd,
-               c.tokens_received, ${COMMIT_USD_EXPR} AS commit_usd
+        WITH ${DERIVED_NATIVE_CTE}
+        SELECT c.txhash, c.height, c.ts, c.pool, c.phase, c.amount_bluechip,
+               c.tokens_received, ${COMMIT_NATIVE_EXPR} AS commit_native
         FROM commits c
-        LEFT JOIN derived_usd d ON d.txhash = c.txhash AND d.event_index = c.event_index
+        LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.committer = @wallet
           AND (@beforeTs IS NULL OR c.ts < @beforeTs)
         ORDER BY c.ts DESC, c.height DESC, c.event_index DESC

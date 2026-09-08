@@ -283,9 +283,9 @@ const CreatePoolModal: React.FC<CreatePoolModalProps> = ({ open, onClose, onSucc
                             </Typography>
                             <Typography variant="body2">Decimals: 6 (required by contract)</Typography>
                             <Typography variant="body2">
-                                Threshold, fee splits, lock caps and the Pyth USD-pricing config are
-                                read from the factory's stored configuration. The flat OSMO creation
-                                fee is quoted live and attached automatically.
+                                The OSMO commit threshold, fee splits, lock caps and fee-swap pool
+                                config are read from the factory's stored configuration. The flat
+                                OSMO creation fee is quoted live and attached automatically.
                             </Typography>
                         </Box>
 

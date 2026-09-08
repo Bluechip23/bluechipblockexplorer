@@ -59,7 +59,7 @@ test('swap event offering the TokenFactory denom parses as sell', () => {
     assert.ok(Math.abs((out.trades[0].price ?? 0) - 0.25) < 1e-9);   // 1 OSMO / 4 tokens
 });
 
-test('funding-phase commit parses current attributes (no per-commit USD) and raises no trade', () => {
+test('funding-phase commit parses current attributes and raises no trade', () => {
     const out = parseTxEvents(CTX, [wasm({
         _contract_address: POOL,
         action: 'commit',
@@ -67,8 +67,8 @@ test('funding-phase commit parses current attributes (no per-commit USD) and rai
         committer: 'osmo1fan',
         total_commit_count: '3',
         commit_amount_bluechip: '8000000',
-        total_raised_after: '5000000',              // running total, micro-USD
-        total_bluechip_raised_after: '40000000',    // net micro-OSMO
+        total_raised_after: '48000000',             // gross running total, micro-OSMO
+        total_bluechip_raised_after: '45120000',    // net-of-fee micro-OSMO
         pool_contract: POOL,
         block_height: '100',
         block_time: '1700000000',
@@ -78,9 +78,8 @@ test('funding-phase commit parses current attributes (no per-commit USD) and rai
     const c = out.commits[0];
     assert.equal(c.phase, 'funding');
     assert.equal(c.amount_bluechip, '8000000');
-    assert.equal(c.amount_usd, null);               // commit_amount_usd no longer emitted
-    assert.equal(c.usd_raised_after, '5000000');    // taken from total_raised_after
-    assert.equal(c.bluechip_raised_after, '40000000');
+    assert.equal(c.raised_after, '48000000');       // taken from total_raised_after
+    assert.equal(c.bluechip_raised_after, '45120000');
 });
 
 test('post-threshold ("active") commit indexes with current attributes; no trade without tokens_received', () => {
@@ -101,7 +100,7 @@ test('post-threshold ("active") commit indexes with current attributes; no trade
     assert.equal(out.commits.length, 1);
     const c = out.commits[0];
     assert.equal(c.amount_bluechip, '1000000');
-    assert.equal(c.amount_usd, null);
+    assert.equal(c.raised_after, null);             // post-threshold commits carry no running total
     assert.equal(c.tokens_received, null);
     // The swap output is only known in a later reply, so no trade row.
     assert.equal(out.trades.length, 0);
@@ -197,30 +196,31 @@ test('threshold-crossing commit parses current attributes and marks the crossing
         pool_contract: POOL,
     })]);
     assert.equal(out.commits[0].amount_bluechip, '99000000');
-    assert.equal(out.commits[0].amount_usd, null);   // no USD attributes on current events
+    assert.equal(out.commits[0].raised_after, null);
     assert.deepEqual(out.thresholdCrossings, [{ pool: POOL, ts: CTX.ts }]);
 });
 
-test('exact threshold hit marks the crossing and keeps the USD running total', () => {
+test('exact threshold hit marks the crossing and keeps the gross running total', () => {
     const out = parseTxEvents(CTX, [wasm({
         _contract_address: POOL,
         action: 'commit',
         phase: 'threshold_hit_exact',
         committer: 'osmo1whale',
         commit_amount_bluechip: '99000000',
-        total_raised_after: '25000000000',
+        total_raised_after: '500000000000',
         pool_contract: POOL,
     })]);
     assert.equal(out.commits[0].amount_bluechip, '99000000');
-    assert.equal(out.commits[0].usd_raised_after, '25000000000');
+    assert.equal(out.commits[0].raised_after, '500000000000');
     assert.equal(out.trades.length, 0);
     assert.deepEqual(out.thresholdCrossings, [{ pool: POOL, ts: CTX.ts }]);
 });
 
-// Legacy (pre-Osmosis) commits carried per-commit USD attributes and, on
-// active commits, tokens_received. Historical backfills must still parse
-// them.
-test('legacy commit events (per-commit USD attributes) still parse', () => {
+// Older contract generations emitted per-commit USD attributes and, on
+// active commits, tokens_received. The USD attributes are ignored (the
+// current contracts value nothing in USD); a legacy tokens_received still
+// derives the buy trade.
+test('legacy commit events: USD attributes are ignored, tokens_received still derives a trade', () => {
     const legacyCtx: TxContext = { ...CTX, nativeDenom: 'ubluechip', factoryAddress: 'bluechip1factory' };
     const out = parseTxEvents(legacyCtx, [
         wasm({
@@ -259,9 +259,11 @@ test('legacy commit events (per-commit USD attributes) still parse', () => {
         }),
     ]);
     assert.equal(out.commits.length, 3);
-    assert.equal(out.commits[0].amount_usd, '1000000');
-    assert.equal(out.commits[0].usd_raised_after, '5000000');
-    assert.equal(out.commits[1].amount_usd, '12000000');   // threshold + swap USD
+    assert.equal(out.commits[0].amount_bluechip, '8000000');
+    assert.equal(out.commits[0].raised_after, null);        // legacy USD running total is not a gross-OSMO total
+    assert.equal(out.commits[0].bluechip_raised_after, '40000000');
+    assert.equal(out.commits[1].amount_bluechip, '99000000');
+    assert.ok(!('amount_usd' in out.commits[0]));
     // Legacy active commits reported tokens_received -> derived buy trade.
     assert.equal(out.trades.length, 1);
     assert.equal(out.trades[0].source, 'commit');

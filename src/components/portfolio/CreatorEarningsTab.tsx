@@ -51,8 +51,9 @@ interface CreatorEarningsTabProps {
     pool: PoolSummary;
 }
 
-function commitFeeRevenueMicroUsd(pool: PoolSummary, creatorBps: bigint): bigint {
-    return feeShare(safeBigInt(pool.totalUsdRaised), creatorBps);
+// Creator's commit-fee share of the pool's gross OSMO committed (micro-OSMO).
+function commitFeeRevenueMicroNative(pool: PoolSummary, creatorBps: bigint): bigint {
+    return feeShare(safeBigInt(pool.totalNativeRaised), creatorBps);
 }
 
 // Micro-units → plain decimal string for spreadsheets (no thousands
@@ -129,7 +130,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
     const symbol = sanitizeOnChainString(pool.tokenSymbol, 16) || 'Token';
     const isCreatorWallet = !!earnings && earnings.creator_wallet_address === address;
 
-    const feeRevenueMicroUsd = commitFeeRevenueMicroUsd(pool, feeRates.creatorBps);
+    const feeRevenueMicroNative = commitFeeRevenueMicroNative(pool, feeRates.creatorBps);
     const grantValueBluechip = pool.thresholdReached && parseFloat(pool.currentPrice1to0) > 0
         ? 325_000 * parseFloat(pool.currentPrice1to0)
         : null;
@@ -184,8 +185,8 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     p.tokenSymbol,
                     p.poolAddress,
                     p.thresholdReached ? 'active' : 'pre-threshold',
-                    microToCsvDecimal(p.totalUsdRaised),
-                    microToCsvDecimal(commitFeeRevenueMicroUsd(p, feeRates.creatorBps)),
+                    microToCsvDecimal(p.totalNativeRaised),
+                    microToCsvDecimal(commitFeeRevenueMicroNative(p, feeRates.creatorBps)),
                     p.thresholdReached ? '325000' : '0',
                     microToCsvDecimal(earn?.excess?.bluechip_amount),
                     microToCsvDecimal(earn?.excess?.token_amount),
@@ -197,7 +198,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 `bluechip-creator-earnings-${new Date().toISOString().slice(0, 10)}.csv`,
                 [
                     'token_symbol', 'pool_address', 'status',
-                    'total_usd_raised', 'commit_fee_revenue_usd_est', 'threshold_grant_tokens',
+                    'total_osmo_committed', 'commit_fee_revenue_osmo_est', 'threshold_grant_tokens',
                     'locked_excess_osmo', 'locked_excess_token', 'excess_unlock_utc',
                     'subscribers',
                 ],
@@ -220,10 +221,8 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                         p.tokenSymbol,
                         p.poolAddress,
                         c.wallet,
-                        microToCsvDecimal(c.total_paid_usd),
-                        microToCsvDecimal(c.total_paid_bluechip),
-                        microToCsvDecimal(c.last_payment_usd),
-                        microToCsvDecimal(c.last_payment_bluechip),
+                        microToCsvDecimal(c.total_paid_native),
+                        microToCsvDecimal(c.last_payment_native),
                         last ? last.toISOString() : '',
                     ]);
                 }
@@ -232,8 +231,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 `bluechip-supporter-ledger-${new Date().toISOString().slice(0, 10)}.csv`,
                 [
                     'token_symbol', 'pool_address', 'supporter_wallet',
-                    'total_paid_usd', 'total_paid_bluechip',
-                    'last_payment_usd', 'last_payment_bluechip', 'last_committed_utc',
+                    'total_paid_osmo', 'last_payment_osmo', 'last_committed_utc',
                 ],
                 rows,
             );
@@ -262,8 +260,8 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                         ln.type,
                         ln.counterparty ?? '',
                         ln.phase ?? '',
-                        microToCsvDecimal(ln.gross_usd),
-                        microToCsvDecimal(ln.fee_share_usd),
+                        microToCsvDecimal(ln.gross_native),
+                        microToCsvDecimal(ln.fee_share_native),
                         microToCsvDecimal(ln.amount_0),
                         microToCsvDecimal(ln.amount_1),
                         ln.txhash,
@@ -274,7 +272,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                 `bluechip-creator-statement-${new Date().toISOString().slice(0, 10)}.csv`,
                 [
                     'timestamp_utc', 'token_symbol', 'pool_address', 'type',
-                    'counterparty', 'phase', 'gross_commit_usd', 'creator_fee_share_usd',
+                    'counterparty', 'phase', 'gross_commit_osmo', 'creator_fee_share_osmo',
                     'claim_bluechip', 'claim_token', 'txhash',
                 ],
                 rows,
@@ -327,9 +325,9 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="caption" color="text.secondary">Commit Fee Revenue (est.)</Typography>
-                            <Typography variant="h6" fontWeight="bold">${formatMicroAmount(feeRevenueMicroUsd.toString())}</Typography>
+                            <Typography variant="h6" fontWeight="bold">{formatMicroAmount(feeRevenueMicroNative.toString())} OSMO</Typography>
                             <Typography variant="caption" color="text.secondary">
-                                Your {bpsPct(feeRates.creatorBps)}% share of ${formatMicroAmount(pool.totalUsdRaised)} gross commits
+                                Your {bpsPct(feeRates.creatorBps)}% share of {formatMicroAmount(pool.totalNativeRaised)} OSMO gross commits
                             </Typography>
                         </CardContent>
                     </Card>
@@ -487,7 +485,7 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     </Tooltip>
                 </Stack>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Amounts are in whole units (USD and tokens, 6-decimal precision). The supporter ledger
+                    Amounts are in whole units (OSMO and tokens, 6-decimal precision). The supporter ledger
                     reflects current on-chain totals per wallet; the per-transaction statement comes from the
                     indexer and lists every commit's fee share and every claim payout with block timestamps.
                 </Typography>

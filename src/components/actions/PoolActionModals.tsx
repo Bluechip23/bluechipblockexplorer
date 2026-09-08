@@ -17,7 +17,7 @@ import {
     Tab,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import OracleStatusBanner from '../universal/OracleStatusBanner';
+import NativePriceBanner from '../universal/NativePriceBanner';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import SellIcon from '@mui/icons-material/Sell';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
@@ -733,7 +733,7 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
 
             {stage === 'input' && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <OracleStatusBanner />
+                    <NativePriceBanner />
                     <Alert severity="info" sx={{ mb: 1 }}>
                         {thresholdReached
                             ? `This pool is past its funding threshold — your commit is swapped through the native Osmosis pool and you receive ${symbol} at the current price. Your on-chain subscription record still updates.`

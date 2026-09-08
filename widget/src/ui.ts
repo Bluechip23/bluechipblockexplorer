@@ -107,8 +107,8 @@ export function mountSubscribe(target: Element | string, opts: SubscribeMountOpt
 
 export interface GateMountOptions {
     pool?: string;
-    /** Minimum lifetime USD committed to pass the gate. */
-    minUsd?: number;
+    /** Minimum lifetime OSMO committed (whole OSMO, gross) to pass the gate. */
+    minOsmo?: number;
     /** Text on the unlock button shown to unverified viewers. */
     label?: string;
     /** Message shown when the viewer doesn't meet the gate. */
@@ -143,7 +143,7 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
             status.textContent = 'Checking subscription…';
             btn.disabled = true;
             try {
-                const result = await checkSubscription({ pool: opts.pool, minUsd: opts.minUsd });
+                const result = await checkSubscription({ pool: opts.pool, minOsmo: opts.minOsmo });
                 opts.onResult?.(result);
                 if (result.subscribed) {
                     prompt.remove();
@@ -152,13 +152,13 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
                     status.className = 'bcw-status bcw-err';
                     status.textContent = opts.deniedText
                         ?? (result.record
-                            ? `Your subscription total ($${result.totalUsd.toLocaleString()}) is below the required $${(opts.minUsd ?? 0).toLocaleString()}.`
+                            ? `Your subscription total (${result.totalOsmo.toLocaleString()} OSMO) is below the required ${(opts.minOsmo ?? 0).toLocaleString()} OSMO.`
                             : 'No subscription found for this wallet.');
                 }
             } catch (err) {
                 status.className = 'bcw-status bcw-err';
                 status.textContent = (err as Error).message;
-                opts.onResult?.({ subscribed: false, totalUsd: 0, record: null });
+                opts.onResult?.({ subscribed: false, totalOsmo: 0, record: null });
             } finally {
                 btn.disabled = false;
             }
@@ -167,8 +167,8 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
 }
 
 /** Auto-mount declarative embeds:
- *   <div data-bluechip-subscribe data-pool="osmo1..." data-amount="25"></div>
- *   <div data-bluechip-gate data-pool="osmo1..." data-min-usd="5">gated content</div>
+ *   <div data-bluechip-subscribe data-pool="osmo1..." data-amount="115"></div>
+ *   <div data-bluechip-gate data-pool="osmo1..." data-min-osmo="115">gated content</div>
  */
 export function scan(root: ParentNode = document): void {
     root.querySelectorAll('[data-bluechip-subscribe]').forEach((el) => {
@@ -188,7 +188,7 @@ export function scan(root: ParentNode = document): void {
         const d = (el as HTMLElement).dataset;
         mountGate(el, {
             pool: d.pool,
-            minUsd: d.minUsd ? Number(d.minUsd) : 0,
+            minOsmo: d.minOsmo ? Number(d.minOsmo) : 0,
             label: d.label,
             deniedText: d.deniedText,
         });

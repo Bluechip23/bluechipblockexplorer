@@ -28,6 +28,7 @@ import {
     WalletHolding,
 } from '../utils/contractQueries';
 import { safeBigInt } from '../utils/bigintMath';
+import { approxUsd, useNativeUsdRate } from '../hooks/useNativeUsdRate';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
 
 const ChainPortfolioPage: React.FC = () => {
@@ -38,6 +39,8 @@ const ChainPortfolioPage: React.FC = () => {
     const [commitments, setCommitments] = useState<MyCommitment[]>([]);
     const [holdings, setHoldings] = useState<WalletHolding[]>([]);
     const [lpPositions, setLpPositions] = useState<LpPosition[]>([]);
+    // Display-only OSMO/USD reference for the committed-total card.
+    const usdRate = useNativeUsdRate();
 
     useEffect(() => {
         if (!address || !factoryAddress) return;
@@ -83,8 +86,8 @@ const ChainPortfolioPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [address]);
 
-    const totalCommittedUsd = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_usd), 0n);
-    const totalCommittedBluechip = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_bluechip), 0n);
+    // Gross micro-OSMO committed across pools (the contracts value nothing in USD).
+    const totalCommittedNative = commitments.reduce<bigint>((sum, c) => sum + safeBigInt(c.commit.total_paid_native), 0n);
     // Both legs of a balanced pool are worth ~2x the wallet's OSMO-side
     // underlying — a display estimate at current reserves.
     const totalLpValueOsmo = lpPositions.reduce<bigint>((sum, p) => sum + 2n * safeBigInt(p.osmoAmount), 0n);
@@ -105,8 +108,8 @@ const ChainPortfolioPage: React.FC = () => {
                             <Grid container spacing={2}>
                                 <Grid item xs={6} sm={3}><StatCard label="Tokens Held" value={holdings.length + (balance && safeBigInt(balance.amount) > 0n ? 1 : 0)} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="Pools Committed" value={commitments.length} /></Grid>
-                                <Grid item xs={6} sm={3}><StatCard label="Total Committed (USD)" value={`$${formatMicroAmount(totalCommittedUsd.toString())}`} /></Grid>
-                                <Grid item xs={6} sm={3}><StatCard label="Total Committed (OSMO)" value={formatMicroAmount(totalCommittedBluechip.toString())} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="Total Committed (OSMO)" value={formatMicroAmount(totalCommittedNative.toString())} /></Grid>
+                                <Grid item xs={6} sm={3}><StatCard label="Committed (≈ USD)" value={approxUsd(totalCommittedNative, usdRate) || '—'} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="LP Positions" value={lpPositions.length} /></Grid>
                                 <Grid item xs={6} sm={3}><StatCard label="LP Value (OSMO, est.)" value={formatMicroAmount(totalLpValueOsmo.toString())} /></Grid>
                             </Grid>
