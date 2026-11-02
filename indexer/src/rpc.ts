@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto';
 
-// Minimal Tendermint/CometBFT RPC client over the HTTP JSON endpoints.
-// Only the three endpoints the ingester needs: /status, /block,
-// /block_results.
+// Minimal Tendermint/CometBFT RPC client. Only the three methods the
+// ingester needs: status, block, block_results.
+//
+// Calls use the JSON-RPC POST form (`{"jsonrpc":"2.0","method":...}` to
+// the endpoint root) rather than the URI form (`GET /block?height=N`).
+// Every Tendermint node accepts both, but hosted RPC providers and
+// load-balancing proxies (dRPC, Lava-style gateways, some PublicNode
+// setups) often accept only the JSON-RPC form — and it is the form CosmJS
+// uses, so the website and profiles service already depend on it. Using
+// it here keeps the indexer provider-agnostic.
 
 export interface RawEventAttr {
     key: string;
@@ -25,25 +32,33 @@ export interface TxResult {
     events: RawEvent[];
 }
 
-async function rpcGet(rpcUrl: string, path: string): Promise<any> {
-    const res = await fetch(`${rpcUrl}${path}`, { signal: AbortSignal.timeout(15_000) });
+let nextRequestId = 1;
+
+async function rpcCall(rpcUrl: string, method: string, params: Record<string, string> = {}): Promise<any> {
+    const res = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: nextRequestId++, method, params }),
+        signal: AbortSignal.timeout(15_000),
+    });
     if (!res.ok) {
-        throw new Error(`RPC ${path} -> HTTP ${res.status}`);
+        throw new Error(`RPC ${method} -> HTTP ${res.status}`);
     }
     const body = await res.json() as { error?: { message?: string; data?: string }; result?: any };
     if (body.error) {
-        throw new Error(`RPC ${path} -> ${body.error.data || body.error.message || 'unknown error'}`);
+        throw new Error(`RPC ${method} -> ${body.error.data || body.error.message || 'unknown error'}`);
     }
     return body.result;
 }
 
 export async function getLatestHeight(rpcUrl: string): Promise<number> {
-    const result = await rpcGet(rpcUrl, '/status');
+    const result = await rpcCall(rpcUrl, 'status');
     return parseInt(result.sync_info.latest_block_height, 10);
 }
 
 export async function getBlock(rpcUrl: string, height: number): Promise<BlockData> {
-    const result = await rpcGet(rpcUrl, `/block?height=${height}`);
+    // Tendermint takes heights as strings in JSON-RPC params.
+    const result = await rpcCall(rpcUrl, 'block', { height: String(height) });
     const txsB64: string[] = result.block.data.txs ?? [];
     return {
         height,
@@ -55,7 +70,7 @@ export async function getBlock(rpcUrl: string, height: number): Promise<BlockDat
 }
 
 export async function getBlockResults(rpcUrl: string, height: number): Promise<TxResult[]> {
-    const result = await rpcGet(rpcUrl, `/block_results?height=${height}`);
+    const result = await rpcCall(rpcUrl, 'block_results', { height: String(height) });
     const txs = result.txs_results ?? [];
     return txs.map((t: any) => ({
         code: t.code ?? 0,
