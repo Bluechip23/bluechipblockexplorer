@@ -16,6 +16,7 @@ import {
     toMicro,
     type CommitRecord,
     type GateResult,
+    DEFAULT_ACTIVE_DAYS,
 } from './messages.ts';
 
 // Minimal Keplr surface the widget uses. The default deployment is the
@@ -150,6 +151,8 @@ export async function checkSubscription(opts: {
     address?: string;
     /** Minimum lifetime OSMO committed (whole OSMO) to pass the gate. */
     minOsmo?: number;
+    /** Days of access one commit buys (default 30, the platform policy). */
+    activeDays?: number;
 }): Promise<GateResult> {
     const cfg = getConfig();
     const pool = opts.pool ?? cfg.pool;
@@ -162,5 +165,5 @@ export async function checkSubscription(opts: {
         throw new Error(`Subscription lookup failed: HTTP ${res.status}`);
     }
     const body = (await res.json()) as { data: CommitRecord | null };
-    return evaluateGate(body.data ?? null, opts.minOsmo ?? 0);
+    return evaluateGate(body.data ?? null, opts.minOsmo ?? 0, opts.activeDays ?? DEFAULT_ACTIVE_DAYS);
 }

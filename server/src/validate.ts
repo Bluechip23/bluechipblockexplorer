@@ -9,7 +9,9 @@ export const NAME_MAX = 32;
 export const BIO_MAX = 280;
 export const TITLE_MAX = 80;
 export const URL_MAX = 2048;
-export const MAX_LINKS = 50;
+// No cap on links per creator — the feed turns links into a publishing
+// channel. Only the pinned (bio) set is bounded.
+export const MAX_PINNED = 10;
 
 const NAME_PATTERN = /^[a-zA-Z0-9 _.-]+$/;
 
@@ -85,6 +87,13 @@ export function validateGated(raw: unknown): FieldResult<number> {
     if (typeof raw === 'boolean') return { ok: true, value: raw ? 1 : 0 };
     if (raw === 0 || raw === 1) return { ok: true, value: raw };
     return { ok: false, error: 'gated must be a boolean (or 0/1)' };
+}
+
+export function validatePinned(raw: unknown): FieldResult<number> {
+    if (raw === undefined || raw === null) return { ok: true, value: 0 };
+    if (typeof raw === 'boolean') return { ok: true, value: raw ? 1 : 0 };
+    if (raw === 0 || raw === 1) return { ok: true, value: raw };
+    return { ok: false, error: 'pinned must be a boolean (or 0/1)' };
 }
 
 export function validatePosition(raw: unknown): FieldResult<number | undefined> {

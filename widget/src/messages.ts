@@ -153,20 +153,54 @@ export interface CommitRecord {
 }
 
 export interface GateResult {
+    /** True when the wallet has an ACTIVE subscription: a commit record
+     * whose last commit is within the access window and whose lifetime
+     * total meets the site's OSMO floor. */
     subscribed: boolean;
     /** Total lifetime OSMO committed (whole OSMO, gross before fees). */
     totalOsmo: number;
     /** Raw on-chain record, null if the wallet never committed. */
     record: CommitRecord | null;
+    /** True when a record exists but its last commit is older than the
+     * access window — the viewer needs to commit again. */
+    expired: boolean;
+    /** When the current access window ends (ms since epoch), or null. */
+    expiresAt: number | null;
 }
 
-/** Gate on the wallet's lifetime OSMO committed. `minOsmo` is the site's
- * own floor in whole OSMO (0 = any commit record passes). */
-export function evaluateGate(record: CommitRecord | null, minOsmo = 0): GateResult {
+/** Days of access one commit buys. The chain never expires a commit
+ * record; this is the BlueChip platform policy, applied from
+ * `last_committed`. Committing again renews the window. */
+export const DEFAULT_ACTIVE_DAYS = 30;
+
+/** `last_committed` (nanoseconds as a string) → ms since epoch, or null. */
+export function lastCommittedMs(record: CommitRecord | null): number | null {
+    if (!record) return null;
+    try {
+        const ns = BigInt(record.last_committed);
+        return ns > 0n ? Number(ns / 1_000_000n) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Gate on an ACTIVE subscription: last commit within `activeDays` and
+ * lifetime OSMO committed ≥ `minOsmo` (whole OSMO, 0 = no floor). */
+export function evaluateGate(
+    record: CommitRecord | null,
+    minOsmo = 0,
+    activeDays = DEFAULT_ACTIVE_DAYS,
+    nowMs = Date.now(),
+): GateResult {
     const totalOsmo = fromMicro(record?.total_paid_native);
+    const last = lastCommittedMs(record);
+    const expiresAt = last === null ? null : last + activeDays * 86_400_000;
+    const active = expiresAt !== null && expiresAt > nowMs;
     return {
-        subscribed: record !== null && totalOsmo >= minOsmo,
+        subscribed: record !== null && active && totalOsmo >= minOsmo,
         totalOsmo,
         record,
+        expired: record !== null && !active,
+        expiresAt,
     };
 }

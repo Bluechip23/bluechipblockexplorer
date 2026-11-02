@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS links (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_links_wallet_pos ON links(wallet_address, position);
+CREATE INDEX IF NOT EXISTS idx_links_wallet_created ON links(wallet_address, created_at);
 
 CREATE TABLE IF NOT EXISTS nonces (
     wallet_address TEXT PRIMARY KEY,
@@ -44,6 +45,12 @@ CREATE TABLE IF NOT EXISTS nonces (
     issued_at INTEGER NOT NULL
 );
 `);
+    // Additive column migrations for databases created before the column
+    // existed. SQLite has no ADD COLUMN IF NOT EXISTS.
+    const linkColumns = (db.pragma('table_info(links)') as Array<{ name: string }>).map((c) => c.name);
+    if (!linkColumns.includes('pinned')) {
+        db.exec('ALTER TABLE links ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +72,9 @@ export interface LinkRow {
     title: string;
     url: string;
     gated: number;
+    // Pinned links are the creator's "bio" set: shown at the top of the
+    // links page in position order. Unpinned links are posts, newest first.
+    pinned: number;
     position: number;
     created_at: number;
     updated_at: number;
@@ -167,16 +177,23 @@ export function countLinks(db: Db, wallet: string): number {
     return row.n;
 }
 
+export function countPinned(db: Db, wallet: string): number {
+    const row = db.prepare(
+        'SELECT COUNT(*) AS n FROM links WHERE wallet_address = ? AND pinned = 1',
+    ).get(wallet) as { n: number };
+    return row.n;
+}
+
 export function getLink(db: Db, id: number): LinkRow | undefined {
     return db.prepare('SELECT * FROM links WHERE id = ?').get(id) as LinkRow | undefined;
 }
 
 export function insertLink(db: Db, l: {
-    wallet_address: string; title: string; url: string; gated: number; position: number;
+    wallet_address: string; title: string; url: string; gated: number; pinned: number; position: number;
 }): LinkRow {
     const now = Math.floor(Date.now() / 1000);
-    const info = db.prepare(`INSERT INTO links (wallet_address, title, url, gated, position, created_at, updated_at)
-        VALUES (@wallet_address, @title, @url, @gated, @position, @now, @now)`).run({ ...l, now });
+    const info = db.prepare(`INSERT INTO links (wallet_address, title, url, gated, pinned, position, created_at, updated_at)
+        VALUES (@wallet_address, @title, @url, @gated, @pinned, @position, @now, @now)`).run({ ...l, now });
     return getLink(db, Number(info.lastInsertRowid))!;
 }
 
@@ -188,18 +205,19 @@ export function maxPosition(db: Db, wallet: string): number {
 }
 
 export function updateLink(db: Db, id: number, patch: {
-    title?: string; url?: string; gated?: number; position?: number;
+    title?: string; url?: string; gated?: number; pinned?: number; position?: number;
 }): LinkRow | undefined {
     const existing = getLink(db, id);
     if (!existing) return undefined;
     const now = Math.floor(Date.now() / 1000);
     db.prepare(`UPDATE links SET
-        title = @title, url = @url, gated = @gated, position = @position, updated_at = @now
+        title = @title, url = @url, gated = @gated, pinned = @pinned, position = @position, updated_at = @now
         WHERE id = @id`).run({
         id,
         title: patch.title ?? existing.title,
         url: patch.url ?? existing.url,
         gated: patch.gated ?? existing.gated,
+        pinned: patch.pinned ?? existing.pinned,
         position: patch.position ?? existing.position,
         now,
     });

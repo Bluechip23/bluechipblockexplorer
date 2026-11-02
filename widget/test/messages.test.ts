@@ -118,13 +118,35 @@ const RECORD: CommitRecord = {
     last_payment_bluechip: '115000000',
 };
 
+// RECORD.last_committed = 1700000000 s; "now" one day later keeps it active.
+const NOW = 1700000000_000 + 86_400_000;
+const EXPIRES = 1700000000_000 + 30 * 86_400_000;
+
 test('evaluateGate grants and denies on the OSMO floor', () => {
-    assert.deepEqual(evaluateGate(RECORD, 115), { subscribed: true, totalOsmo: 150.5, record: RECORD });
-    assert.equal(evaluateGate(RECORD, 200).subscribed, false);
-    assert.deepEqual(evaluateGate(null, 0), { subscribed: false, totalOsmo: 0, record: null });
+    assert.deepEqual(evaluateGate(RECORD, 115, 30, NOW), {
+        subscribed: true, totalOsmo: 150.5, record: RECORD, expired: false, expiresAt: EXPIRES,
+    });
+    assert.equal(evaluateGate(RECORD, 200, 30, NOW).subscribed, false);
+    assert.deepEqual(evaluateGate(null, 0, 30, NOW), {
+        subscribed: false, totalOsmo: 0, record: null, expired: false, expiresAt: null,
+    });
 });
 
 test('evaluateGate reads total_paid_native, not the compat bluechip twin', () => {
     const skewed: CommitRecord = { ...RECORD, total_paid_bluechip: '999000000000' };
-    assert.equal(evaluateGate(skewed, 200).subscribed, false);
+    assert.equal(evaluateGate(skewed, 200, 30, NOW).subscribed, false);
+});
+
+test('evaluateGate expires the subscription activeDays after the last commit', () => {
+    // One second before the window ends: still active.
+    assert.equal(evaluateGate(RECORD, 0, 30, EXPIRES - 1000).subscribed, true);
+    // At the boundary and beyond: expired, and flagged as such (not "no record").
+    const atBoundary = evaluateGate(RECORD, 0, 30, EXPIRES);
+    assert.equal(atBoundary.subscribed, false);
+    assert.equal(atBoundary.expired, true);
+    assert.equal(atBoundary.expiresAt, EXPIRES);
+    // The window is configurable.
+    assert.equal(evaluateGate(RECORD, 0, 60, EXPIRES).subscribed, true);
+    // Default window is 30 days from the real clock — an old record is expired.
+    assert.equal(evaluateGate(RECORD).expired, true);
 });

@@ -36,6 +36,7 @@ docker run -p 4317:4317 -v profiles-data:/data bluechip-profiles
 | `PROFILES_DB`        | `./profiles.db`                      | SQLite file path                               |
 | `PROFILES_RPC`       | `https://rpc.osmotest5.osmosis.zone` | RPC used for `committing_info` checks          |
 | `RATE_LIMIT_PER_MIN` | `300`                                | Per-IP request budget; `0` disables            |
+| `PROFILES_SUBSCRIPTION_DAYS` | `30`                         | Days of access one commit buys (from `last_committed`) |
 
 ## API
 
@@ -43,21 +44,32 @@ CORS is open (public read API). Bodies are JSON, limited to 64 KB.
 
 | Method | Path                   | Auth   | Description                                                                              |
 | ------ | ---------------------- | ------ | ---------------------------------------------------------------------------------------- |
-| GET    | `/health`              | —      | `{ ok: true }`                                                                            |
+| GET    | `/health`              | —      | `{ ok: true, subscription_days }`                                                         |
 | GET    | `/auth/nonce?address=` | —      | Issues a one-shot nonce (random 32-hex, 5-minute TTL) for the address                     |
 | GET    | `/profiles/:idOrName`  | —      | Profile + links. `:idOrName` = wallet address, profile name, or pool address. Gated links come **without** `url` |
 | GET    | `/search?q=`           | —      | `{ results: [{ name, wallet_address, pool_address }] }` — name substring (case-insensitive) or exact wallet/pool address, limit 20 |
 | PUT    | `/profiles`            | signed | Upsert caller's profile `{ name, pool_address?, bio? }`. `409` on name conflict           |
-| POST   | `/links`               | signed | Add link `{ title, url, gated, position? }`. Max 50 links per profile                     |
-| PUT    | `/links/:id`           | signed | Update own link `{ id, title?, url?, gated?, position? }`                                 |
+| POST   | `/links`               | signed | Add link `{ title, url, gated, pinned?, position? }`. No cap on links; at most 10 pinned   |
+| PUT    | `/links/:id`           | signed | Update own link `{ id, title?, url?, gated?, pinned?, position? }`                        |
 | DELETE | `/links/:id`           | signed | Delete own link (payload `{ id }`)                                                        |
-| POST   | `/links/unlock`        | signed | Payload `{ owner }` (wallet, name, or pool). Returns gated links **with** URLs when the caller has a non-null `committing_info` on the owner's pool — or is the owner |
+| POST   | `/links/unlock`        | signed | Payload `{ owner }` (wallet, name, or pool). Returns gated links **with** URLs when the caller has an **active** subscription on the owner's pool (a `committing_info` record whose `last_committed` is within `PROFILES_SUBSCRIPTION_DAYS`) — or is the owner. `403` with "expired" when the window has lapsed |
 | POST   | `/feed`                | —      | Body `{ pools: [osmo1...], limit? }` (≤ 200 pools, ≤ 500 links). Subscriber feed: `{ creators, links }` — every link of every profile whose pool is listed, newest first, each with its `creator` inline. Gated links come **without** `url`. POST (not GET) only because a long pool list does not fit in a query string |
-| POST   | `/feed/unlock`         | signed | Payload `{ pools }`. One signature unlocks the whole feed: checks the caller's `committing_info` on each pool and returns the gated links **with** URLs for every verified pool (or the caller's own profile), plus `verified_pools` and `failed_pools` (RPC errors — retry, not "unsubscribed") |
+| POST   | `/feed/unlock`         | signed | Payload `{ pools }`. One signature unlocks the whole feed: checks the caller's `committing_info` on each pool (same access window as `/links/unlock`) and returns the gated links **with** URLs for every verified pool (or the caller's own profile), plus `verified_pools`, `expired_pools` (renew) and `failed_pools` (RPC errors — retry, not "unsubscribed") |
 
 Every link in a response carries `created_at` / `updated_at` (unix seconds),
 which is what the explorer's feed page uses to flag links added since the
-viewer's last visit.
+viewer's last visit, and `pinned`. Pinned links are the creator's bio set
+(at most 10, shown at the top of the links page in `position` order);
+everything else is a post, listed newest first and surfaced in subscribers'
+feeds. There is no cap on posts.
+
+### Subscriptions last 30 days
+
+A commit is a subscription payment: it buys `PROFILES_SUBSCRIPTION_DAYS`
+(default 30) days of access, counted from the wallet's `last_committed`
+on the creator's pool, and committing again renews it. The chain never
+expires the record — the window is platform policy, enforced here on both
+unlock endpoints and mirrored by the explorer and the embeddable widget.
 
 ### Signed request format
 
@@ -94,3 +106,4 @@ over the ADR-36 SignDoc (`chain_id ""`, `sign/MsgSignData`).
 - `bio`: optional, ≤ 280 chars
 - `pool_address`: optional, must be bech32 `osmo1...`
 - `title`: ≤ 80 chars; `url`: ≤ 2048 chars, must parse as `http(s)` URL
+- `pinned`: boolean; at most 10 pinned links per profile (no cap on links overall)

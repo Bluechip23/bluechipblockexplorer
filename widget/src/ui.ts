@@ -109,6 +109,8 @@ export interface GateMountOptions {
     pool?: string;
     /** Minimum lifetime OSMO committed (whole OSMO, gross) to pass the gate. */
     minOsmo?: number;
+    /** Days of access one commit buys (default 30, the platform policy). */
+    activeDays?: number;
     /** Text on the unlock button shown to unverified viewers. */
     label?: string;
     /** Message shown when the viewer doesn't meet the gate. */
@@ -143,7 +145,7 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
             status.textContent = 'Checking subscription…';
             btn.disabled = true;
             try {
-                const result = await checkSubscription({ pool: opts.pool, minOsmo: opts.minOsmo });
+                const result = await checkSubscription({ pool: opts.pool, minOsmo: opts.minOsmo, activeDays: opts.activeDays });
                 opts.onResult?.(result);
                 if (result.subscribed) {
                     prompt.remove();
@@ -151,14 +153,16 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
                 } else {
                     status.className = 'bcw-status bcw-err';
                     status.textContent = opts.deniedText
-                        ?? (result.record
-                            ? `Your subscription total (${result.totalOsmo.toLocaleString()} OSMO) is below the required ${(opts.minOsmo ?? 0).toLocaleString()} OSMO.`
-                            : 'No subscription found for this wallet.');
+                        ?? (result.expired
+                            ? 'Your subscription has expired — commit again to renew your access.'
+                            : result.record
+                                ? `Your subscription total (${result.totalOsmo.toLocaleString()} OSMO) is below the required ${(opts.minOsmo ?? 0).toLocaleString()} OSMO.`
+                                : 'No subscription found for this wallet.');
                 }
             } catch (err) {
                 status.className = 'bcw-status bcw-err';
                 status.textContent = (err as Error).message;
-                opts.onResult?.({ subscribed: false, totalOsmo: 0, record: null });
+                opts.onResult?.({ subscribed: false, totalOsmo: 0, record: null, expired: false, expiresAt: null });
             } finally {
                 btn.disabled = false;
             }
@@ -168,7 +172,7 @@ export function mountGate(target: Element | string, opts: GateMountOptions = {})
 
 /** Auto-mount declarative embeds:
  *   <div data-bluechip-subscribe data-pool="osmo1..." data-amount="115"></div>
- *   <div data-bluechip-gate data-pool="osmo1..." data-min-osmo="115">gated content</div>
+ *   <div data-bluechip-gate data-pool="osmo1..." data-min-osmo="115" data-active-days="30">gated content</div>
  */
 export function scan(root: ParentNode = document): void {
     root.querySelectorAll('[data-bluechip-subscribe]').forEach((el) => {
@@ -189,6 +193,7 @@ export function scan(root: ParentNode = document): void {
         mountGate(el, {
             pool: d.pool,
             minOsmo: d.minOsmo ? Number(d.minOsmo) : 0,
+            activeDays: d.activeDays ? Number(d.activeDays) : undefined,
             label: d.label,
             deniedText: d.deniedText,
         });

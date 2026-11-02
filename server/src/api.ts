@@ -2,17 +2,17 @@ import { randomBytes } from 'crypto';
 import cors from 'cors';
 import express, { Express, Request, Response } from 'express';
 import { AuthFields, extractAuth, verifySignedRequest } from './auth';
-import { queryCommittingInfo } from './chain';
+import { isSubscriptionActive, queryCommittingInfo } from './chain';
 import { Config } from './config';
 import {
-    countLinks, Db, deleteLink, getLink, getProfileByName, getProfileByPool,
+    countPinned, Db, deleteLink, getLink, getProfileByName, getProfileByPool,
     getProfilesByPools, getProfileByWallet, insertLink, LinkRow, listLinks,
     listLinksForWallets, maxPosition, ProfileRow, putNonce, searchProfiles,
     updateLink, upsertProfile,
 } from './db';
 import {
-    isOsmoAddress, MAX_LINKS, validateBio, validateGated, validateName,
-    validatePoolAddress, validatePosition, validateTitle, validateUrl,
+    isOsmoAddress, MAX_PINNED, validateBio, validateGated, validateName,
+    validatePinned, validatePoolAddress, validatePosition, validateTitle, validateUrl,
 } from './validate';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ import {
 
 function publicLink(l: LinkRow): Record<string, unknown> {
     const base = {
-        id: l.id, title: l.title, gated: !!l.gated, position: l.position,
+        id: l.id, title: l.title, gated: !!l.gated, pinned: !!l.pinned, position: l.position,
         created_at: l.created_at, updated_at: l.updated_at,
     };
     return l.gated ? base : { ...base, url: l.url };
@@ -31,7 +31,7 @@ function publicLink(l: LinkRow): Record<string, unknown> {
 
 function fullLink(l: LinkRow): Record<string, unknown> {
     return {
-        id: l.id, title: l.title, url: l.url, gated: !!l.gated, position: l.position,
+        id: l.id, title: l.title, url: l.url, gated: !!l.gated, pinned: !!l.pinned, position: l.position,
         created_at: l.created_at, updated_at: l.updated_at,
     };
 }
@@ -166,7 +166,7 @@ export function buildApi(db: Db, cfg: Config): Express {
     app.use(rateLimiter(cfg.rateLimitPerMin));
 
     app.get('/health', (_req, res) => {
-        res.json({ ok: true });
+        res.json({ ok: true, subscription_days: cfg.subscriptionDays });
     });
 
     // ---- Auth -------------------------------------------------------------
@@ -235,10 +235,11 @@ export function buildApi(db: Db, cfg: Config): Express {
 
     // One signature unlocks the gated links of every subscribed creator at
     // once: the caller's committing_info is checked on each pool (the same
-    // enforcement as /links/unlock), and only links of verified pools — or
-    // of the caller's own profile — are returned with their url. Pools whose
-    // RPC check failed are reported so the client can retry them rather
-    // than show them as "not subscribed".
+    // enforcement as /links/unlock, including the access window), and only
+    // links of verified pools — or of the caller's own profile — are
+    // returned with their url. Expired subscriptions and pools whose RPC
+    // check failed are reported separately so the client can say "renew"
+    // or "retry" rather than "not subscribed".
 
     app.post('/feed/unlock', async (req, res) => {
         const signed = await requireSigned(db, req, res, 'unlock_feed');
@@ -253,7 +254,11 @@ export function buildApi(db: Db, cfg: Config): Express {
             if (profile.wallet_address === auth.address) return { profile, status: 'verified' as const };
             try {
                 const info = await queryCommittingInfo(cfg.rpcUrl, profile.pool_address!, auth.address);
-                return { profile, status: info ? ('verified' as const) : ('unsubscribed' as const) };
+                if (!info) return { profile, status: 'unsubscribed' as const };
+                return {
+                    profile,
+                    status: isSubscriptionActive(info, cfg.subscriptionDays) ? ('verified' as const) : ('expired' as const),
+                };
             } catch (err) {
                 console.error('[feed/unlock] committing_info query failed:', err);
                 return { profile, status: 'failed' as const };
@@ -262,6 +267,7 @@ export function buildApi(db: Db, cfg: Config): Express {
 
         const links: Record<string, unknown>[] = [];
         const verified: string[] = [];
+        const expired: string[] = [];
         const failed: string[] = [];
         for (const c of checks) {
             if (c.status === 'verified') {
@@ -269,11 +275,13 @@ export function buildApi(db: Db, cfg: Config): Express {
                 for (const l of listLinks(db, c.profile.wallet_address)) {
                     if (l.gated) links.push({ ...fullLink(l), creator: feedCreator(c.profile) });
                 }
+            } else if (c.status === 'expired') {
+                expired.push(c.profile.pool_address!);
             } else if (c.status === 'failed') {
                 failed.push(c.profile.pool_address!);
             }
         }
-        res.json({ links, verified_pools: verified, failed_pools: failed });
+        res.json({ links, verified_pools: verified, expired_pools: expired, failed_pools: failed, subscription_days: cfg.subscriptionDays });
     });
 
     // ---- Signed writes ----------------------------------------------------
@@ -313,9 +321,6 @@ export function buildApi(db: Db, cfg: Config): Express {
         if (!getProfileByWallet(db, auth.address)) {
             return res.status(400).json({ error: 'create a profile first (PUT /profiles)' });
         }
-        if (countLinks(db, auth.address) >= MAX_LINKS) {
-            return res.status(400).json({ error: `at most ${MAX_LINKS} links per profile` });
-        }
 
         const title = validateTitle(payload.title);
         if (!title.ok) return res.status(400).json({ error: title.error });
@@ -323,14 +328,20 @@ export function buildApi(db: Db, cfg: Config): Express {
         if (!url.ok) return res.status(400).json({ error: url.error });
         const gated = validateGated(payload.gated);
         if (!gated.ok) return res.status(400).json({ error: gated.error });
+        const pinned = validatePinned(payload.pinned);
+        if (!pinned.ok) return res.status(400).json({ error: pinned.error });
         const position = validatePosition(payload.position);
         if (!position.ok) return res.status(400).json({ error: position.error });
+        if (pinned.value && countPinned(db, auth.address) >= MAX_PINNED) {
+            return res.status(400).json({ error: `at most ${MAX_PINNED} pinned links per profile` });
+        }
 
         const link = insertLink(db, {
             wallet_address: auth.address,
             title: title.value!,
             url: url.value!,
             gated: gated.value!,
+            pinned: pinned.value!,
             position: position.value ?? maxPosition(db, auth.address) + 1,
         });
         res.json({ link: fullLink(link) });
@@ -351,7 +362,7 @@ export function buildApi(db: Db, cfg: Config): Express {
             return res.status(404).json({ error: 'link not found' });
         }
 
-        const patch: { title?: string; url?: string; gated?: number; position?: number } = {};
+        const patch: { title?: string; url?: string; gated?: number; pinned?: number; position?: number } = {};
         if (payload.title !== undefined) {
             const title = validateTitle(payload.title);
             if (!title.ok) return res.status(400).json({ error: title.error });
@@ -366,6 +377,14 @@ export function buildApi(db: Db, cfg: Config): Express {
             const gated = validateGated(payload.gated);
             if (!gated.ok) return res.status(400).json({ error: gated.error });
             patch.gated = gated.value;
+        }
+        if (payload.pinned !== undefined) {
+            const pinned = validatePinned(payload.pinned);
+            if (!pinned.ok) return res.status(400).json({ error: pinned.error });
+            if (pinned.value && !existing.pinned && countPinned(db, auth.address) >= MAX_PINNED) {
+                return res.status(400).json({ error: `at most ${MAX_PINNED} pinned links per profile` });
+            }
+            patch.pinned = pinned.value;
         }
         if (payload.position !== undefined) {
             const position = validatePosition(payload.position);
@@ -398,7 +417,8 @@ export function buildApi(db: Db, cfg: Config): Express {
     //
     // The real enforcement point for gated links: verify the caller's
     // identity (ADR-36), then check the profile owner's pool on-chain for a
-    // committing_info record for the CALLER. Owners always see their own
+    // committing_info record for the CALLER whose last commit is within the
+    // access window (cfg.subscriptionDays). Owners always see their own
     // gated links.
 
     app.post('/links/unlock', async (req, res) => {
@@ -428,6 +448,11 @@ export function buildApi(db: Db, cfg: Config): Express {
             }
             if (!info) {
                 return res.status(403).json({ error: 'no subscription found — commit to this creator\'s pool to unlock' });
+            }
+            if (!isSubscriptionActive(info, cfg.subscriptionDays)) {
+                return res.status(403).json({
+                    error: `subscription expired — a commit unlocks ${cfg.subscriptionDays} days of access; commit again to renew`,
+                });
             }
         }
 

@@ -7,6 +7,7 @@ import {
 } from 'react-router-dom';
 import { ThemeContextProvider } from './context/ThemeContext';
 import { WalletContextProvider } from './context/WalletContext';
+import { FeedBadgeProvider } from './context/FeedBadgeContext';
 import { CircularProgress, Box } from '@mui/material';
 
 const TopCreatorTokensPage = lazy(() => import('./pages/table-pages/TopCreatorTokenPage'));
@@ -35,6 +36,7 @@ function App() {
     return (
         <ThemeContextProvider>
             <WalletContextProvider>
+            <FeedBadgeProvider>
             <Router>
                 <Suspense fallback={<PageLoader />}>
                 <Routes>
@@ -63,6 +65,7 @@ function App() {
                 </Routes>
                 </Suspense>
             </Router>
+            </FeedBadgeProvider>
             </WalletContextProvider>
         </ThemeContextProvider>
     );

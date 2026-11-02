@@ -15,6 +15,7 @@ exports.searchProfiles = searchProfiles;
 exports.listLinks = listLinks;
 exports.listLinksForWallets = listLinksForWallets;
 exports.countLinks = countLinks;
+exports.countPinned = countPinned;
 exports.getLink = getLink;
 exports.insertLink = insertLink;
 exports.maxPosition = maxPosition;
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS links (
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_links_wallet_pos ON links(wallet_address, position);
+CREATE INDEX IF NOT EXISTS idx_links_wallet_created ON links(wallet_address, created_at);
 
 CREATE TABLE IF NOT EXISTS nonces (
     wallet_address TEXT PRIMARY KEY,
@@ -61,6 +63,12 @@ CREATE TABLE IF NOT EXISTS nonces (
     issued_at INTEGER NOT NULL
 );
 `);
+    // Additive column migrations for databases created before the column
+    // existed. SQLite has no ADD COLUMN IF NOT EXISTS.
+    const linkColumns = db.pragma('table_info(links)').map((c) => c.name);
+    if (!linkColumns.includes('pinned')) {
+        db.exec('ALTER TABLE links ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+    }
 }
 // ---------------------------------------------------------------------------
 // Profiles
@@ -135,13 +143,17 @@ function countLinks(db, wallet) {
     const row = db.prepare('SELECT COUNT(*) AS n FROM links WHERE wallet_address = ?').get(wallet);
     return row.n;
 }
+function countPinned(db, wallet) {
+    const row = db.prepare('SELECT COUNT(*) AS n FROM links WHERE wallet_address = ? AND pinned = 1').get(wallet);
+    return row.n;
+}
 function getLink(db, id) {
     return db.prepare('SELECT * FROM links WHERE id = ?').get(id);
 }
 function insertLink(db, l) {
     const now = Math.floor(Date.now() / 1000);
-    const info = db.prepare(`INSERT INTO links (wallet_address, title, url, gated, position, created_at, updated_at)
-        VALUES (@wallet_address, @title, @url, @gated, @position, @now, @now)`).run({ ...l, now });
+    const info = db.prepare(`INSERT INTO links (wallet_address, title, url, gated, pinned, position, created_at, updated_at)
+        VALUES (@wallet_address, @title, @url, @gated, @pinned, @position, @now, @now)`).run({ ...l, now });
     return getLink(db, Number(info.lastInsertRowid));
 }
 function maxPosition(db, wallet) {
@@ -154,12 +166,13 @@ function updateLink(db, id, patch) {
         return undefined;
     const now = Math.floor(Date.now() / 1000);
     db.prepare(`UPDATE links SET
-        title = @title, url = @url, gated = @gated, position = @position, updated_at = @now
+        title = @title, url = @url, gated = @gated, pinned = @pinned, position = @position, updated_at = @now
         WHERE id = @id`).run({
         id,
         title: patch.title ?? existing.title,
         url: patch.url ?? existing.url,
         gated: patch.gated ?? existing.gated,
+        pinned: patch.pinned ?? existing.pinned,
         position: patch.position ?? existing.position,
         now,
     });
