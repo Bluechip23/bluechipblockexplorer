@@ -36,6 +36,7 @@ import {
 } from '../../utils/security';
 import { deadlineNs } from '../../utils/datetime';
 import { deriveBeliefPrice, resolvePoolAssets } from '../../utils/poolActions';
+import { bpsPct, useCommitFeeRates } from '../../hooks/useCommitFeeRates';
 
 
 interface BaseModalProps {
@@ -581,6 +582,17 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [inputError, setInputError] = useState('');
+    // Live factory fee split (1% protocol + 5% creator by default) so the
+    // fee disclosure below tracks the deployed config.
+    const feeRates = useCommitFeeRates();
+    const feePct = bpsPct(feeRates.platformBps + feeRates.creatorBps);
+    // The contract charges the commit fees on the whole amount, EXCEPT on
+    // the commit that carries the pool over its threshold with room to
+    // spare: there the fees apply to the portion that fills the gap only,
+    // and the excess is refunded fee-free in the same tx.
+    const feeNote = thresholdReached
+        ? `A ${feePct}% fee (${bpsPct(feeRates.platformBps)}% protocol + ${bpsPct(feeRates.creatorBps)}% creator) is taken before the swap.`
+        : `A ${feePct}% fee (${bpsPct(feeRates.platformBps)}% protocol + ${bpsPct(feeRates.creatorBps)}% creator) is taken on the amount that counts toward the threshold. If your commit overshoots the threshold, the excess is refunded fee-free in the same transaction.`;
 
     const steps = ['Enter Amount', 'Confirm', 'Result'];
     const activeStep = stage === 'input' ? 0 : stage === 'confirm' || stage === 'executing' ? 1 : 2;
@@ -736,8 +748,8 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
                     <NativePriceBanner />
                     <Alert severity="info" sx={{ mb: 1 }}>
                         {thresholdReached
-                            ? `This pool is past its funding threshold — your commit is swapped through the native Osmosis pool and you receive ${symbol} at the current price. Your on-chain subscription record still updates.`
-                            : "Subscribe to this pool's pre-threshold phase. Your OSMO will be committed toward the funding threshold."}
+                            ? `This pool is past its funding threshold — your commit is swapped through the native Osmosis pool and you receive ${symbol} at the current price. Your on-chain subscription record still updates. ${feeNote}`
+                            : `Subscribe to this pool's pre-threshold phase. Your OSMO will be committed toward the funding threshold. ${feeNote}`}
                     </Alert>
                     <TextField
                         label="Amount (OSMO)"
@@ -776,6 +788,10 @@ export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean
                         : `You are committing ${amount} OSMO toward this pool's funding threshold.`}
                     details={[
                         { label: 'You Commit', value: `${amount} OSMO` },
+                        {
+                            label: thresholdReached ? 'Commit Fee' : 'Commit Fee (on the counted portion)',
+                            value: `${feePct}%`,
+                        },
                         ...(thresholdReached ? [{ label: 'Max Slippage', value: `${maxSpread}%` }] : []),
                         { label: 'Pool', value: `${poolAddress.slice(0, 12)}...${poolAddress.slice(-6)}` },
                     ]}

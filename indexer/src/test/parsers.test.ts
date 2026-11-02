@@ -183,7 +183,9 @@ test('active commit + swap_forward reply fills tokens_received and derives the b
     assert.ok(Math.abs((t.price ?? 0) - 0.5) < 1e-9);   // 0.94 OSMO / 1.88 tokens
 });
 
-test('threshold-crossing commit parses current attributes and marks the crossing', () => {
+test('threshold-crossing commit parses the split, bills fees on the threshold portion, and marks the crossing', () => {
+    // Current contracts: fees on the gap only, gross excess refunded less
+    // any creation-fee reserve retention (reported as its own attribute).
     const out = parseTxEvents(CTX, [wasm({
         _contract_address: POOL,
         action: 'commit',
@@ -192,12 +194,61 @@ test('threshold-crossing commit parses current attributes and marks the crossing
         total_commit_count: '12',
         total_amount_bluechip: '99000000',
         threshold_amount_bluechip: '95000000',
-        bluechip_excess_refunded: '4000000',
+        bluechip_excess_refunded: '3960000',
+        bluechip_excess_retained_for_creation_fee: '40000',
         pool_contract: POOL,
     })]);
-    assert.equal(out.commits[0].amount_bluechip, '99000000');
-    assert.equal(out.commits[0].raised_after, null);
+    const c = out.commits[0];
+    assert.equal(c.amount_bluechip, '99000000');
+    assert.equal(c.raised_after, null);                       // the crossing carries no running total
+    assert.equal(c.threshold_portion_bluechip, '95000000');   // the part that counts
+    assert.equal(c.fee_base_bluechip, '95000000');            // the 1% + 5% fee base
+    assert.equal(c.excess_refunded_bluechip, '3960000');
+    assert.equal(c.excess_retained_bluechip, '40000');
     assert.deepEqual(out.thresholdCrossings, [{ pool: POOL, ts: CTX.ts }]);
+});
+
+test('a crossing from the older contract generation (fees on the gross) keeps the gross fee base', () => {
+    // No bluechip_excess_retained_for_creation_fee attribute: that
+    // generation charged commit fees on the whole attached amount.
+    const out = parseTxEvents(CTX, [wasm({
+        _contract_address: POOL,
+        action: 'commit',
+        phase: 'threshold_crossing',
+        committer: 'osmo1whale',
+        total_amount_bluechip: '99000000',
+        threshold_amount_bluechip: '95000000',
+        bluechip_excess_refunded: '3760000',
+        pool_contract: POOL,
+    })]);
+    const c = out.commits[0];
+    assert.equal(c.threshold_portion_bluechip, '95000000');
+    assert.equal(c.fee_base_bluechip, '99000000');
+    assert.equal(c.excess_refunded_bluechip, '3760000');
+    assert.equal(c.excess_retained_bluechip, null);
+});
+
+test('non-crossing commits carry the gross amount as their fee base and no split', () => {
+    const out = parseTxEvents(CTX, [
+        wasm({
+            _contract_address: POOL, action: 'commit', phase: 'funding', committer: 'osmo1fan',
+            commit_amount_bluechip: '8000000', total_raised_after: '48000000', pool_contract: POOL,
+        }),
+        wasm({
+            _contract_address: POOL, action: 'commit', phase: 'active', committer: 'osmo1fan',
+            commit_amount_bluechip: '1000000', swap_amount_bluechip: '940000', pool_contract: POOL,
+        }),
+        wasm({
+            _contract_address: POOL, action: 'commit', phase: 'threshold_hit_exact', committer: 'osmo1fan',
+            commit_amount_bluechip: '2000000', total_raised_after: '500000000000', pool_contract: POOL,
+        }),
+    ]);
+    assert.deepEqual(out.commits.map((c) => c.fee_base_bluechip), ['8000000', '1000000', '2000000']);
+    for (const c of out.commits) {
+        assert.equal(c.threshold_portion_bluechip, null);
+        assert.equal(c.excess_refunded_bluechip, null);
+        assert.equal(c.excess_retained_bluechip, null);
+    }
 });
 
 test('exact threshold hit marks the crossing and keeps the gross running total', () => {

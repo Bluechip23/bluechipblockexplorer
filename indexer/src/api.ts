@@ -2,7 +2,7 @@ import cors from 'cors';
 import express, { Express, Request } from 'express';
 import {
     commitSeries, creatorStatement, Db, healthCounts, listCommits,
-    listCommitsByWallet, listPools, listTrades, listTradesByWallet,
+    listCommitsByWallet, listPools, listPoolsByWallet, listTrades, listTradesByWallet,
     priceSeries, volumeSeries, windowStats,
 } from './db';
 
@@ -127,6 +127,12 @@ export function buildApi(db: Db): Express {
             limit: clampInt(req.query.limit, 50, 1, 1000),
             beforeTs: optInt(req.query.before_ts),
         }));
+    });
+
+    app.get('/wallets/:address/pools', (req, res) => {
+        const wallet = poolParam(req);   // same bech32 shape check
+        if (!wallet) return res.status(400).json({ error: 'invalid wallet address' });
+        res.json(listPoolsByWallet(db, wallet));
     });
 
     app.get('/wallets/:address/trades', (req, res) => {

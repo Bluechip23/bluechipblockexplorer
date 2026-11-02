@@ -2,13 +2,27 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import {
-    commitSeries, creatorStatement, Db, insertClaim, insertCommit, insertTrade,
-    listCommits, listCommitsByWallet, listTrades, listTradesByWallet, migrate,
+    commitSeries, CommitRow, creatorStatement, Db, insertClaim, insertCommit, insertTrade,
+    listCommits, listCommitsByWallet, listPoolsByWallet, listTrades, listTradesByWallet, migrate,
     priceSeries, upsertPool, volumeSeries, windowStats,
 } from '../db';
 
 const POOL = 'bluechip1pool';
 const T0 = 1_700_002_800;   // bucket-aligned base time (472223 * 3600)
+
+// Crossing-split columns default to "not a crossing"; fee base defaults
+// to the gross amount, which is what the parser stores for every
+// non-crossing phase.
+function commitRow(r: Omit<CommitRow, 'threshold_portion_bluechip' | 'fee_base_bluechip' | 'excess_refunded_bluechip' | 'excess_retained_bluechip'>
+    & Partial<Pick<CommitRow, 'threshold_portion_bluechip' | 'fee_base_bluechip' | 'excess_refunded_bluechip' | 'excess_retained_bluechip'>>): CommitRow {
+    return {
+        threshold_portion_bluechip: null,
+        fee_base_bluechip: r.amount_bluechip,
+        excess_refunded_bluechip: null,
+        excess_retained_bluechip: null,
+        ...r,
+    };
+}
 
 function freshDb(): Db {
     const db = new Database(':memory:');
@@ -67,12 +81,12 @@ test('volumeSeries splits buy and sell pressure', () => {
 test('commitSeries counts commits, gross OSMO and unique wallets per bucket', () => {
     const db = freshDb();
     // Each commit carries the pool's gross running total after it.
-    const commit = (i: number, ts: number, wallet: string, amount: string, raisedAfter: string) => insertCommit(db, {
+    const commit = (i: number, ts: number, wallet: string, amount: string, raisedAfter: string) => insertCommit(db, commitRow({
         txhash: `C${i}`, event_index: 0, height: i, ts, pool: POOL,
         committer: wallet, phase: 'funding',
         amount_bluechip: amount,
         raised_after: raisedAfter, bluechip_raised_after: null, tokens_received: null,
-    });
+    }));
     commit(1, T0 + 5, 'bluechip1a', '1000000', '1000000');
     commit(2, T0 + 6, 'bluechip1a', '2000000', '3000000');
     commit(3, T0 + 7, 'bluechip1b', '3000000', '6000000');
@@ -98,12 +112,12 @@ test('listTrades honors side and whale-size filters', () => {
 
 test('creatorStatement merges commit fee shares (string math) with claims chronologically', () => {
     const db = freshDb();
-    insertCommit(db, {
+    insertCommit(db, commitRow({
         txhash: 'C1', event_index: 0, height: 1, ts: T0 + 10, pool: POOL,
         committer: 'bluechip1fan', phase: 'funding',
         amount_bluechip: '8000000',                             // 8 OSMO commit
         raised_after: '8000000', bluechip_raised_after: null, tokens_received: null,
-    });
+    }));
     insertClaim(db, {
         txhash: 'CL1', event_index: 1, height: 2, ts: T0 + 20, pool: POOL,
         action: 'claim_creator_fees', creator: 'bluechip1creator',
@@ -124,12 +138,12 @@ test('windowStats compares the current window to the previous one', () => {
     const now = T0 + 86400 * 2;
     trade(db, 1, now - 1000, 'buy', 1.0, '1000000');          // current window
     trade(db, 2, now - 86400 - 1000, 'sell', 1.0, '2000000'); // previous window
-    insertCommit(db, {
+    insertCommit(db, commitRow({
         txhash: 'C1', event_index: 0, height: 3, ts: now - 500, pool: POOL,
         committer: 'bluechip1fan', phase: 'funding',
         amount_bluechip: '7000000',
         raised_after: '7000000', bluechip_raised_after: null, tokens_received: null,
-    });
+    }));
 
     const s = windowStats(db, POOL, 86400, now) as any;
     assert.equal(s.current.trades, 1);
@@ -142,20 +156,20 @@ test('windowStats compares the current window to the previous one', () => {
 test('listCommitsByWallet returns cross-pool history newest first', () => {
     const db = freshDb();
     upsertPool(db, { address: 'bluechip1pool2', pool_id: 2, kind: 'commit', created_height: 2, created_at: T0 });
-    const commit = (i: number, ts: number, pool: string) => insertCommit(db, {
+    const commit = (i: number, ts: number, pool: string) => insertCommit(db, commitRow({
         txhash: `W${i}`, event_index: 0, height: i, ts, pool,
         committer: 'bluechip1fan', phase: 'funding',
         amount_bluechip: '1000000',
         raised_after: '1000000', bluechip_raised_after: null, tokens_received: null,
-    });
+    }));
     commit(1, T0 + 10, POOL);
     commit(2, T0 + 20, 'bluechip1pool2');
-    insertCommit(db, {
+    insertCommit(db, commitRow({
         txhash: 'OTHER', event_index: 0, height: 3, ts: T0 + 30, pool: POOL,
         committer: 'bluechip1someoneelse', phase: 'funding',
         amount_bluechip: '1',
         raised_after: '1000001', bluechip_raised_after: null, tokens_received: null,
-    });
+    }));
 
     const rows = listCommitsByWallet(db, { wallet: 'bluechip1fan', limit: 10, beforeTs: null }) as any[];
     assert.equal(rows.length, 2);
@@ -174,13 +188,15 @@ test('listCommitsByWallet returns cross-pool history newest first', () => {
 function currentChainCommit(
     db: Db, i: number, ts: number, wallet: string, raisedAfter: string | null,
     phase = 'funding', amount = '1000000',
+    crossing?: Partial<Pick<CommitRow, 'threshold_portion_bluechip' | 'fee_base_bluechip' | 'excess_refunded_bluechip' | 'excess_retained_bluechip'>>,
 ) {
-    insertCommit(db, {
+    insertCommit(db, commitRow({
         txhash: `N${i}`, event_index: 0, height: i, ts, pool: POOL,
         committer: wallet, phase,
         amount_bluechip: amount,
         raised_after: raisedAfter, bluechip_raised_after: null, tokens_received: null,
-    });
+        ...crossing,
+    }));
 }
 
 test('commitSeries derives per-commit OSMO from raised_after running totals', () => {
@@ -215,12 +231,68 @@ test('listCommits exposes derived commit_native (and leaves active commits null)
 test('threshold-crossing commit only counts the part up to the threshold', () => {
     const db = freshDb();
     currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '90000000');                             // 90 OSMO so far
-    // 99 OSMO attached, threshold at 100: 10 OSMO counts, 89 is swapped/refunded.
-    currentChainCommit(db, 2, T0 + 6, 'bluechip1whale', '100000000', 'threshold_crossing', '99000000');
+    // 99 OSMO attached, threshold at 100: 10 OSMO counts, 89 is refunded.
+    // The crossing event carries NO running total — only the split.
+    currentChainCommit(db, 2, T0 + 6, 'bluechip1whale', null, 'threshold_crossing', '99000000', {
+        threshold_portion_bluechip: '10000000',
+        fee_base_bluechip: '10000000',
+        excess_refunded_bluechip: '89000000',
+        excess_retained_bluechip: '0',
+    });
 
     const rows = listCommits(db, { pool: POOL, limit: 10, beforeTs: null, wallet: 'bluechip1whale' }) as any[];
     assert.equal(rows[0].commit_native, '10000000');
     assert.equal(rows[0].amount_bluechip, '99000000');
+    assert.equal(rows[0].fee_base_bluechip, '10000000');
+    assert.equal(rows[0].excess_refunded_bluechip, '89000000');
+
+    // ...and the crossing's 10 OSMO lands in the aggregates alongside the
+    // funding commits (90 + 10 = the 100 OSMO threshold).
+    const series = commitSeries(db, { pool: POOL, bucket: 3600, from: T0, to: T0 + 3600 }) as any[];
+    assert.equal(series[0].commits, 2);
+    assert.equal(series[0].native, 100000000);
+    const stats = windowStats(db, POOL, 3600, T0 + 3600) as any;
+    assert.equal(stats.current.commit_native, 100000000);
+
+    const wallet = listCommitsByWallet(db, { wallet: 'bluechip1whale', limit: 10, beforeTs: null }) as any[];
+    assert.equal(wallet[0].commit_native, '10000000');
+    assert.equal(wallet[0].excess_refunded_bluechip, '89000000');
+});
+
+test('creatorStatement bills the crossing fee on the threshold portion, not the refunded excess', () => {
+    const db = freshDb();
+    currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '90000000', 'funding', '90000000');
+    currentChainCommit(db, 2, T0 + 6, 'bluechip1whale', null, 'threshold_crossing', '99000000', {
+        threshold_portion_bluechip: '10000000',
+        fee_base_bluechip: '10000000',
+        excess_refunded_bluechip: '88900000',
+        excess_retained_bluechip: '100000',
+    });
+
+    const rows = creatorStatement(db, { pool: POOL, from: T0, to: T0 + 3600, feeBps: 500 });
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1].phase, 'threshold_crossing');
+    assert.equal(rows[1].gross_native, '99000000');       // what the whale attached
+    assert.equal(rows[1].fee_base_native, '10000000');    // what the fee was charged on
+    assert.equal(rows[1].fee_share_native, '500000');     // 5% of 10 OSMO, not of 99
+    assert.equal(rows[1].commit_native, '10000000');
+});
+
+test('rows indexed before the fee-base column existed fall back to the gross amount', () => {
+    const db = freshDb();
+    // A pre-upgrade row: NULL crossing columns (what the migration leaves).
+    insertCommit(db, {
+        txhash: 'OLD', event_index: 0, height: 1, ts: T0 + 5, pool: POOL,
+        committer: 'bluechip1fan', phase: 'funding',
+        amount_bluechip: '4000000', raised_after: '4000000', bluechip_raised_after: null, tokens_received: null,
+        threshold_portion_bluechip: null, fee_base_bluechip: null,
+        excess_refunded_bluechip: null, excess_retained_bluechip: null,
+    });
+    const rows = creatorStatement(db, { pool: POOL, from: T0, to: T0 + 3600, feeBps: 500 });
+    assert.equal(rows[0].fee_base_native, '4000000');
+    assert.equal(rows[0].fee_share_native, '200000');
+    const listed = listCommits(db, { pool: POOL, limit: 1, beforeTs: null, wallet: null }) as any[];
+    assert.equal(listed[0].fee_base_bluechip, '4000000');
 });
 
 test('creatorStatement fee shares key off the gross OSMO attached to each commit', () => {
@@ -256,9 +328,39 @@ test('migrate renames a pre-oracle-removal commits table in place', () => {
     assert.ok(cols.includes('raised_after'));
     assert.ok(!cols.includes('usd_raised_after'));
     assert.ok(!cols.includes('amount_usd'));
+    // The crossing-split columns are added to older databases too.
+    for (const col of ['threshold_portion_bluechip', 'fee_base_bluechip', 'excess_refunded_bluechip', 'excess_retained_bluechip']) {
+        assert.ok(cols.includes(col), `missing ${col}`);
+    }
     upsertPool(db, { address: POOL, pool_id: 1, kind: 'commit', created_height: 1, created_at: T0 });
     currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '2000000');
     assert.equal((listCommits(db, { pool: POOL, limit: 1, beforeTs: null, wallet: null }) as any[])[0].commit_native, '2000000');
+});
+
+test('listPoolsByWallet lists each pool a wallet committed to, most recent first', () => {
+    const db = freshDb();
+    upsertPool(db, { address: 'bluechip1pool2', pool_id: 2, kind: 'commit', created_height: 2, created_at: T0 });
+    const commit = (i: number, ts: number, pool: string, wallet: string, phase = 'funding') => insertCommit(db, commitRow({
+        txhash: `P${i}`, event_index: 0, height: i, ts, pool,
+        committer: wallet, phase,
+        amount_bluechip: '1000000',
+        raised_after: phase === 'funding' ? '1000000' : null, bluechip_raised_after: null, tokens_received: null,
+    }));
+    commit(1, T0 + 10, POOL, 'bluechip1fan');
+    commit(2, T0 + 20, POOL, 'bluechip1fan');                       // repeat commit, same pool
+    commit(3, T0 + 30, 'bluechip1pool2', 'bluechip1fan', 'active');  // post-threshold commits count too
+    commit(4, T0 + 40, POOL, 'bluechip1someoneelse');
+
+    const rows = listPoolsByWallet(db, 'bluechip1fan') as any[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].pool, 'bluechip1pool2');     // most recent commit first
+    assert.equal(rows[0].commits, 1);
+    assert.equal(rows[0].last_commit_ts, T0 + 30);
+    assert.equal(rows[1].pool, POOL);
+    assert.equal(rows[1].commits, 2);
+    assert.equal(rows[1].first_commit_ts, T0 + 10);
+    assert.equal(rows[1].last_commit_ts, T0 + 20);
+    assert.deepEqual(listPoolsByWallet(db, 'bluechip1nobody'), []);
 });
 
 test('listTradesByWallet returns cross-pool trade history newest first', () => {

@@ -17,17 +17,36 @@ import { decodeEventAttrs, RawEvent } from './rpc';
 //                             Osmosis AMM: commit_amount_bluechip,
 //                             swap_amount_bluechip, token_out_min_amount,
 //                             pool_id
-//       threshold_crossing  – the commit that pushed past the threshold:
-//                             total_amount_bluechip,
-//                             threshold_amount_bluechip,
-//                             bluechip_excess_refunded
-//       threshold_hit_exact – hit the threshold exactly (no excess swap):
+//       threshold_crossing  – the commit that pushed past the threshold
+//                             with room to spare:
+//                             total_amount_bluechip (gross attached),
+//                             threshold_amount_bluechip (the part that
+//                             filled the remaining gap — the only part
+//                             that counts toward the threshold),
+//                             bluechip_excess_refunded (gross excess sent
+//                             back to the committer in the same tx),
+//                             bluechip_excess_retained_for_creation_fee
+//                             (slice of the excess kept toward the GAMM
+//                             pool-creation-fee reserve; usually 0).
+//                             This phase carries NO total_raised_after.
+//       threshold_hit_exact – hit the threshold exactly (no excess):
 //                             commit_amount_bluechip, total_raised_after
-//     Every amount is OSMO: the contracts have no price oracle, so a
-//     commit's value toward the threshold is its attached amount. (Older
-//     contract generations emitted USD attributes — commit_amount_usd,
+//     Every amount is OSMO: no oracle values a commit, so its value
+//     toward the threshold is its attached amount. (Older contract
+//     generations emitted USD attributes — commit_amount_usd,
 //     total_usd_raised_after, ... — those pools cannot run on the current
 //     factory and the attributes are ignored.)
+//
+//     Commit-fee base: the 1% protocol + 5% creator commit fees are
+//     charged on the whole attached amount on every path EXCEPT a
+//     threshold crossing with excess, where (since the contract's
+//     "fees on the threshold portion only" change) they are charged on
+//     threshold_amount_bluechip alone and the excess is refunded fee-free.
+//     That contract generation is recognised by the presence of the
+//     bluechip_excess_retained_for_creation_fee attribute; crossings
+//     emitted before it charged fees on the gross amount. The parser
+//     resolves this into fee_base_bluechip so the creator statement
+//     never has to guess.
 //   swap (pool-core/src/swap.rs):
 //     Swaps are async on the Osmosis-native contracts: the dispatch emits
 //     action=swap (sender, receiver, offer_asset, ask_asset, offer_amount,
@@ -190,20 +209,41 @@ export function parseTxEvents(ctx: TxContext, events: RawEvent[]): ParsedTx {
                 const pool = a['pool_contract'] || contract;
                 const phase = a['phase'] || 'unknown';
                 if (!pool || !a['committer']) break;
+                // funding/active/threshold_hit_exact report
+                // commit_amount_bluechip; the threshold_crossing (with
+                // excess) path reports total_amount_bluechip.
+                const grossAmount = a['commit_amount_bluechip'] ?? a['total_amount_bluechip'] ?? null;
+                // Only a crossing-with-excess splits the commit: the part
+                // that filled the gap counts toward the threshold, the
+                // rest is refunded (less any creation-fee reserve top-up).
+                const isCrossing = phase === 'threshold_crossing';
+                const thresholdPortion = isCrossing ? (a['threshold_amount_bluechip'] ?? null) : null;
+                const excessRefunded = isCrossing ? (a['bluechip_excess_refunded'] ?? null) : null;
+                const excessRetained = isCrossing
+                    ? (a['bluechip_excess_retained_for_creation_fee'] ?? null)
+                    : null;
+                // Fee base: the gross amount everywhere, except a crossing
+                // emitted by a contract that charges commit fees on the
+                // threshold portion only (signalled by the retention
+                // attribute). Older crossings charged fees on the gross.
+                const feeBase = isCrossing && excessRetained !== null && thresholdPortion !== null
+                    ? thresholdPortion
+                    : grossAmount;
                 out.commits.push({
                     ...base,
                     pool,
                     committer: a['committer'],
                     phase,
-                    // funding/active/threshold_hit_exact report
-                    // commit_amount_bluechip; the threshold_crossing
-                    // (with excess) path reports total_amount_bluechip.
-                    amount_bluechip: a['commit_amount_bluechip'] ?? a['total_amount_bluechip'] ?? null,
+                    amount_bluechip: grossAmount,
                     // Pool's gross micro-OSMO running total after the
                     // commit (funding-phase and exact-hit commits).
                     raised_after: a['total_raised_after'] ?? null,
                     bluechip_raised_after: a['total_bluechip_raised_after'] ?? null,
                     tokens_received: a['tokens_received'] ?? null,
+                    threshold_portion_bluechip: thresholdPortion,
+                    fee_base_bluechip: feeBase,
+                    excess_refunded_bluechip: excessRefunded,
+                    excess_retained_bluechip: excessRetained,
                 });
                 if (phase === 'threshold_crossing' || phase === 'threshold_hit_exact') {
                     out.thresholdCrossings.push({ pool, ts: ctx.ts });

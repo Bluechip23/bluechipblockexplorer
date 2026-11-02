@@ -316,6 +316,33 @@ export async function chainQueryPoolCreator(poolAddress: string): Promise<string
     return res.fee_info?.creator_wallet_address ?? null;
 }
 
+// One wallet's commit record on one pool (`committing_info`), or null if
+// it never committed there. The contract returns its `Committing` struct,
+// which carries the wallet as `committer`; normalise it to the same
+// CommitterInfo shape the ledger pages use.
+export async function chainQueryCommittingInfo(
+    poolAddress: string,
+    wallet: string,
+): Promise<CommitterInfo | null> {
+    const rec = await smart<{
+        committer: string;
+        total_paid_native: string;
+        total_paid_bluechip: string;
+        last_committed: string;
+        last_payment_native: string;
+        last_payment_bluechip: string;
+    } | null>(poolAddress, { committing_info: { wallet } });
+    if (!rec) return null;
+    return {
+        wallet: rec.committer ?? wallet,
+        total_paid_native: rec.total_paid_native,
+        total_paid_bluechip: rec.total_paid_bluechip,
+        last_committed: rec.last_committed,
+        last_payment_native: rec.last_payment_native,
+        last_payment_bluechip: rec.last_payment_bluechip,
+    };
+}
+
 // Full committer ledger, paginated. Capped at 1,000 wallets so one pool
 // can't make the UI walk an unbounded range.
 export async function chainQueryPoolCommits(poolAddress: string): Promise<PoolCommitResponse> {

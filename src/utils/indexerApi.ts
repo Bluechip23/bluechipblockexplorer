@@ -62,10 +62,21 @@ export interface IndexedCommit {
     // the accumulator the threshold check runs against.
     raised_after: string | null;
     // This commit's contribution toward the threshold, in micro-OSMO,
-    // derived by the indexer from consecutive running totals. NULL for
-    // post-threshold "active" commits, which no longer count.
+    // derived by the indexer from consecutive running totals (or, for the
+    // commit that crossed the threshold with excess, the contract's own
+    // threshold_amount_bluechip). NULL for post-threshold "active"
+    // commits, which no longer count.
     commit_native: string | null;
     tokens_received: string | null;
+    // Micro-OSMO the 1% + 5% commit fees were charged on: the gross
+    // amount, except on a threshold crossing with excess where the
+    // current contracts charge fees on the threshold portion only.
+    fee_base_bluechip: string | null;
+    // Threshold-crossing commits only: gross excess refunded to the
+    // committer in the same tx, and the slice retained toward the GAMM
+    // pool-creation-fee reserve (usually 0). NULL on every other phase.
+    excess_refunded_bluechip: string | null;
+    excess_retained_bluechip: string | null;
 }
 
 export interface StatementLine {
@@ -74,8 +85,11 @@ export interface StatementLine {
     txhash: string;
     counterparty: string | null;
     phase: string | null;
-    // Gross micro-OSMO of the commit and the creator's fee share of it.
+    // Gross micro-OSMO of the commit, the micro-OSMO the commit fee was
+    // charged on (the threshold portion only on a crossing with excess),
+    // and the creator's fee share of that base.
     gross_native: string | null;
+    fee_base_native: string | null;
     fee_share_native: string | null;
     gross_bluechip: string | null;
     amount_0: string | null;
@@ -125,6 +139,23 @@ export interface WalletCommit {
     amount_bluechip: string | null;
     commit_native: string | null;       // derived per-commit micro-OSMO (see IndexedCommit)
     tokens_received: string | null;
+    fee_base_bluechip: string | null;   // see IndexedCommit
+    excess_refunded_bluechip: string | null;
+    excess_retained_bluechip: string | null;
+}
+
+export interface WalletPool {
+    pool: string;
+    commits: number;
+    first_commit_ts: number;
+    last_commit_ts: number;
+}
+
+// Every pool the wallet has ever committed to, most recently committed
+// first. Null when the indexer is unreachable; [] when it is reachable
+// and has no commits for the wallet.
+export function fetchWalletPools(wallet: string): Promise<WalletPool[] | null> {
+    return fetchJson<WalletPool[]>(`/wallets/${wallet}/pools`);
 }
 
 // Cross-pool commit history for one wallet, newest first.

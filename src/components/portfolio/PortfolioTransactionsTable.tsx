@@ -17,6 +17,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import { Link } from 'react-router-dom';
 import { abbreviateAddress, formatMicroAmount, PoolSummary } from '../../utils/contractQueries';
+import { safeBigInt } from '../../utils/bigintMath';
 import { MyCommitment } from './types';
 import { formatNsTimestamp } from '../../utils/datetime';
 import CopyableId from '../universal/CopyableId';
@@ -62,11 +63,19 @@ function describeTrade(t: WalletTrade, symbol: string): TxRow {
 function describeCommit(c: WalletCommit, symbol: string): TxRow {
     // amount_bluechip is the gross OSMO attached to the commit; commit_native
     // is the part that counted toward the threshold (null post-threshold).
+    // The commit that crossed the threshold with room to spare only had its
+    // threshold portion counted (and fee-charged) — the excess came straight
+    // back in the same tx, so say so instead of showing the gross alone.
     const native = c.amount_bluechip ?? c.commit_native;
+    const refunded = safeBigInt(c.excess_refunded_bluechip);
+    let amount = native !== null ? `${formatMicroAmount(native)} OSMO` : '';
+    if (amount && refunded > 0n && c.commit_native !== null) {
+        amount += ` (${formatMicroAmount(c.commit_native)} counted, ${formatMicroAmount(refunded.toString())} refunded)`;
+    }
     return {
         ts: c.ts, height: c.height, txhash: c.txhash, pool: c.pool,
         kind: 'commit',
-        amount: native !== null ? `${formatMicroAmount(native)} OSMO` : '',
+        amount,
         received: c.tokens_received !== null ? `${formatMicroAmount(c.tokens_received)} ${symbol}` : '',
     };
 }
