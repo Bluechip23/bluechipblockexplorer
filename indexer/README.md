@@ -38,7 +38,7 @@ Point the explorer at it by setting `REACT_APP_INDEXER_URL` (defaults to
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `RPC_URL` | `http://localhost:26657` | Tendermint/CometBFT RPC of any Osmosis node (e.g. `https://rpc.osmosis.zone`) |
+| `RPC_URL` | `http://localhost:26657` | Tendermint/CometBFT RPC of any Osmosis node or hosted provider (e.g. `https://rpc.osmosis.zone`, `https://osmosis-rpc.publicnode.com`, `https://osmosis.drpc.org`, or a keyed provider URL). Calls use the JSON-RPC POST form, which proxies and load balancers accept |
 | `API_PORT` | `4316` | REST API port |
 | `DB_PATH` | `./bluechip-indexer.db` | SQLite file location |
 | `START_HEIGHT` | `1` | First height to index (set to the factory's deploy height to skip empty history; **must** be within your node's unpruned range) |
@@ -108,8 +108,10 @@ commit's split (one row per pool).
 
 ## How it works
 
-1. **Walk heights.** For each height: `/block` (timestamp + tx hashes) and
-   `/block_results` (events per tx). Failed txs (`code != 0`) are skipped.
+1. **Walk heights.** For each height: `block` (timestamp + tx hashes) and
+   `block_results` (events per tx), as JSON-RPC POST calls so hosted
+   providers that reject the `GET /block?height=N` URI form still work.
+   Failed txs (`code != 0`) are skipped.
 2. **Parse events.** Attribute keys mirror the contracts exactly — commit
    (`creator-pool/src/commit.rs`), swap (`pool-core/src/swap.rs`),
    creator claims, and the factory's pool-creation replies (the pool's
@@ -132,7 +134,14 @@ swap through the Osmosis pool and only report `swap_amount_bluechip` /
 
 - **Pruned nodes:** if your RPC node prunes history, backfill from an
   archive node first (or set `START_HEIGHT` to the oldest unpruned height
-  and accept the gap).
+  and accept the gap). Check how much history an endpoint keeps before
+  relying on it: the `status` method's `earliest_block_height` is the
+  oldest height it can serve.
+- **Hosted providers:** a load-balanced endpoint can briefly answer
+  "height not available" for the newest block when a backend lags; the
+  per-height retry absorbs that. Mind the provider's rate limit: tailing
+  costs two calls per block (~1.5 s on Osmosis), backfill is bounded by
+  `BATCH_SIZE` heights in flight.
 - **Accounting precision:** aggregate sums (`volume_bluechip`, `native`, ...)
   are computed as floats — fine for charts, not for accounting. The
   per-row micro-unit strings and the on-chain ledger are authoritative;

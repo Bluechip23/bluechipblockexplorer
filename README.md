@@ -45,3 +45,16 @@ nothing here depends on a bespoke chain anymore.
 
 The mainnet factory is not deployed yet — when `REACT_APP_NETWORK=mainnet`,
 `REACT_APP_FACTORY_ADDRESS` and `REACT_APP_ROUTER_ADDRESS` are required.
+
+The GitHub Pages workflow reads every `REACT_APP_*` value above from the
+repository's Actions **variables**, so the published site is configured
+there rather than in code. Values end up in the public bundle: use public
+or domain-restricted RPC endpoints, never a secret provider key.
+
+## Deployment
+
+The site deploys to GitHub Pages on push to `main`. The indexer and the
+profiles service run elsewhere; [`deploy/`](deploy/) has a Docker Compose
+setup (both services + Caddy for HTTPS), the environment template, the
+approval-day steps for switching from testnet to mainnet, and notes on
+choosing an RPC endpoint.

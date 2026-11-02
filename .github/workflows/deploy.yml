@@ -33,10 +33,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Site configuration comes from repository variables (Settings ->
+      # Secrets and variables -> Actions -> Variables). Unset variables
+      # leave the in-code defaults: testnet, public Osmosis endpoints, and
+      # http://localhost for the two services — so set at least the
+      # INDEXER/PROFILES URLs once those services are hosted. Everything
+      # here ends up in the public bundle: use public or domain-restricted
+      # endpoints, never a secret provider key. See deploy/README.md.
       - name: Build
         run: CI=false npm run build
         env:
           GENERATE_SOURCEMAP: false
+          REACT_APP_NETWORK: ${{ vars.REACT_APP_NETWORK }}
+          REACT_APP_RPC_ENDPOINT: ${{ vars.REACT_APP_RPC_ENDPOINT }}
+          REACT_APP_API_ENDPOINT: ${{ vars.REACT_APP_API_ENDPOINT }}
+          REACT_APP_FACTORY_ADDRESS: ${{ vars.REACT_APP_FACTORY_ADDRESS }}
+          REACT_APP_ROUTER_ADDRESS: ${{ vars.REACT_APP_ROUTER_ADDRESS }}
+          REACT_APP_INDEXER_URL: ${{ vars.REACT_APP_INDEXER_URL }}
+          REACT_APP_PROFILES_URL: ${{ vars.REACT_APP_PROFILES_URL }}
+          REACT_APP_DISCORD_URL: ${{ vars.REACT_APP_DISCORD_URL }}
+          REACT_APP_GITHUB_URL: ${{ vars.REACT_APP_GITHUB_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

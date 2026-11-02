@@ -1,0 +1,67 @@
+# BlueChip backend services: the event indexer and the creator-profiles
+# service, each with its SQLite file on a named volume, behind Caddy for
+# automatic HTTPS. The website itself is static (GitHub Pages) and only
+# needs the two public URLs Caddy serves.
+#
+#   cp .env.example .env   # fill in RPC_URL, the two hostnames, FACTORY_ADDRESS
+#   docker compose up -d --build
+#
+# See README.md in this folder for the approval-day switch to mainnet.
+
+services:
+  indexer:
+    build: ../indexer
+    restart: unless-stopped
+    environment:
+      RPC_URL: ${RPC_URL:?set RPC_URL in deploy/.env}
+      FACTORY_ADDRESS: ${FACTORY_ADDRESS:-}
+      START_HEIGHT: ${START_HEIGHT:-1}
+      NATIVE_DENOM: ${NATIVE_DENOM:-uosmo}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-1500}
+      BATCH_SIZE: ${BATCH_SIZE:-20}
+      RATE_LIMIT_PER_MIN: ${INDEXER_RATE_LIMIT_PER_MIN:-300}
+      # Set by the image: DB_PATH=/data/bluechip-indexer.db, API_PORT=4316
+    volumes:
+      - indexer-data:/data
+    expose:
+      - "4316"
+
+  profiles:
+    build: ../server
+    restart: unless-stopped
+    environment:
+      PROFILES_RPC: ${PROFILES_RPC:-${RPC_URL}}
+      PROFILES_SUBSCRIPTION_DAYS: ${PROFILES_SUBSCRIPTION_DAYS:-30}
+      RATE_LIMIT_PER_MIN: ${PROFILES_RATE_LIMIT_PER_MIN:-300}
+      # Set by the image: PROFILES_DB=/data/profiles.db, PROFILES_PORT=4317
+    volumes:
+      - profiles-data:/data
+    expose:
+      - "4317"
+
+  # TLS termination. Caddy obtains and renews Let's Encrypt certificates
+  # for the two hostnames on its own; both must already resolve (A/AAAA
+  # records) to this machine before the first start.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      INDEXER_HOST: ${INDEXER_HOST:?set INDEXER_HOST in deploy/.env}
+      PROFILES_HOST: ${PROFILES_HOST:?set PROFILES_HOST in deploy/.env}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env (Let's Encrypt contact)}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - indexer
+      - profiles
+
+volumes:
+  indexer-data:
+  profiles-data:
+  caddy-data:
+  caddy-config:
