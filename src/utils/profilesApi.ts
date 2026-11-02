@@ -30,6 +30,8 @@ export interface CreatorLink {
     /** Absent on public reads of gated links — obtain via unlockLinks(). */
     url?: string;
     gated: boolean;
+    /** Pinned links are the creator's bio set (top of the page, position order); the rest are posts, newest first. */
+    pinned: boolean;
     position: number;
     /** Unix seconds. Present on every service response; optional for older demo entries. */
     created_at?: number;
@@ -52,9 +54,14 @@ export interface FeedUnlockResult {
     links: FeedLink[];
     /** Pools where the caller's subscription was confirmed on-chain. */
     verified_pools: string[];
+    /** Pools where the caller's last commit is older than the access window (renew). */
+    expired_pools: string[];
     /** Pools whose on-chain check errored (retry; not "unsubscribed"). */
     failed_pools: string[];
 }
+
+/** Most pinned links a creator may have (mirrors the service). */
+export const MAX_PINNED_LINKS = 10;
 
 export interface ProfileWithLinks {
     profile: CreatorProfile;
@@ -194,7 +201,8 @@ async function buildSignedBody(
 // hiding gated urls on public reads — so page code is mode-agnostic.
 // ---------------------------------------------------------------------------
 
-type DemoLink = Required<Omit<CreatorLink, 'created_at' | 'updated_at'>> & {
+type DemoLink = Required<Omit<CreatorLink, 'created_at' | 'updated_at' | 'pinned'>> & {
+    pinned?: boolean;
     created_at?: number;
     updated_at?: number;
 };
@@ -247,9 +255,13 @@ function demoFindEntry(store: DemoStore, idOrName: string): DemoEntry | null {
 
 function demoLinkBase(l: DemoLink): CreatorLink {
     return {
-        id: l.id, title: l.title, gated: l.gated, position: l.position,
+        id: l.id, title: l.title, gated: l.gated, pinned: !!l.pinned, position: l.position,
         created_at: l.created_at, updated_at: l.updated_at,
     };
+}
+
+function demoPinnedCount(entry: DemoEntry): number {
+    return entry.links.filter((l) => l.pinned).length;
 }
 
 function demoPublicLinks(entry: DemoEntry): CreatorLink[] {
@@ -348,6 +360,7 @@ export interface LinkInput {
     title: string;
     url: string;
     gated: boolean;
+    pinned?: boolean;
     position?: number;
 }
 
@@ -360,13 +373,16 @@ export async function addLink(
         const store = loadDemoStore();
         const entry = store.profiles[address];
         if (!entry) return { ok: false, error: 'create a profile first' };
-        if (entry.links.length >= 50) return { ok: false, error: 'at most 50 links per profile' };
+        if (input.pinned && demoPinnedCount(entry) >= MAX_PINNED_LINKS) {
+            return { ok: false, error: `at most ${MAX_PINNED_LINKS} pinned links per profile` };
+        }
         const position = input.position ?? (entry.links.reduce((m, l) => Math.max(m, l.position), -1) + 1);
         entry.links.push({
             id: entry.nextId,
             title: input.title,
             url: input.url,
             gated: input.gated,
+            pinned: !!input.pinned,
             position,
             created_at: nowSeconds(),
             updated_at: nowSeconds(),
@@ -381,6 +397,7 @@ export async function addLink(
             title: input.title,
             url: input.url,
             gated: input.gated,
+            pinned: input.pinned,
             position: input.position,
         });
         const res = await fetchWrite('/links', 'POST', body);
@@ -394,6 +411,7 @@ export interface LinkPatch {
     title?: string;
     url?: string;
     gated?: boolean;
+    pinned?: boolean;
     position?: number;
 }
 
@@ -408,9 +426,13 @@ export async function updateLink(
         const entry = store.profiles[address];
         const link = entry?.links.find((l) => l.id === id);
         if (!entry || !link) return { ok: false, error: 'link not found' };
+        if (patch.pinned && !link.pinned && demoPinnedCount(entry) >= MAX_PINNED_LINKS) {
+            return { ok: false, error: `at most ${MAX_PINNED_LINKS} pinned links per profile` };
+        }
         if (patch.title !== undefined) link.title = patch.title;
         if (patch.url !== undefined) link.url = patch.url;
         if (patch.gated !== undefined) link.gated = patch.gated;
+        if (patch.pinned !== undefined) link.pinned = patch.pinned;
         if (patch.position !== undefined) link.position = patch.position;
         link.updated_at = nowSeconds();
         saveDemoStore(store);
@@ -423,6 +445,7 @@ export async function updateLink(
             title: patch.title,
             url: patch.url,
             gated: patch.gated,
+            pinned: patch.pinned,
             position: patch.position,
         });
         const res = await fetchWrite(`/links/${id}`, 'PUT', body);
@@ -553,6 +576,7 @@ export async function unlockFeed(
             value: {
                 links: sortNewest(links),
                 verified_pools: entries.map((e) => e.profile.pool_address!),
+                expired_pools: [],
                 failed_pools: [],
             },
         };
@@ -566,10 +590,26 @@ export async function unlockFeed(
             value: {
                 links: res.data?.links ?? [],
                 verified_pools: res.data?.verified_pools ?? [],
+                expired_pools: res.data?.expired_pools ?? [],
                 failed_pools: res.data?.failed_pools ?? [],
             },
         };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'feed unlock failed' };
     }
+}
+
+// ---------------------------------------------------------------------------
+// Display ordering shared by the public links page and the manage page:
+// pinned links (the bio set) in the creator's position order, then posts
+// newest first.
+// ---------------------------------------------------------------------------
+
+export function pinnedLinks<T extends CreatorLink>(links: T[]): T[] {
+    return links.filter((l) => l.pinned).sort((a, b) => a.position - b.position || a.id - b.id);
+}
+
+export function postLinks<T extends CreatorLink>(links: T[]): T[] {
+    return links.filter((l) => !l.pinned)
+        .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.id - a.id);
 }

@@ -32,6 +32,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import LaunchIcon from '@mui/icons-material/Launch';
 import LockIcon from '@mui/icons-material/Lock';
+import PushPinIcon from '@mui/icons-material/PushPin';
+import PushPinOutlinedIcon from '@mui/icons-material/PushPinOutlined';
 import PageShell from '../components/universal/PageShell';
 import { useWallet } from '../context/WalletContext';
 import { NotConnectedView } from '../components/universal/PortfolioShared';
@@ -49,6 +51,9 @@ import {
     deleteLink,
     getProfile,
     isProfilesDemoMode,
+    MAX_PINNED_LINKS,
+    pinnedLinks,
+    postLinks,
     ProfileWithLinks,
     saveProfile,
     updateLink,
@@ -79,6 +84,74 @@ function checkLinkInput(title: string, url: string): string {
     return '';
 }
 
+interface LinkRowProps {
+    link: CreatorLink;
+    divider: boolean;
+    busy: boolean;
+    /** Pin slots are full, so an unpinned row can't be pinned. */
+    pinDisabled?: boolean;
+    onToggleGated: () => void;
+    onTogglePinned: () => void;
+    onMoveUp?: () => void;
+    onMoveDown?: () => void;
+    onEdit: () => void;
+    onDelete: () => void;
+}
+
+// One row of the link manager. Pinned rows get up/down ordering; posts are
+// chronological so they only get pin / gate / edit / delete.
+const LinkRow: React.FC<LinkRowProps> = ({
+    link, divider, busy, pinDisabled = false,
+    onToggleGated, onTogglePinned, onMoveUp, onMoveDown, onEdit, onDelete,
+}) => (
+    <ListItem
+        divider={divider}
+        secondaryAction={
+            <Stack direction="row" spacing={0.5} alignItems="center">
+                <Tooltip title="Subscribers only">
+                    <Switch size="small" checked={link.gated} onChange={onToggleGated} disabled={busy} />
+                </Tooltip>
+                <Tooltip title={link.pinned ? 'Unpin (becomes a post)' : pinDisabled ? 'All pin slots are used' : 'Pin to top'}>
+                    <span>
+                        <IconButton size="small" onClick={onTogglePinned} disabled={busy || (!link.pinned && pinDisabled)}>
+                            {link.pinned ? <PushPinIcon fontSize="small" color="primary" /> : <PushPinOutlinedIcon fontSize="small" />}
+                        </IconButton>
+                    </span>
+                </Tooltip>
+                {link.pinned && (
+                    <>
+                        <IconButton size="small" onClick={onMoveUp} disabled={busy || !onMoveUp}>
+                            <ArrowUpwardIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={onMoveDown} disabled={busy || !onMoveDown}>
+                            <ArrowDownwardIcon fontSize="small" />
+                        </IconButton>
+                    </>
+                )}
+                <IconButton size="small" onClick={onEdit} disabled={busy}>
+                    <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton size="small" onClick={onDelete} disabled={busy}>
+                    <DeleteIcon fontSize="small" />
+                </IconButton>
+            </Stack>
+        }
+    >
+        <ListItemText
+            sx={{ pr: 26 }}
+            primary={
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                    {link.gated && <LockIcon sx={{ fontSize: 14 }} color="disabled" />}
+                    <span>{sanitizeOnChainString(link.title, 80)}</span>
+                </Stack>
+            }
+            secondary={link.url
+                ? sanitizeOnChainString(link.url, 96)
+                : 'URL hidden (subscribers only)'}
+        />
+    </ListItem>
+);
+
 /**
  * Wallet-gated manage page (/mylinks): set display name + bio + pool, and
  * curate the public links list. Every mutation is an ADR-36-signed profiles
@@ -107,12 +180,14 @@ const ManageLinksPage: React.FC = () => {
     const [newTitle, setNewTitle] = useState('');
     const [newUrl, setNewUrl] = useState('');
     const [newGated, setNewGated] = useState(false);
+    const [newPinned, setNewPinned] = useState(false);
     const [linkBusy, setLinkBusy] = useState(false);
     const [linkError, setLinkError] = useState('');
     const [editing, setEditing] = useState<CreatorLink | null>(null);
     const [editTitle, setEditTitle] = useState('');
     const [editUrl, setEditUrl] = useState('');
     const [editGated, setEditGated] = useState(false);
+    const [editPinned, setEditPinned] = useState(false);
 
     useEffect(() => {
         if (!address) return;
@@ -152,9 +227,12 @@ const ManageLinksPage: React.FC = () => {
     }, [address, loadKey]);
 
     const refetch = () => setLoadKey((k) => k + 1);
-    const links = profileData
-        ? [...profileData.links].sort((a, b) => a.position - b.position || a.id - b.id)
-        : [];
+    // Pinned links (the bio set) keep the creator's order; everything else
+    // is a post and lists newest first, exactly as the public page shows it.
+    const pinned = profileData ? pinnedLinks(profileData.links) : [];
+    const posts = profileData ? postLinks(profileData.links) : [];
+    const linkCount = profileData?.links.length ?? 0;
+    const pinSlotsFull = pinned.length >= MAX_PINNED_LINKS;
     const selectedPool = poolChoice === CUSTOM_POOL ? customPool.trim() : poolChoice;
     // The saved pool may not be one of the wallet's factory pools (free-text
     // entry) — keep it selectable rather than silently dropping it.
@@ -205,11 +283,13 @@ const ManageLinksPage: React.FC = () => {
                 title: newTitle.trim(),
                 url: newUrl.trim(),
                 gated: newGated,
+                pinned: newPinned,
             });
             if (res.ok) {
                 setNewTitle('');
                 setNewUrl('');
                 setNewGated(false);
+                setNewPinned(false);
                 refetch();
             } else {
                 setLinkError(res.error);
@@ -232,14 +312,34 @@ const ManageLinksPage: React.FC = () => {
         }
     };
 
-    // Up/down reordering: swap the two neighbors' position values (fall back
-    // to their list indices when positions collide). Two signed updates.
+    const handleTogglePinned = async (link: CreatorLink) => {
+        if (!address) return;
+        setLinkError('');
+        setLinkBusy(true);
+        try {
+            // Newly pinned links go to the end of the pinned set.
+            const nextPos = pinned.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+            const res = await updateLink(address, walletName, link.id, {
+                pinned: !link.pinned,
+                ...(link.pinned ? {} : { position: nextPos }),
+            });
+            if (res.ok) refetch();
+            else setLinkError(res.error);
+        } finally {
+            setLinkBusy(false);
+        }
+    };
+
+    // Up/down reordering within the pinned set: swap the two neighbors'
+    // position values (fall back to their list indices when positions
+    // collide). Two signed updates. Posts are chronological, so they have
+    // no manual order.
     const handleMove = async (index: number, direction: -1 | 1) => {
         if (!address) return;
         const target = index + direction;
-        if (target < 0 || target >= links.length) return;
-        const a = links[index];
-        const b = links[target];
+        if (target < 0 || target >= pinned.length) return;
+        const a = pinned[index];
+        const b = pinned[target];
         const posA = a.position !== b.position ? b.position : target;
         const posB = a.position !== b.position ? a.position : index;
         setLinkError('');
@@ -276,6 +376,7 @@ const ManageLinksPage: React.FC = () => {
         setEditTitle(link.title);
         setEditUrl(link.url ?? '');
         setEditGated(link.gated);
+        setEditPinned(link.pinned);
     };
 
     const handleSaveEdit = async () => {
@@ -295,6 +396,7 @@ const ManageLinksPage: React.FC = () => {
                 title: editTitle.trim(),
                 url: urlPatch,
                 gated: editGated,
+                pinned: editPinned,
             });
             if (res.ok) {
                 setEditing(null);
@@ -418,60 +520,71 @@ const ManageLinksPage: React.FC = () => {
                         {profileData ? (
                             <Card>
                                 <CardContent>
-                                    <Typography variant="h6" fontWeight="bold" sx={{ mb: 1 }}>
-                                        Links ({links.length}/50)
+                                    <Typography variant="h6" fontWeight="bold" sx={{ mb: 0.5 }}>
+                                        Links ({linkCount})
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        Pinned links are your bio — up to {MAX_PINNED_LINKS}, shown at the top of your page in
+                                        the order you set. Everything else is a post: subscribers see it in their feed and
+                                        your page lists it newest first. There is no limit on posts.
                                     </Typography>
                                     {linkError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setLinkError('')}>{linkError}</Alert>}
-                                    {links.length === 0 ? (
+                                    {linkCount === 0 ? (
                                         <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
                                             No links yet — add your first one below.
                                         </Typography>
                                     ) : (
-                                        <List dense>
-                                            {links.map((link, i) => (
-                                                <ListItem
-                                                    key={link.id}
-                                                    divider={i < links.length - 1}
-                                                    secondaryAction={
-                                                        <Stack direction="row" spacing={0.5} alignItems="center">
-                                                            <Tooltip title="Subscribers only">
-                                                                <Switch
-                                                                    size="small"
-                                                                    checked={link.gated}
-                                                                    onChange={() => handleToggleGated(link)}
-                                                                    disabled={linkBusy}
-                                                                />
-                                                            </Tooltip>
-                                                            <IconButton size="small" onClick={() => handleMove(i, -1)} disabled={linkBusy || i === 0}>
-                                                                <ArrowUpwardIcon fontSize="small" />
-                                                            </IconButton>
-                                                            <IconButton size="small" onClick={() => handleMove(i, 1)} disabled={linkBusy || i === links.length - 1}>
-                                                                <ArrowDownwardIcon fontSize="small" />
-                                                            </IconButton>
-                                                            <IconButton size="small" onClick={() => openEdit(link)} disabled={linkBusy}>
-                                                                <EditIcon fontSize="small" />
-                                                            </IconButton>
-                                                            <IconButton size="small" onClick={() => handleDeleteLink(link)} disabled={linkBusy}>
-                                                                <DeleteIcon fontSize="small" />
-                                                            </IconButton>
-                                                        </Stack>
-                                                    }
-                                                >
-                                                    <ListItemText
-                                                        sx={{ pr: 22 }}
-                                                        primary={
-                                                            <Stack direction="row" spacing={0.5} alignItems="center">
-                                                                {link.gated && <LockIcon sx={{ fontSize: 14 }} color="disabled" />}
-                                                                <span>{sanitizeOnChainString(link.title, 80)}</span>
-                                                            </Stack>
-                                                        }
-                                                        secondary={link.url
-                                                            ? sanitizeOnChainString(link.url, 96)
-                                                            : 'URL hidden (subscribers only)'}
-                                                    />
-                                                </ListItem>
-                                            ))}
-                                        </List>
+                                        <>
+                                            <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 1 }}>
+                                                Pinned ({pinned.length}/{MAX_PINNED_LINKS})
+                                            </Typography>
+                                            {pinned.length === 0 ? (
+                                                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                                                    Nothing pinned — pin your site, store, or socials so they always sit at the top.
+                                                </Typography>
+                                            ) : (
+                                                <List dense>
+                                                    {pinned.map((link, i) => (
+                                                        <LinkRow
+                                                            key={link.id}
+                                                            link={link}
+                                                            divider={i < pinned.length - 1}
+                                                            busy={linkBusy}
+                                                            onToggleGated={() => handleToggleGated(link)}
+                                                            onTogglePinned={() => handleTogglePinned(link)}
+                                                            onMoveUp={i > 0 ? () => handleMove(i, -1) : undefined}
+                                                            onMoveDown={i < pinned.length - 1 ? () => handleMove(i, 1) : undefined}
+                                                            onEdit={() => openEdit(link)}
+                                                            onDelete={() => handleDeleteLink(link)}
+                                                        />
+                                                    ))}
+                                                </List>
+                                            )}
+                                            <Typography variant="subtitle2" fontWeight="bold" sx={{ mt: 1 }}>
+                                                Posts ({posts.length})
+                                            </Typography>
+                                            {posts.length === 0 ? (
+                                                <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                                                    No posts yet — every unpinned link you add shows up in your subscribers' feeds.
+                                                </Typography>
+                                            ) : (
+                                                <List dense>
+                                                    {posts.map((link, i) => (
+                                                        <LinkRow
+                                                            key={link.id}
+                                                            link={link}
+                                                            divider={i < posts.length - 1}
+                                                            busy={linkBusy}
+                                                            pinDisabled={pinSlotsFull}
+                                                            onToggleGated={() => handleToggleGated(link)}
+                                                            onTogglePinned={() => handleTogglePinned(link)}
+                                                            onEdit={() => openEdit(link)}
+                                                            onDelete={() => handleDeleteLink(link)}
+                                                        />
+                                                    ))}
+                                                </List>
+                                            )}
+                                        </>
                                     )}
 
                                     <Divider sx={{ my: 2 }} />
@@ -492,18 +605,30 @@ const ManageLinksPage: React.FC = () => {
                                             fullWidth
                                             placeholder="https://..."
                                         />
-                                        <Stack direction="row" spacing={2} alignItems="center">
+                                        <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
                                             <FormControlLabel
                                                 control={<Switch checked={newGated} onChange={(e) => setNewGated(e.target.checked)} />}
                                                 label="Subscribers only"
                                             />
+                                            <Tooltip title={pinSlotsFull ? `All ${MAX_PINNED_LINKS} pin slots are used` : 'Keep this link at the top of your page'}>
+                                                <FormControlLabel
+                                                    control={(
+                                                        <Switch
+                                                            checked={newPinned && !pinSlotsFull}
+                                                            onChange={(e) => setNewPinned(e.target.checked)}
+                                                            disabled={pinSlotsFull}
+                                                        />
+                                                    )}
+                                                    label="Pin to top"
+                                                />
+                                            </Tooltip>
                                             <Button
                                                 variant="contained"
                                                 startIcon={<AddCircleIcon />}
                                                 onClick={handleAddLink}
-                                                disabled={linkBusy || !newTitle.trim() || !newUrl.trim() || links.length >= 50}
+                                                disabled={linkBusy || !newTitle.trim() || !newUrl.trim()}
                                             >
-                                                Add Link
+                                                {newPinned && !pinSlotsFull ? 'Add Pinned Link' : 'Post Link'}
                                             </Button>
                                         </Stack>
                                     </Stack>
@@ -546,6 +671,16 @@ const ManageLinksPage: React.FC = () => {
                             <FormControlLabel
                                 control={<Switch checked={editGated} onChange={(e) => setEditGated(e.target.checked)} />}
                                 label="Subscribers only"
+                            />
+                            <FormControlLabel
+                                control={(
+                                    <Switch
+                                        checked={editPinned}
+                                        onChange={(e) => setEditPinned(e.target.checked)}
+                                        disabled={!editPinned && pinSlotsFull}
+                                    />
+                                )}
+                                label={!editPinned && pinSlotsFull ? `Pin to top (all ${MAX_PINNED_LINKS} slots used)` : 'Pin to top'}
                             />
                         </Stack>
                     </DialogContent>

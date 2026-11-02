@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, CircularProgress, IconButton, Stack, Typography, Link as MuiLink, Box } from '@mui/material';
+import { Badge, Button, CircularProgress, IconButton, Stack, Typography, Link as MuiLink, Box } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
@@ -10,6 +10,7 @@ import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import { useThemeMode } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
+import { useFeedBadge } from '../context/FeedBadgeContext';
 import { formatMicroAmount } from '../utils/bigintMath';
 import { NATIVE_SYMBOL } from '../defi/types';
 
@@ -38,6 +39,7 @@ const topBarLinkSx = {
 const BlockExpTopBar: React.FC = () => {
     const { mode, toggleTheme } = useThemeMode();
     const { address, balance, connecting, connect, disconnect } = useWallet();
+    const { newCount } = useFeedBadge();
 
     return (
         <Stack direction="row" justifyContent="space-evenly" width={'100%'}>
@@ -77,8 +79,15 @@ const BlockExpTopBar: React.FC = () => {
                         Commit
                     </Box>
                 )}
-                <MuiLink component={RouterLink} to="/feed" sx={topBarLinkSx}>
-                    <DynamicFeedIcon fontSize="small" />
+                <MuiLink
+                    component={RouterLink}
+                    to="/feed"
+                    sx={topBarLinkSx}
+                    title={newCount > 0 ? `${newCount} new link${newCount === 1 ? '' : 's'} from your creators` : undefined}
+                >
+                    <Badge badgeContent={newCount} color="error" max={99}>
+                        <DynamicFeedIcon fontSize="small" />
+                    </Badge>
                     Feed
                 </MuiLink>
                 <MuiLink

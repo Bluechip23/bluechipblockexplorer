@@ -19,14 +19,14 @@ const validate_1 = require("./validate");
 // ---------------------------------------------------------------------------
 function publicLink(l) {
     const base = {
-        id: l.id, title: l.title, gated: !!l.gated, position: l.position,
+        id: l.id, title: l.title, gated: !!l.gated, pinned: !!l.pinned, position: l.position,
         created_at: l.created_at, updated_at: l.updated_at,
     };
     return l.gated ? base : { ...base, url: l.url };
 }
 function fullLink(l) {
     return {
-        id: l.id, title: l.title, url: l.url, gated: !!l.gated, position: l.position,
+        id: l.id, title: l.title, url: l.url, gated: !!l.gated, pinned: !!l.pinned, position: l.position,
         created_at: l.created_at, updated_at: l.updated_at,
     };
 }
@@ -152,7 +152,7 @@ function buildApi(db, cfg) {
     app.use(express_1.default.json({ limit: '64kb' })); // JSON only, small bodies
     app.use(rateLimiter(cfg.rateLimitPerMin));
     app.get('/health', (_req, res) => {
-        res.json({ ok: true });
+        res.json({ ok: true, subscription_days: cfg.subscriptionDays });
     });
     // ---- Auth -------------------------------------------------------------
     app.get('/auth/nonce', (req, res) => {
@@ -215,10 +215,11 @@ function buildApi(db, cfg) {
     });
     // One signature unlocks the gated links of every subscribed creator at
     // once: the caller's committing_info is checked on each pool (the same
-    // enforcement as /links/unlock), and only links of verified pools — or
-    // of the caller's own profile — are returned with their url. Pools whose
-    // RPC check failed are reported so the client can retry them rather
-    // than show them as "not subscribed".
+    // enforcement as /links/unlock, including the access window), and only
+    // links of verified pools — or of the caller's own profile — are
+    // returned with their url. Expired subscriptions and pools whose RPC
+    // check failed are reported separately so the client can say "renew"
+    // or "retry" rather than "not subscribed".
     app.post('/feed/unlock', async (req, res) => {
         const signed = await requireSigned(db, req, res, 'unlock_feed');
         if (!signed)
@@ -233,7 +234,12 @@ function buildApi(db, cfg) {
                 return { profile, status: 'verified' };
             try {
                 const info = await (0, chain_1.queryCommittingInfo)(cfg.rpcUrl, profile.pool_address, auth.address);
-                return { profile, status: info ? 'verified' : 'unsubscribed' };
+                if (!info)
+                    return { profile, status: 'unsubscribed' };
+                return {
+                    profile,
+                    status: (0, chain_1.isSubscriptionActive)(info, cfg.subscriptionDays) ? 'verified' : 'expired',
+                };
             }
             catch (err) {
                 console.error('[feed/unlock] committing_info query failed:', err);
@@ -242,6 +248,7 @@ function buildApi(db, cfg) {
         });
         const links = [];
         const verified = [];
+        const expired = [];
         const failed = [];
         for (const c of checks) {
             if (c.status === 'verified') {
@@ -251,11 +258,14 @@ function buildApi(db, cfg) {
                         links.push({ ...fullLink(l), creator: feedCreator(c.profile) });
                 }
             }
+            else if (c.status === 'expired') {
+                expired.push(c.profile.pool_address);
+            }
             else if (c.status === 'failed') {
                 failed.push(c.profile.pool_address);
             }
         }
-        res.json({ links, verified_pools: verified, failed_pools: failed });
+        res.json({ links, verified_pools: verified, expired_pools: expired, failed_pools: failed, subscription_days: cfg.subscriptionDays });
     });
     // ---- Signed writes ----------------------------------------------------
     app.put('/profiles', async (req, res) => {
@@ -293,9 +303,6 @@ function buildApi(db, cfg) {
         if (!(0, db_1.getProfileByWallet)(db, auth.address)) {
             return res.status(400).json({ error: 'create a profile first (PUT /profiles)' });
         }
-        if ((0, db_1.countLinks)(db, auth.address) >= validate_1.MAX_LINKS) {
-            return res.status(400).json({ error: `at most ${validate_1.MAX_LINKS} links per profile` });
-        }
         const title = (0, validate_1.validateTitle)(payload.title);
         if (!title.ok)
             return res.status(400).json({ error: title.error });
@@ -305,14 +312,21 @@ function buildApi(db, cfg) {
         const gated = (0, validate_1.validateGated)(payload.gated);
         if (!gated.ok)
             return res.status(400).json({ error: gated.error });
+        const pinned = (0, validate_1.validatePinned)(payload.pinned);
+        if (!pinned.ok)
+            return res.status(400).json({ error: pinned.error });
         const position = (0, validate_1.validatePosition)(payload.position);
         if (!position.ok)
             return res.status(400).json({ error: position.error });
+        if (pinned.value && (0, db_1.countPinned)(db, auth.address) >= validate_1.MAX_PINNED) {
+            return res.status(400).json({ error: `at most ${validate_1.MAX_PINNED} pinned links per profile` });
+        }
         const link = (0, db_1.insertLink)(db, {
             wallet_address: auth.address,
             title: title.value,
             url: url.value,
             gated: gated.value,
+            pinned: pinned.value,
             position: position.value ?? (0, db_1.maxPosition)(db, auth.address) + 1,
         });
         res.json({ link: fullLink(link) });
@@ -350,6 +364,15 @@ function buildApi(db, cfg) {
                 return res.status(400).json({ error: gated.error });
             patch.gated = gated.value;
         }
+        if (payload.pinned !== undefined) {
+            const pinned = (0, validate_1.validatePinned)(payload.pinned);
+            if (!pinned.ok)
+                return res.status(400).json({ error: pinned.error });
+            if (pinned.value && !existing.pinned && (0, db_1.countPinned)(db, auth.address) >= validate_1.MAX_PINNED) {
+                return res.status(400).json({ error: `at most ${validate_1.MAX_PINNED} pinned links per profile` });
+            }
+            patch.pinned = pinned.value;
+        }
         if (payload.position !== undefined) {
             const position = (0, validate_1.validatePosition)(payload.position);
             if (!position.ok)
@@ -379,7 +402,8 @@ function buildApi(db, cfg) {
     //
     // The real enforcement point for gated links: verify the caller's
     // identity (ADR-36), then check the profile owner's pool on-chain for a
-    // committing_info record for the CALLER. Owners always see their own
+    // committing_info record for the CALLER whose last commit is within the
+    // access window (cfg.subscriptionDays). Owners always see their own
     // gated links.
     app.post('/links/unlock', async (req, res) => {
         const signed = await requireSigned(db, req, res, 'unlock_links');
@@ -408,6 +432,11 @@ function buildApi(db, cfg) {
             }
             if (!info) {
                 return res.status(403).json({ error: 'no subscription found — commit to this creator\'s pool to unlock' });
+            }
+            if (!(0, chain_1.isSubscriptionActive)(info, cfg.subscriptionDays)) {
+                return res.status(403).json({
+                    error: `subscription expired — a commit unlocks ${cfg.subscriptionDays} days of access; commit again to renew`,
+                });
             }
         }
         res.json({ links: gatedLinks.map(fullLink) });

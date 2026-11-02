@@ -3,7 +3,7 @@
 // the database has passed through here, so the read endpoints can serve
 // rows without re-checking.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_LINKS = exports.URL_MAX = exports.TITLE_MAX = exports.BIO_MAX = exports.NAME_MAX = exports.NAME_MIN = void 0;
+exports.MAX_PINNED = exports.URL_MAX = exports.TITLE_MAX = exports.BIO_MAX = exports.NAME_MAX = exports.NAME_MIN = void 0;
 exports.isOsmoAddress = isOsmoAddress;
 exports.validateName = validateName;
 exports.validateBio = validateBio;
@@ -11,6 +11,7 @@ exports.validatePoolAddress = validatePoolAddress;
 exports.validateTitle = validateTitle;
 exports.validateUrl = validateUrl;
 exports.validateGated = validateGated;
+exports.validatePinned = validatePinned;
 exports.validatePosition = validatePosition;
 const encoding_1 = require("@cosmjs/encoding");
 exports.NAME_MIN = 3;
@@ -18,7 +19,9 @@ exports.NAME_MAX = 32;
 exports.BIO_MAX = 280;
 exports.TITLE_MAX = 80;
 exports.URL_MAX = 2048;
-exports.MAX_LINKS = 50;
+// No cap on links per creator — the feed turns links into a publishing
+// channel. Only the pinned (bio) set is bounded.
+exports.MAX_PINNED = 10;
 const NAME_PATTERN = /^[a-zA-Z0-9 _.-]+$/;
 function isOsmoAddress(value) {
     if (typeof value !== 'string')
@@ -96,6 +99,15 @@ function validateGated(raw) {
     if (raw === 0 || raw === 1)
         return { ok: true, value: raw };
     return { ok: false, error: 'gated must be a boolean (or 0/1)' };
+}
+function validatePinned(raw) {
+    if (raw === undefined || raw === null)
+        return { ok: true, value: 0 };
+    if (typeof raw === 'boolean')
+        return { ok: true, value: raw ? 1 : 0 };
+    if (raw === 0 || raw === 1)
+        return { ok: true, value: raw };
+    return { ok: false, error: 'pinned must be a boolean (or 0/1)' };
 }
 function validatePosition(raw) {
     if (raw === undefined || raw === null)

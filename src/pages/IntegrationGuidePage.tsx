@@ -818,8 +818,10 @@ var TIER_GOLD_MICRO_OSMO   = 10000000000;
 var TIER_SILVER_MICRO_OSMO = 1000000000;
 
 // How recent the last commit must be to count as an "active"
-// subscriber. The chain never expires commit records — recency
-// is purely your site's policy.
+// subscriber. The chain never expires commit records; BlueChip's
+// platform policy is that one commit buys 30 days of access (the
+// explorer, profiles service and widget all use this), and a repeat
+// commit renews it. Match it unless your site wants a different window.
 var ACTIVE_WINDOW_DAYS = 30;
 
 async function getSupporterStatus(walletAddress) {
@@ -1691,8 +1693,10 @@ const IntegrationGuidePage: React.FC = () => {
                                 <strong>Design notes:</strong> amounts are micro-OSMO
                                 (<code>total_paid_native</code> of 5000000000 = 5,000 OSMO);&nbsp;
                                 <code>last_committed</code> is in nanoseconds; commit records never expire
-                                on-chain, so "active subscriber" windows (e.g. committed within 30 days) are
-                                your site's policy, enforced from <code>last_committed</code>. For
+                                on-chain, so the access window is enforced from <code>last_committed</code>.
+                                BlueChip's platform policy is <strong>one commit = 30 days of access</strong>
+                                (a repeat commit renews it) — the explorer, the profiles service and the
+                                embeddable widget all apply that window, so match it on your own site. For
                                 token-balance-based perks instead, read the wallet's <strong>bank
                                 balance</strong> of the creator token's <code>factory/...</code> denom
                                 (Section 10) — creator tokens are native coins, so there is no CW20{' '}

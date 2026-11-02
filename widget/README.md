@@ -82,6 +82,7 @@ BluechipWidget.init({
 | `data-fixed-amount` | subscribe | Hide the input; always use `data-amount` |
 | `data-label` | both | Button text |
 | `data-min-osmo` | gate | Minimum lifetime OSMO committed (gross, whole OSMO) to unlock |
+| `data-active-days` | gate | Days of access one commit buys (default `30`, the platform policy) |
 | `data-denied-text` | gate | Message when the viewer doesn't qualify |
 
 Elements added after page load can be mounted with
@@ -95,12 +96,24 @@ BluechipWidget.init(overrides?)                    // configure; returns active 
 BluechipWidget.connect()                           // -> { address, client }
 BluechipWidget.getAddress()                        // address via Keplr only (no RPC)
 BluechipWidget.subscribe({ pool, amount })         // -> { txHash, address }
-BluechipWidget.checkSubscription({ pool, address?, minOsmo? })
-//   -> { subscribed, totalOsmo, record }          // record = raw committing_info
+BluechipWidget.checkSubscription({ pool, address?, minOsmo?, activeDays? })
+//   -> { subscribed, totalOsmo, record, expired, expiresAt }
+//      record = raw committing_info; subscribed is true only while the last
+//      commit is within activeDays (default 30) — expired flags a lapsed one
 BluechipWidget.mountSubscribe(elOrSelector, opts)
 BluechipWidget.mountGate(elOrSelector, opts)
 BluechipWidget.toMicro('1.5') / BluechipWidget.fromMicro('1500000')
 ```
+
+## Subscriptions last 30 days
+
+A commit is a subscription payment: it buys **30 days of access** counted
+from the wallet's last commit (`committing_info.last_committed`), and
+committing again renews it. The chain itself never expires the record —
+the window is BlueChip platform policy, and the explorer, the profiles
+service and this widget all apply the same default. Override it per
+embed with `data-active-days` / `activeDays` if your site wants a
+different window.
 
 ## Security model of the gate
 

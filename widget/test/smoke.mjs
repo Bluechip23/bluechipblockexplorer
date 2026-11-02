@@ -181,6 +181,10 @@ async function main() {
         const b64 = decodeURIComponent(url.split('/smart/')[1]);
         const query = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
         assert.deepEqual(query, { committing_info: { wallet: WALLET } });
+        // The POOL record was committed yesterday (active); the POOL_FULL
+        // record is a year old, so its 30-day access window has lapsed.
+        const daysAgo = url.includes(POOL_FULL) ? 365 : 1;
+        const lastCommittedNs = (BigInt(Date.now() - daysAgo * 86_400_000) * 1_000_000n).toString();
         await route.fulfill({
             contentType: 'application/json',
             body: JSON.stringify({
@@ -188,7 +192,7 @@ async function main() {
                     committer: WALLET,
                     total_paid_native: '150500000',
                     total_paid_bluechip: '150500000',
-                    last_committed: '1700000000000000000',
+                    last_committed: lastCommittedNs,
                     last_payment_native: '115000000',
                     last_payment_bluechip: '115000000',
                 },
@@ -200,6 +204,7 @@ async function main() {
         <div id="pre" data-bluechip-subscribe data-pool="${POOL}" data-amount="25"></div>
         <div id="post" data-bluechip-subscribe data-pool="${POOL_FULL}" data-amount="25"></div>
         <div id="secret" data-bluechip-gate data-pool="${POOL}" data-min-osmo="115">MEMBERS ONLY</div>
+        <div id="stale" data-bluechip-gate data-pool="${POOL_FULL}">LAPSED</div>
     `);
     // setContent rewrites the existing document without a navigation, so
     // addInitScript never fires — install the Keplr stub directly before
@@ -214,11 +219,19 @@ async function main() {
     await page.waitForSelector('#post .bcw-btn');
     await page.waitForSelector('.bcw-btn:text("Unlock with your subscription")');
 
-    // --- Gate flow: unlocks on a qualifying committing_info record ------
+    // --- Gate flow: unlocks on an ACTIVE committing_info record ---------
     assert.ok(await page.locator('#secret').isHidden(), 'gated content starts hidden');
-    await page.click('.bcw-btn:text("Unlock with your subscription")');
+    await page.locator('.bcw-btn:text("Unlock with your subscription")').first().click();
     await page.waitForSelector('#secret:visible');
     assert.equal(await page.locator('#secret').innerText(), 'MEMBERS ONLY');
+
+    // --- Gate flow: a record older than the access window stays locked --
+    // (the first gate's prompt is gone now, so one unlock button remains)
+    assert.ok(await page.locator('#stale').isHidden(), 'lapsed content starts hidden');
+    await page.click('.bcw-btn:text("Unlock with your subscription")');
+    await page.waitForSelector('.bcw-status.bcw-err');
+    assert.match(await page.locator('.bcw-status.bcw-err').innerText(), /expired/i, 'lapsed subscription is reported as expired');
+    assert.ok(await page.locator('#stale').isHidden(), 'lapsed content stays hidden');
 
     // --- Subscribe flow, pre-threshold: null belief_price/max_spread -----
     await page.click('#pre .bcw-btn');

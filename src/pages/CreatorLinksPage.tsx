@@ -31,9 +31,12 @@ import {
     CreatorLink,
     getProfile,
     isProfilesDemoMode,
+    pinnedLinks,
+    postLinks,
     ProfileWithLinks,
     unlockLinks,
 } from '../utils/profilesApi';
+import { SUBSCRIPTION_PERIOD_DAYS } from '../utils/subscriptions';
 import CommitDialog from '../components/creator-links/CommitDialog';
 import ProvideLiquidityDialog from '../components/creator-links/ProvideLiquidityDialog';
 import LinkCard from '../components/creator-links/LinkCard';
@@ -76,6 +79,8 @@ const PoolStatsRow: React.FC<{ pool: PoolSummary }> = ({ pool }) => {
     );
 };
 
+const POSTS_PAGE = 20;
+
 /**
  * Public link-in-bio page for a creator: /creator/:idOrName where the param
  * is a profile name, wallet address, or pool address. Gated links unlock
@@ -98,6 +103,8 @@ const CreatorLinksPage: React.FC = () => {
     const [unlockError, setUnlockError] = useState('');
     const [commitOpen, setCommitOpen] = useState(false);
     const [liquidityOpen, setLiquidityOpen] = useState(false);
+    // Posts are revealed a page at a time; a prolific creator can have hundreds.
+    const [postsShown, setPostsShown] = useState(POSTS_PAGE);
 
     useEffect(() => {
         if (!idOrName) return;
@@ -112,6 +119,7 @@ const CreatorLinksPage: React.FC = () => {
             setNotFound(false);
             setUnlockedUrls({});
             setUnlockError('');
+            setPostsShown(POSTS_PAGE);
             try {
                 let pool: string | null = null;
                 const prof = await getProfile(idOrName!);
@@ -149,9 +157,9 @@ const CreatorLinksPage: React.FC = () => {
         return () => { cancelled = true; };
     }, [idOrName]);
 
-    const links = profileData
-        ? [...profileData.links].sort((a, b) => a.position - b.position || a.id - b.id)
-        : [];
+    const links = profileData?.links ?? [];
+    const pinned = pinnedLinks(links);
+    const posts = postLinks(links);
     const lockedLinks = links.filter((l) => l.gated && !unlockedUrls[l.id]);
     const ownerKey = profileData?.profile.wallet_address ?? idOrName ?? '';
 
@@ -311,12 +319,13 @@ const CreatorLinksPage: React.FC = () => {
                                         </Stack>
                                     }
                                 >
-                                    Subscribe to unlock {lockedLinks.length} link{lockedLinks.length === 1 ? '' : 's'}.
+                                    Subscribe to unlock {lockedLinks.length} link{lockedLinks.length === 1 ? '' : 's'} —
+                                    a commit gives {SUBSCRIPTION_PERIOD_DAYS} days of access.
                                 </Alert>
                             )}
                             {unlockError && <Alert severity="warning">{unlockError}</Alert>}
 
-                            {/* The links */}
+                            {/* Pinned links: the creator's bio set, in their order */}
                             {links.length === 0 ? (
                                 <Card>
                                     <CardContent sx={{ textAlign: 'center', py: 4 }}>
@@ -326,16 +335,45 @@ const CreatorLinksPage: React.FC = () => {
                                     </CardContent>
                                 </Card>
                             ) : (
-                                <Stack spacing={1.5}>
-                                    {links.map((link) => (
-                                        <LinkCard
-                                            key={link.id}
-                                            link={link}
-                                            unlockedUrl={unlockedUrls[link.id]}
-                                            onLockedClick={handleVerifySubscription}
-                                        />
-                                    ))}
-                                </Stack>
+                                <>
+                                    {pinned.length > 0 && (
+                                        <Stack spacing={1.5}>
+                                            {pinned.map((link) => (
+                                                <LinkCard
+                                                    key={link.id}
+                                                    link={link}
+                                                    unlockedUrl={unlockedUrls[link.id]}
+                                                    onLockedClick={handleVerifySubscription}
+                                                />
+                                            ))}
+                                        </Stack>
+                                    )}
+
+                                    {/* Posts: newest first, paged */}
+                                    {posts.length > 0 && (
+                                        <Stack spacing={1.5}>
+                                            {pinned.length > 0 && (
+                                                <Typography variant="subtitle2" color="text.secondary" sx={{ pt: 1 }}>
+                                                    Latest
+                                                </Typography>
+                                            )}
+                                            {posts.slice(0, postsShown).map((link) => (
+                                                <LinkCard
+                                                    key={link.id}
+                                                    link={link}
+                                                    unlockedUrl={unlockedUrls[link.id]}
+                                                    onLockedClick={handleVerifySubscription}
+                                                    postedAt={link.created_at}
+                                                />
+                                            ))}
+                                            {posts.length > postsShown && (
+                                                <Button size="small" onClick={() => setPostsShown((n) => n + POSTS_PAGE)}>
+                                                    Show {Math.min(POSTS_PAGE, posts.length - postsShown)} more of {posts.length - postsShown}
+                                                </Button>
+                                            )}
+                                        </Stack>
+                                    )}
+                                </>
                             )}
                         </Stack>
                     ) : (

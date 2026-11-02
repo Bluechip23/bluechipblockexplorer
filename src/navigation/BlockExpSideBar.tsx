@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+    Badge,
     Divider,
     ListItemIcon,
     ListItemText,
@@ -19,6 +20,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import { Link, useLocation } from 'react-router-dom';
+import { useFeedBadge } from '../context/FeedBadgeContext';
 
 type Item = {
     title: string;
@@ -69,7 +71,7 @@ const contractItems: Item[] = [
     { title: 'Integration Guide', icon: <TipsAndUpdatesIcon />, link: '/integration-guide' },
 ];
 
-const SidebarLink: React.FC<{ item: Item; selected?: boolean }> = ({ item, selected = false }) => (
+const SidebarLink: React.FC<{ item: Item; selected?: boolean; badge?: number }> = ({ item, selected = false, badge = 0 }) => (
     <Link to={item.link} style={{ color: 'inherit', textDecoration: 'none' }}>
         <ListItem
             sx={{
@@ -78,8 +80,10 @@ const SidebarLink: React.FC<{ item: Item; selected?: boolean }> = ({ item, selec
                 '&:hover': { bgcolor: 'action.hover' },
             }}
         >
-            <Tooltip title={item.title}>
-                <ListItemIcon>{item.icon}</ListItemIcon>
+            <Tooltip title={badge > 0 ? `${item.title} — ${badge} new` : item.title}>
+                <ListItemIcon>
+                    <Badge badgeContent={badge} color="primary" max={99}>{item.icon}</Badge>
+                </ListItemIcon>
             </Tooltip>
             <ListItemText primary={item.title} secondary={item.subtitle} />
         </ListItem>
@@ -88,6 +92,7 @@ const SidebarLink: React.FC<{ item: Item; selected?: boolean }> = ({ item, selec
 
 const BlockExpSideBar: React.FC = () => {
     const location = useLocation();
+    const { newCount } = useFeedBadge();
 
     return (
         <List component="nav">
@@ -100,7 +105,12 @@ const BlockExpSideBar: React.FC = () => {
                 My Portfolio
             </ListSubheader>
             {portfolioItems.map((item) => (
-                <SidebarLink key={item.link} item={item} selected={location.pathname === item.link} />
+                <SidebarLink
+                    key={item.link}
+                    item={item}
+                    selected={location.pathname === item.link}
+                    badge={item.link === '/feed' ? newCount : 0}
+                />
             ))}
 
             <Divider sx={{ my: 1 }} />

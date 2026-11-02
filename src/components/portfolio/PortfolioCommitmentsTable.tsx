@@ -19,6 +19,8 @@ import PoolActionMenu from '../actions/PoolActionMenu';
 import { formatMicroAmount } from '../../utils/contractQueries';
 import { approxUsd, useNativeUsdRate } from '../../hooks/useNativeUsdRate';
 import { MyCommitment } from './types';
+import { isSubscriptionActive, subscriptionDaysLeft, subscriptionExpiresAt } from '../../utils/subscriptions';
+import { Chip, Tooltip } from '@mui/material';
 
 interface PortfolioCommitmentsTableProps {
     commitments: MyCommitment[];
@@ -58,6 +60,7 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                             <TableCell>My Total (OSMO)</TableCell>
                             <TableCell>≈ USD</TableCell>
                             <TableCell>Last Commit (OSMO)</TableCell>
+                            <TableCell>Access</TableCell>
                             <TableCell align="right">Actions</TableCell>
                         </TableRow>
                     </TableHead>
@@ -80,6 +83,17 @@ const PortfolioCommitmentsTable: React.FC<PortfolioCommitmentsTableProps> = ({ c
                                 <TableCell>{formatMicroAmount(c.commit.total_paid_native)}</TableCell>
                                 <TableCell>{approxUsd(c.commit.total_paid_native, usdRate) || '—'}</TableCell>
                                 <TableCell>{formatMicroAmount(c.commit.last_payment_native)}</TableCell>
+                                <TableCell>
+                                    {isSubscriptionActive(c.commit) ? (
+                                        <Tooltip title={`Access until ${subscriptionExpiresAt(c.commit)?.toLocaleDateString() ?? '—'}`}>
+                                            <Chip size="small" color="success" variant="outlined" label={`${subscriptionDaysLeft(c.commit)}d left`} />
+                                        </Tooltip>
+                                    ) : (
+                                        <Tooltip title="Commit again to renew access to this creator's subscriber links">
+                                            <Chip size="small" color="warning" variant="outlined" label="Expired" />
+                                        </Tooltip>
+                                    )}
+                                </TableCell>
                                 <TableCell align="right">
                                     <PoolActionMenu
                                         poolAddress={c.pool.poolAddress}
