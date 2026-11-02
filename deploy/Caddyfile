@@ -1,0 +1,14 @@
+# Two public hostnames, one per service. Caddy fills in HTTPS.
+{
+    email {$ACME_EMAIL}
+}
+
+{$INDEXER_HOST} {
+    encode gzip
+    reverse_proxy indexer:4316
+}
+
+{$PROFILES_HOST} {
+    encode gzip
+    reverse_proxy profiles:4317
+}
