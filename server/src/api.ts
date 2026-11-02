@@ -6,8 +6,9 @@ import { queryCommittingInfo } from './chain';
 import { Config } from './config';
 import {
     countLinks, Db, deleteLink, getLink, getProfileByName, getProfileByPool,
-    getProfileByWallet, insertLink, LinkRow, listLinks, maxPosition,
-    ProfileRow, putNonce, searchProfiles, updateLink, upsertProfile,
+    getProfilesByPools, getProfileByWallet, insertLink, LinkRow, listLinks,
+    listLinksForWallets, maxPosition, ProfileRow, putNonce, searchProfiles,
+    updateLink, upsertProfile,
 } from './db';
 import {
     isOsmoAddress, MAX_LINKS, validateBio, validateGated, validateName,
@@ -21,12 +22,62 @@ import {
 // ---------------------------------------------------------------------------
 
 function publicLink(l: LinkRow): Record<string, unknown> {
-    const base = { id: l.id, title: l.title, gated: !!l.gated, position: l.position };
+    const base = {
+        id: l.id, title: l.title, gated: !!l.gated, position: l.position,
+        created_at: l.created_at, updated_at: l.updated_at,
+    };
     return l.gated ? base : { ...base, url: l.url };
 }
 
 function fullLink(l: LinkRow): Record<string, unknown> {
-    return { id: l.id, title: l.title, url: l.url, gated: !!l.gated, position: l.position };
+    return {
+        id: l.id, title: l.title, url: l.url, gated: !!l.gated, position: l.position,
+        created_at: l.created_at, updated_at: l.updated_at,
+    };
+}
+
+// Feed rows carry the creator inline so the client can render a mixed,
+// newest-first list without a second lookup per creator.
+function feedCreator(p: ProfileRow): Record<string, unknown> {
+    return { name: p.name, wallet_address: p.wallet_address, pool_address: p.pool_address };
+}
+
+// The subscriber feed is keyed by pool addresses (what the viewer's on-chain
+// commit ledger identifies). Bounded and de-duplicated; invalid entries are
+// rejected rather than silently dropped so a malformed client is visible.
+export const FEED_MAX_POOLS = 200;
+export const FEED_MAX_LINKS = 500;
+
+function parseFeedPools(raw: unknown): { ok: true; pools: string[] } | { ok: false; error: string } {
+    if (!Array.isArray(raw)) return { ok: false, error: 'pools must be an array of pool addresses' };
+    if (raw.length > FEED_MAX_POOLS) return { ok: false, error: `at most ${FEED_MAX_POOLS} pools per request` };
+    const pools: string[] = [];
+    for (const p of raw) {
+        if (!isOsmoAddress(p)) return { ok: false, error: 'pools must be valid osmo1... bech32 addresses' };
+        if (!pools.includes(p)) pools.push(p);
+    }
+    return { ok: true, pools };
+}
+
+function parseFeedLimit(raw: unknown): number {
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+    if (!Number.isInteger(n) || n <= 0) return FEED_MAX_LINKS;
+    return Math.min(n, FEED_MAX_LINKS);
+}
+
+// Run `fn` over `items` with at most `width` in flight — the unlock path
+// issues one RPC query per subscribed pool.
+async function mapLimited<T, R>(items: T[], width: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = new Array(items.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(width, items.length) }, async () => {
+        while (next < items.length) {
+            const i = next++;
+            results[i] = await fn(items[i]);
+        }
+    });
+    await Promise.all(workers);
+    return results;
 }
 
 function publicProfile(p: ProfileRow): Record<string, unknown> {
@@ -156,6 +207,73 @@ export function buildApi(db: Db, cfg: Config): Express {
                 pool_address: p.pool_address,
             })),
         });
+    });
+
+    // ---- Subscriber feed ----------------------------------------------------
+    //
+    // The platform hosts nothing but links, so a subscriber's "feed" is the
+    // newest links across every creator they are committed to. The client
+    // discovers those pools from the chain and posts them here; this is a
+    // public read (gated links come without url, exactly like
+    // GET /profiles/:idOrName) — POST only because a long pool list does
+    // not fit in a query string.
+
+    app.post('/feed', (req, res) => {
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const parsed = parseFeedPools(body.pools);
+        if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+        const limit = parseFeedLimit(body.limit);
+
+        const profiles = getProfilesByPools(db, parsed.pools);
+        const byWallet = new Map(profiles.map((p) => [p.wallet_address, p]));
+        const links = listLinksForWallets(db, profiles.map((p) => p.wallet_address), limit);
+        res.json({
+            creators: profiles.map(feedCreator),
+            links: links.map((l) => ({ ...publicLink(l), creator: feedCreator(byWallet.get(l.wallet_address)!) })),
+        });
+    });
+
+    // One signature unlocks the gated links of every subscribed creator at
+    // once: the caller's committing_info is checked on each pool (the same
+    // enforcement as /links/unlock), and only links of verified pools — or
+    // of the caller's own profile — are returned with their url. Pools whose
+    // RPC check failed are reported so the client can retry them rather
+    // than show them as "not subscribed".
+
+    app.post('/feed/unlock', async (req, res) => {
+        const signed = await requireSigned(db, req, res, 'unlock_feed');
+        if (!signed) return;
+        const { auth, payload } = signed;
+
+        const parsed = parseFeedPools(payload.pools);
+        if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+
+        const profiles = getProfilesByPools(db, parsed.pools);
+        const checks = await mapLimited(profiles, 4, async (profile) => {
+            if (profile.wallet_address === auth.address) return { profile, status: 'verified' as const };
+            try {
+                const info = await queryCommittingInfo(cfg.rpcUrl, profile.pool_address!, auth.address);
+                return { profile, status: info ? ('verified' as const) : ('unsubscribed' as const) };
+            } catch (err) {
+                console.error('[feed/unlock] committing_info query failed:', err);
+                return { profile, status: 'failed' as const };
+            }
+        });
+
+        const links: Record<string, unknown>[] = [];
+        const verified: string[] = [];
+        const failed: string[] = [];
+        for (const c of checks) {
+            if (c.status === 'verified') {
+                verified.push(c.profile.pool_address!);
+                for (const l of listLinks(db, c.profile.wallet_address)) {
+                    if (l.gated) links.push({ ...fullLink(l), creator: feedCreator(c.profile) });
+                }
+            } else if (c.status === 'failed') {
+                failed.push(c.profile.pool_address!);
+            }
+        }
+        res.json({ links, verified_pools: verified, failed_pools: failed });
     });
 
     // ---- Signed writes ----------------------------------------------------

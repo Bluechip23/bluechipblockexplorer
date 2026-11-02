@@ -17,6 +17,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import BrushIcon from '@mui/icons-material/Brush';
 import PaletteIcon from '@mui/icons-material/Palette';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
+import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import { Link, useLocation } from 'react-router-dom';
 
 type Item = {
@@ -37,6 +38,12 @@ const explorerItems: Item[] = [
 // performance are one click away; the pages themselves show a connect
 // prompt when no wallet is linked yet.
 const portfolioItems: Item[] = [
+    {
+        title: 'My Feed',
+        subtitle: 'New links from your creators',
+        icon: <DynamicFeedIcon />,
+        link: '/feed',
+    },
     {
         title: 'My Holdings',
         subtitle: 'Tokens, commits & positions',

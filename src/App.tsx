@@ -22,6 +22,7 @@ const HoldingsPortfolioPage = lazy(() => import('./pages/ChainPortfolioPage'));
 const CreatorPortfolioPage = lazy(() => import('./pages/CreatorPortfolioPage'));
 const CreatorLinksPage = lazy(() => import('./pages/CreatorLinksPage'));
 const ManageLinksPage = lazy(() => import('./pages/ManageLinksPage'));
+const SubscriptionFeedPage = lazy(() => import('./pages/SubscriptionFeedPage'));
 const FindCreatorsPage = lazy(() => import('./pages/FindCreatorsPage'));
 
 const PageLoader = () => (
@@ -57,6 +58,7 @@ function App() {
                     <Route path="/creator/:idOrName" element={<CreatorLinksPage />} />
                     <Route path="/creators" element={<FindCreatorsPage />} />
                     <Route path="/mylinks" element={<ManageLinksPage />} />
+                    <Route path="/feed" element={<SubscriptionFeedPage />} />
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
                 </Suspense>

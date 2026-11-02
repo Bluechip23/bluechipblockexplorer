@@ -17,10 +17,9 @@ import PortfolioPositionsTable from '../components/portfolio/PortfolioPositionsT
 import PortfolioTransactionsTable from '../components/portfolio/PortfolioTransactionsTable';
 import PortfolioHoldingsTable from '../components/portfolio/PortfolioHoldingsTable';
 import { MyCommitment } from '../components/portfolio/types';
+import { scanSubscriptions } from '../utils/subscriptions';
 import {
-    fetchAllPoolSummaries,
     queryLpPositions,
-    queryPoolCommits,
     queryWalletHoldings,
     formatMicroAmount,
     LpPosition,
@@ -49,25 +48,9 @@ const ChainPortfolioPage: React.FC = () => {
         async function loadPortfolio() {
             setLoading(true);
             try {
-                const allPools = await fetchAllPoolSummaries(factoryAddress);
+                const { pools: allPools, commitments: myCommitments } = await scanSubscriptions(address, () => cancelled);
                 if (cancelled) return;
                 setPools(allPools);
-
-                const myCommitments: MyCommitment[] = [];
-
-                // Process pools in batches of 3 to limit concurrent requests
-                const BATCH_SIZE = 3;
-                for (let i = 0; i < allPools.length; i += BATCH_SIZE) {
-                    if (cancelled) return;
-                    const batch = allPools.slice(i, i + BATCH_SIZE);
-                    await Promise.all(batch.map(async (pool) => {
-                        const commits = await queryPoolCommits(pool.poolAddress);
-                        if (commits?.committers) {
-                            const myCommit = commits.committers.find((c) => c.wallet === address);
-                            if (myCommit) myCommitments.push({ pool, commit: myCommit });
-                        }
-                    }));
-                }
 
                 const [myHoldings, myLpPositions] = await Promise.all([
                     queryWalletHoldings(address, allPools),

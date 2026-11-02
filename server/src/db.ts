@@ -92,6 +92,21 @@ export function getProfileByPool(db: Db, poolAddress: string): ProfileRow | unde
     return db.prepare('SELECT * FROM profiles WHERE pool_address = ?').get(poolAddress) as ProfileRow | undefined;
 }
 
+// Profiles whose pool is one of `pools` (the subscriber feed's creator set).
+// Chunked so a long subscription list never exceeds SQLite's bound-parameter
+// limit.
+export function getProfilesByPools(db: Db, pools: string[]): ProfileRow[] {
+    const out: ProfileRow[] = [];
+    for (let i = 0; i < pools.length; i += 200) {
+        const chunk = pools.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(
+            `SELECT * FROM profiles WHERE pool_address IN (${placeholders})`,
+        ).all(...chunk) as ProfileRow[]);
+    }
+    return out;
+}
+
 export function upsertProfile(db: Db, p: {
     wallet_address: string; name: string; pool_address: string | null; bio: string | null;
 }): ProfileRow {
@@ -128,6 +143,23 @@ export function listLinks(db: Db, wallet: string): LinkRow[] {
     return db.prepare(
         'SELECT * FROM links WHERE wallet_address = ? ORDER BY position ASC, id ASC',
     ).all(wallet) as LinkRow[];
+}
+
+// Newest-first links across several creators, for the subscriber feed.
+export function listLinksForWallets(db: Db, wallets: string[], limit: number): LinkRow[] {
+    if (wallets.length === 0) return [];
+    const out: LinkRow[] = [];
+    for (let i = 0; i < wallets.length; i += 200) {
+        const chunk = wallets.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(
+            `SELECT * FROM links WHERE wallet_address IN (${placeholders})
+             ORDER BY created_at DESC, id DESC LIMIT ?`,
+        ).all(...chunk, limit) as LinkRow[]);
+    }
+    return out
+        .sort((a, b) => b.created_at - a.created_at || b.id - a.id)
+        .slice(0, limit);
 }
 
 export function countLinks(db: Db, wallet: string): number {

@@ -7,6 +7,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ForumIcon from '@mui/icons-material/Forum';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
+import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
 import { useThemeMode } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
 import { formatMicroAmount } from '../utils/bigintMath';
@@ -76,6 +77,10 @@ const BlockExpTopBar: React.FC = () => {
                         Commit
                     </Box>
                 )}
+                <MuiLink component={RouterLink} to="/feed" sx={topBarLinkSx}>
+                    <DynamicFeedIcon fontSize="small" />
+                    Feed
+                </MuiLink>
                 <MuiLink
                     href={DISCORD_URL}
                     target="_blank"
