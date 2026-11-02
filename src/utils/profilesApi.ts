@@ -31,6 +31,29 @@ export interface CreatorLink {
     url?: string;
     gated: boolean;
     position: number;
+    /** Unix seconds. Present on every service response; optional for older demo entries. */
+    created_at?: number;
+    updated_at?: number;
+}
+
+/** A link in the subscriber feed, with its creator inline. */
+export interface FeedLink extends CreatorLink {
+    creator: ProfileSearchResult;
+}
+
+export interface SubscriberFeed {
+    /** Subscribed creators that have a profile (pool → links page). */
+    creators: ProfileSearchResult[];
+    /** Newest first. Gated links come without url until unlockFeed(). */
+    links: FeedLink[];
+}
+
+export interface FeedUnlockResult {
+    links: FeedLink[];
+    /** Pools where the caller's subscription was confirmed on-chain. */
+    verified_pools: string[];
+    /** Pools whose on-chain check errored (retry; not "unsubscribed"). */
+    failed_pools: string[];
 }
 
 export interface ProfileWithLinks {
@@ -171,10 +194,19 @@ async function buildSignedBody(
 // hiding gated urls on public reads — so page code is mode-agnostic.
 // ---------------------------------------------------------------------------
 
+type DemoLink = Required<Omit<CreatorLink, 'created_at' | 'updated_at'>> & {
+    created_at?: number;
+    updated_at?: number;
+};
+
 interface DemoEntry {
     profile: CreatorProfile;
-    links: Array<Required<CreatorLink>>;
+    links: DemoLink[];
     nextId: number;
+}
+
+function nowSeconds(): number {
+    return Math.floor(Date.now() / 1000);
 }
 
 interface DemoStore {
@@ -213,12 +245,25 @@ function demoFindEntry(store: DemoStore, idOrName: string): DemoEntry | null {
     return null;
 }
 
+function demoLinkBase(l: DemoLink): CreatorLink {
+    return {
+        id: l.id, title: l.title, gated: l.gated, position: l.position,
+        created_at: l.created_at, updated_at: l.updated_at,
+    };
+}
+
 function demoPublicLinks(entry: DemoEntry): CreatorLink[] {
     return [...entry.links]
         .sort((a, b) => a.position - b.position || a.id - b.id)
-        .map((l) => (l.gated
-            ? { id: l.id, title: l.title, gated: true, position: l.position }
-            : { id: l.id, title: l.title, url: l.url, gated: false, position: l.position }));
+        .map((l) => (l.gated ? demoLinkBase(l) : { ...demoLinkBase(l), url: l.url }));
+}
+
+function demoSearchResult(entry: DemoEntry): ProfileSearchResult {
+    return {
+        name: entry.profile.name,
+        wallet_address: entry.profile.wallet_address,
+        pool_address: entry.profile.pool_address,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +368,8 @@ export async function addLink(
             url: input.url,
             gated: input.gated,
             position,
+            created_at: nowSeconds(),
+            updated_at: nowSeconds(),
         });
         entry.nextId += 1;
         saveDemoStore(store);
@@ -365,6 +412,7 @@ export async function updateLink(
         if (patch.url !== undefined) link.url = patch.url;
         if (patch.gated !== undefined) link.gated = patch.gated;
         if (patch.position !== undefined) link.position = patch.position;
+        link.updated_at = nowSeconds();
         saveDemoStore(store);
         return { ok: true };
     }
@@ -422,9 +470,7 @@ export async function unlockLinks(
         if (!entry) return { ok: false, error: 'profile not found' };
         return {
             ok: true,
-            value: entry.links.filter((l) => l.gated).map((l) => ({
-                id: l.id, title: l.title, url: l.url, gated: true, position: l.position,
-            })),
+            value: entry.links.filter((l) => l.gated).map((l) => ({ ...demoLinkBase(l), url: l.url })),
         };
     }
     try {
@@ -434,5 +480,96 @@ export async function unlockLinks(
         return { ok: true, value: res.data?.links ?? [] };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'unlock failed' };
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Subscriber feed: newest links across every creator the viewer is
+// committed to. The caller supplies the subscribed pool addresses (see
+// utils/subscriptions.ts); the service maps pools → profiles → links.
+// ---------------------------------------------------------------------------
+
+/** Upper bound on pools per feed request (mirrors the service). */
+export const FEED_MAX_POOLS = 200;
+
+function demoFeedEntries(pools: string[]): DemoEntry[] {
+    const wanted = new Set(pools);
+    return Object.values(loadDemoStore().profiles)
+        .filter((e) => e.profile.pool_address && wanted.has(e.profile.pool_address));
+}
+
+function sortNewest(links: FeedLink[]): FeedLink[] {
+    return links.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.id - a.id);
+}
+
+/**
+ * Public feed read. Gated links are returned without url (locked); call
+ * unlockFeed() once to reveal every gated link the viewer is entitled to.
+ * Returns null when the service is unreachable (not "no links").
+ */
+export async function getFeed(pools: string[]): Promise<SubscriberFeed | null> {
+    const trimmed = pools.slice(0, FEED_MAX_POOLS);
+    if (trimmed.length === 0) return { creators: [], links: [] };
+    if ((await getMode()) === 'demo') {
+        const entries = demoFeedEntries(trimmed);
+        const links: FeedLink[] = [];
+        for (const e of entries) {
+            const creator = demoSearchResult(e);
+            for (const l of demoPublicLinks(e)) links.push({ ...l, creator });
+        }
+        return { creators: entries.map(demoSearchResult), links: sortNewest(links) };
+    }
+    const res = await fetchJson<SubscriberFeed>('/feed', 15000, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pools: trimmed }),
+    });
+    if (!res) return null;
+    return { creators: res.creators ?? [], links: sortNewest(res.links ?? []) };
+}
+
+/**
+ * Reveals the gated links of every subscribed creator with ONE wallet
+ * signature. The service re-checks committing_info on each pool for the
+ * caller — the same enforcement as unlockLinks(). Demo mode unlocks all.
+ */
+export async function unlockFeed(
+    address: string,
+    walletName: string | null,
+    pools: string[],
+): Promise<WriteResult<FeedUnlockResult>> {
+    const trimmed = pools.slice(0, FEED_MAX_POOLS);
+    if ((await getMode()) === 'demo') {
+        const entries = demoFeedEntries(trimmed);
+        const links: FeedLink[] = [];
+        for (const e of entries) {
+            const creator = demoSearchResult(e);
+            for (const l of e.links) {
+                if (l.gated) links.push({ ...demoLinkBase(l), url: l.url, creator });
+            }
+        }
+        return {
+            ok: true,
+            value: {
+                links: sortNewest(links),
+                verified_pools: entries.map((e) => e.profile.pool_address!),
+                failed_pools: [],
+            },
+        };
+    }
+    try {
+        const body = await buildSignedBody(address, walletName, { intent: 'unlock_feed', pools: trimmed });
+        const res = await fetchWrite<FeedUnlockResult>('/feed/unlock', 'POST', body);
+        if (res.error) return { ok: false, error: res.error };
+        return {
+            ok: true,
+            value: {
+                links: res.data?.links ?? [],
+                verified_pools: res.data?.verified_pools ?? [],
+                failed_pools: res.data?.failed_pools ?? [],
+            },
+        };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'feed unlock failed' };
     }
 }

@@ -1,7 +1,10 @@
 # BlueChip profiles service
 
 Creator display names + link-in-bio pages for the block explorer. Backs the
-`/creator/:idOrName` public links page and the `/mylinks` manage page.
+`/creator/:idOrName` public links page, the `/mylinks` manage page, and the
+`/feed` subscriber feed (the newest links across every creator a wallet is
+committed to — the platform hosts links only, so this is where subscribers
+catch up without visiting each creator's site).
 
 Reads are public. Writes are authenticated with **ADR-36** signatures
 (Keplr/Leap `signArbitrary`) verified fully server-side — no session, no
@@ -49,6 +52,12 @@ CORS is open (public read API). Bodies are JSON, limited to 64 KB.
 | PUT    | `/links/:id`           | signed | Update own link `{ id, title?, url?, gated?, position? }`                                 |
 | DELETE | `/links/:id`           | signed | Delete own link (payload `{ id }`)                                                        |
 | POST   | `/links/unlock`        | signed | Payload `{ owner }` (wallet, name, or pool). Returns gated links **with** URLs when the caller has a non-null `committing_info` on the owner's pool — or is the owner |
+| POST   | `/feed`                | —      | Body `{ pools: [osmo1...], limit? }` (≤ 200 pools, ≤ 500 links). Subscriber feed: `{ creators, links }` — every link of every profile whose pool is listed, newest first, each with its `creator` inline. Gated links come **without** `url`. POST (not GET) only because a long pool list does not fit in a query string |
+| POST   | `/feed/unlock`         | signed | Payload `{ pools }`. One signature unlocks the whole feed: checks the caller's `committing_info` on each pool and returns the gated links **with** URLs for every verified pool (or the caller's own profile), plus `verified_pools` and `failed_pools` (RPC errors — retry, not "unsubscribed") |
+
+Every link in a response carries `created_at` / `updated_at` (unix seconds),
+which is what the explorer's feed page uses to flag links added since the
+viewer's last visit.
 
 ### Signed request format
 
@@ -72,7 +81,8 @@ bluechip-profiles:<nonce>:<sha256hex of canonical JSON payload>
 
 Canonical JSON = recursively key-sorted `JSON.stringify` with `undefined`
 fields dropped. `payload.intent` binds the signature to one endpoint
-(`put_profile`, `add_link`, `update_link`, `delete_link`, `unlock_links`).
+(`put_profile`, `add_link`, `update_link`, `delete_link`, `unlock_links`,
+`unlock_feed`).
 The server verifies: nonce exists/fresh and is consumed on use (replay-proof),
 the pubkey hashes to the claimed `osmo1` address
 (`bech32(ripemd160(sha256(pubkey)))`), and the secp256k1 signature verifies

@@ -9,9 +9,11 @@ exports.migrate = migrate;
 exports.getProfileByWallet = getProfileByWallet;
 exports.getProfileByName = getProfileByName;
 exports.getProfileByPool = getProfileByPool;
+exports.getProfilesByPools = getProfilesByPools;
 exports.upsertProfile = upsertProfile;
 exports.searchProfiles = searchProfiles;
 exports.listLinks = listLinks;
+exports.listLinksForWallets = listLinksForWallets;
 exports.countLinks = countLinks;
 exports.getLink = getLink;
 exports.insertLink = insertLink;
@@ -72,6 +74,18 @@ function getProfileByName(db, name) {
 function getProfileByPool(db, poolAddress) {
     return db.prepare('SELECT * FROM profiles WHERE pool_address = ?').get(poolAddress);
 }
+// Profiles whose pool is one of `pools` (the subscriber feed's creator set).
+// Chunked so a long subscription list never exceeds SQLite's bound-parameter
+// limit.
+function getProfilesByPools(db, pools) {
+    const out = [];
+    for (let i = 0; i < pools.length; i += 200) {
+        const chunk = pools.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(`SELECT * FROM profiles WHERE pool_address IN (${placeholders})`).all(...chunk));
+    }
+    return out;
+}
 function upsertProfile(db, p) {
     const now = Math.floor(Date.now() / 1000);
     db.prepare(`INSERT INTO profiles (wallet_address, name, pool_address, bio, created_at, updated_at)
@@ -101,6 +115,21 @@ function searchProfiles(db, q, limit) {
 // ---------------------------------------------------------------------------
 function listLinks(db, wallet) {
     return db.prepare('SELECT * FROM links WHERE wallet_address = ? ORDER BY position ASC, id ASC').all(wallet);
+}
+// Newest-first links across several creators, for the subscriber feed.
+function listLinksForWallets(db, wallets, limit) {
+    if (wallets.length === 0)
+        return [];
+    const out = [];
+    for (let i = 0; i < wallets.length; i += 200) {
+        const chunk = wallets.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(`SELECT * FROM links WHERE wallet_address IN (${placeholders})
+             ORDER BY created_at DESC, id DESC LIMIT ?`).all(...chunk, limit));
+    }
+    return out
+        .sort((a, b) => b.created_at - a.created_at || b.id - a.id)
+        .slice(0, limit);
 }
 function countLinks(db, wallet) {
     const row = db.prepare('SELECT COUNT(*) AS n FROM links WHERE wallet_address = ?').get(wallet);
