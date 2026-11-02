@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import {
     commitSeries, CommitRow, creatorStatement, Db, insertClaim, insertCommit, insertTrade,
-    listCommits, listCommitsByWallet, listTrades, listTradesByWallet, migrate,
+    listCommits, listCommitsByWallet, listPoolsByWallet, listTrades, listTradesByWallet, migrate,
     priceSeries, upsertPool, volumeSeries, windowStats,
 } from '../db';
 
@@ -335,6 +335,32 @@ test('migrate renames a pre-oracle-removal commits table in place', () => {
     upsertPool(db, { address: POOL, pool_id: 1, kind: 'commit', created_height: 1, created_at: T0 });
     currentChainCommit(db, 1, T0 + 5, 'bluechip1a', '2000000');
     assert.equal((listCommits(db, { pool: POOL, limit: 1, beforeTs: null, wallet: null }) as any[])[0].commit_native, '2000000');
+});
+
+test('listPoolsByWallet lists each pool a wallet committed to, most recent first', () => {
+    const db = freshDb();
+    upsertPool(db, { address: 'bluechip1pool2', pool_id: 2, kind: 'commit', created_height: 2, created_at: T0 });
+    const commit = (i: number, ts: number, pool: string, wallet: string, phase = 'funding') => insertCommit(db, commitRow({
+        txhash: `P${i}`, event_index: 0, height: i, ts, pool,
+        committer: wallet, phase,
+        amount_bluechip: '1000000',
+        raised_after: phase === 'funding' ? '1000000' : null, bluechip_raised_after: null, tokens_received: null,
+    }));
+    commit(1, T0 + 10, POOL, 'bluechip1fan');
+    commit(2, T0 + 20, POOL, 'bluechip1fan');                       // repeat commit, same pool
+    commit(3, T0 + 30, 'bluechip1pool2', 'bluechip1fan', 'active');  // post-threshold commits count too
+    commit(4, T0 + 40, POOL, 'bluechip1someoneelse');
+
+    const rows = listPoolsByWallet(db, 'bluechip1fan') as any[];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].pool, 'bluechip1pool2');     // most recent commit first
+    assert.equal(rows[0].commits, 1);
+    assert.equal(rows[0].last_commit_ts, T0 + 30);
+    assert.equal(rows[1].pool, POOL);
+    assert.equal(rows[1].commits, 2);
+    assert.equal(rows[1].first_commit_ts, T0 + 10);
+    assert.equal(rows[1].last_commit_ts, T0 + 20);
+    assert.deepEqual(listPoolsByWallet(db, 'bluechip1nobody'), []);
 });
 
 test('listTradesByWallet returns cross-pool trade history newest first', () => {

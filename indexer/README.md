@@ -101,6 +101,7 @@ commit's split (one row per pool).
 | `/pools/:address/trades` | `limit`, `before_ts`, `side`, `min_bluechip` | newest-first trade feed (swaps + post-threshold commits); `min_bluechip` is the whale filter |
 | `/pools/:address/commits` | `limit`, `before_ts`, `wallet` | newest-first per-transaction commit history (includes derived `commit_native`, `fee_base_bluechip`, and the crossing split `excess_refunded_bluechip` / `excess_retained_bluechip`) |
 | `/wallets/:address/commits` | `limit`, `before_ts` | newest-first cross-pool commit history for one wallet |
+| `/wallets/:address/pools` | — | every pool the wallet has ever committed to (`pool`, `commits`, `first_commit_ts`, `last_commit_ts`), most recent first — the explorer's subscription discovery reads this, then confirms each pool's record on-chain |
 | `/wallets/:address/trades` | `limit`, `before_ts` | newest-first cross-pool trade history (buys/sells) for one wallet |
 | `/pools/:address/creator-statement` | `from`, `to`, `fee_bps` (default 500) | chronological creator income lines: the creator's fee share of every commit (`fee_bps` × `fee_base_native`) + fee-pot/excess claim events |
 | `/pools/:address/stats` | `window` (sec, default 86400) | current-vs-previous window totals (trades, buys, sells, volume, commits, gross OSMO toward the threshold, unique committers) |
@@ -191,6 +192,20 @@ disable the built-in limiter if the proxy already enforces one.
 per-transaction commit history across every pool (newest first) — the
 explorer's wallet pages use it, since the chain only stores per-wallet
 cumulative totals.
+
+### Subscription discovery
+
+The chain exposes commits per pool, not per wallet, so without an
+indexer the explorer has to read every factory pool's committer ledger
+to find one wallet's subscriptions — linear in the number of pools.
+`GET /wallets/:address/pools` answers "which pools has this wallet ever
+committed to?" in one call; the explorer then queries `committing_info`
+on just those pools for the live record (amounts and the access window),
+and falls back to the full scan when the indexer is unreachable. Two
+caveats: the indexer trails the chain by a block or two, so a commit
+made seconds ago shows up on the next refresh; and if `START_HEIGHT`
+skipped a pool's early history, commits before it are not listed —
+start from the factory's deploy height.
 
 ## Tests
 

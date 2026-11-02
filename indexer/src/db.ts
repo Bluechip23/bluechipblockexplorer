@@ -549,6 +549,21 @@ export function listCommitsByWallet(db: Db, opts: {
         LIMIT @limit`).all(opts);
 }
 
+// Every pool one wallet has ever committed to, most recently committed
+// first — the explorer's subscription discovery uses this to know WHICH
+// pools to ask the chain about instead of reading every factory pool's
+// committer ledger (the chain exposes commits per pool, not per wallet).
+// The chain's committing_info on each returned pool stays the source of
+// truth for the record itself; this is only the candidate list.
+export function listPoolsByWallet(db: Db, wallet: string) {
+    return db.prepare(`
+        SELECT pool, COUNT(*) AS commits, MAX(ts) AS last_commit_ts, MIN(ts) AS first_commit_ts
+        FROM commits
+        WHERE committer = @wallet
+        GROUP BY pool
+        ORDER BY last_commit_ts DESC`).all({ wallet });
+}
+
 // Cross-pool trade history for one wallet (newest first) — powers the
 // portfolio "My Transactions" view. The trader column is filled from the
 // swap dispatch's sender (or the committer, for post-threshold commits).

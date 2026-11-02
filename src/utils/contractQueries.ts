@@ -1048,6 +1048,14 @@ export async function queryPoolCommits(poolAddress: string): Promise<PoolCommitR
     return mockQueryPoolCommits(poolAddress);
 }
 
+// One wallet's commit record on one pool, or null if it never committed
+// there. Demo mode answers from the same mock ledger as queryPoolCommits.
+export async function queryCommittingInfo(poolAddress: string, wallet: string): Promise<CommitterInfo | null> {
+    if (await onChain()) return chain.chainQueryCommittingInfo(poolAddress, wallet).catch(() => null);
+    const ledger = await mockQueryPoolCommits(poolAddress);
+    return ledger?.committers.find((c) => c.wallet === wallet) ?? null;
+}
+
 export async function queryPositions(poolAddress: string): Promise<PositionsResponse | null> {
     if (await onChain()) return chain.chainQueryPositions(poolAddress).catch(() => null);
     return mockQueryPositions(poolAddress);

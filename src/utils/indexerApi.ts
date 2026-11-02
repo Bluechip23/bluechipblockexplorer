@@ -144,6 +144,20 @@ export interface WalletCommit {
     excess_retained_bluechip: string | null;
 }
 
+export interface WalletPool {
+    pool: string;
+    commits: number;
+    first_commit_ts: number;
+    last_commit_ts: number;
+}
+
+// Every pool the wallet has ever committed to, most recently committed
+// first. Null when the indexer is unreachable; [] when it is reachable
+// and has no commits for the wallet.
+export function fetchWalletPools(wallet: string): Promise<WalletPool[] | null> {
+    return fetchJson<WalletPool[]>(`/wallets/${wallet}/pools`);
+}
+
 // Cross-pool commit history for one wallet, newest first.
 export function fetchWalletCommits(wallet: string, limit = 50): Promise<WalletCommit[] | null> {
     return fetchJson<WalletCommit[]>(`/wallets/${wallet}/commits?limit=${limit}`);
