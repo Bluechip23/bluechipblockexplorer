@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS commits (
     raised_after TEXT,                 -- pool's GROSS micro-OSMO running total (funding-phase commits)
     bluechip_raised_after TEXT,        -- pool's NET-of-fee micro-OSMO running total
     tokens_received TEXT,
+    threshold_portion_bluechip TEXT,   -- threshold_crossing only: the part of the commit that filled the gap
+    fee_base_bluechip TEXT,            -- micro-OSMO the 1%+5% commit fees were charged on
+    excess_refunded_bluechip TEXT,     -- threshold_crossing only: gross excess refunded to the committer
+    excess_retained_bluechip TEXT,     -- threshold_crossing only: excess kept toward the GAMM creation-fee reserve
     PRIMARY KEY (txhash, event_index)
 );
 CREATE INDEX IF NOT EXISTS idx_commits_pool_ts ON commits(pool, ts);
@@ -109,6 +113,7 @@ CREATE TABLE IF NOT EXISTS creator_claims (
 CREATE INDEX IF NOT EXISTS idx_claims_pool_ts ON creator_claims(pool, ts);
 `);
     migrateCommitsToNative(db);
+    migrateCommitsAddCrossingColumns(db);
 }
 
 // Pre-oracle-removal databases stored the pool's running total as
@@ -130,6 +135,28 @@ function migrateCommitsToNative(db: Db): void {
     }
     if (cols.has('amount_usd')) {
         db.exec('ALTER TABLE commits DROP COLUMN amount_usd');
+    }
+}
+
+// Databases created before the contract started charging commit fees on
+// the threshold portion only (and before this indexer stored the crossing
+// split) lack the crossing columns. Add them in place; rows indexed
+// earlier keep NULLs there, which the readers below treat as "fee base =
+// gross amount" and "no crossing split" — re-index from the pool's
+// creation height to backfill the crossing commit's threshold portion.
+const CROSSING_COLUMNS = [
+    'threshold_portion_bluechip',
+    'fee_base_bluechip',
+    'excess_refunded_bluechip',
+    'excess_retained_bluechip',
+];
+
+function migrateCommitsAddCrossingColumns(db: Db): void {
+    const cols = new Set(
+        (db.prepare('PRAGMA table_info(commits)').all() as { name: string }[]).map((c) => c.name),
+    );
+    for (const col of CROSSING_COLUMNS) {
+        if (!cols.has(col)) db.exec(`ALTER TABLE commits ADD COLUMN ${col} TEXT`);
     }
 }
 
@@ -155,6 +182,18 @@ export interface CommitRow {
     raised_after: string | null;
     bluechip_raised_after: string | null;
     tokens_received: string | null;
+    // threshold_crossing only: the part of the gross commit that filled
+    // the remaining gap to the threshold (the only part that counts).
+    threshold_portion_bluechip: string | null;
+    // What the 1% + 5% commit fees were charged on: the gross amount,
+    // except on a crossing emitted by the "fees on the threshold portion
+    // only" contract generation, where it is threshold_portion_bluechip.
+    fee_base_bluechip: string | null;
+    // threshold_crossing only: gross excess refunded to the committer in
+    // the same tx, and the slice of the excess retained toward the GAMM
+    // pool-creation-fee reserve (zero once the reserve is full).
+    excess_refunded_bluechip: string | null;
+    excess_retained_bluechip: string | null;
 }
 
 export interface TradeRow {
@@ -206,8 +245,10 @@ export function markThresholdCrossed(db: Db, pool: string, ts: number): void {
 
 export function insertCommit(db: Db, r: CommitRow): void {
     db.prepare(`INSERT OR REPLACE INTO commits
-        (txhash, event_index, height, ts, pool, committer, phase, amount_bluechip, raised_after, bluechip_raised_after, tokens_received)
-        VALUES (@txhash, @event_index, @height, @ts, @pool, @committer, @phase, @amount_bluechip, @raised_after, @bluechip_raised_after, @tokens_received)`).run(r);
+        (txhash, event_index, height, ts, pool, committer, phase, amount_bluechip, raised_after, bluechip_raised_after, tokens_received,
+         threshold_portion_bluechip, fee_base_bluechip, excess_refunded_bluechip, excess_retained_bluechip)
+        VALUES (@txhash, @event_index, @height, @ts, @pool, @committer, @phase, @amount_bluechip, @raised_after, @bluechip_raised_after, @tokens_received,
+         @threshold_portion_bluechip, @fee_base_bluechip, @excess_refunded_bluechip, @excess_retained_bluechip)`).run(r);
 }
 
 export function insertTrade(db: Db, r: TradeRow): void {
@@ -235,21 +276,32 @@ export function insertClaim(db: Db, r: ClaimRow): void {
 
 // A commit's contribution toward the threshold is derived from the
 // pool's gross running total (raised_after, from the event's
-// total_raised_after) as the difference between consecutive totals. For
-// plain funding commits this equals amount_bluechip; for the commit that
-// crosses the threshold only the part up to the threshold counts (the
-// excess is swapped/refunded), which is exactly what the delta captures.
-// The window deliberately ignores any time filter so deltas at a query
-// window's edge stay correct. Caveat: if indexing started mid-history
-// (START_HEIGHT after the pool's first commit), the first indexed commit's
-// delta absorbs everything raised before it.
+// total_raised_after) as the difference between consecutive totals; for
+// plain funding commits (and an exact threshold hit) this equals
+// amount_bluechip. The commit that crosses the threshold WITH EXCESS
+// carries no running total — the contract reports the part that filled
+// the gap as threshold_amount_bluechip instead — so its contribution is
+// taken from threshold_portion_bluechip directly (the excess is refunded
+// and never counts). The window deliberately ignores any time filter so
+// deltas at a query window's edge stay correct. Caveat: if indexing
+// started mid-history (START_HEIGHT after the pool's first commit), the
+// first indexed commit's delta absorbs everything raised before it.
 const DERIVED_NATIVE_CTE = `derived_native AS (
     SELECT txhash, event_index,
            raised_after - COALESCE(LAG(raised_after) OVER (
                PARTITION BY pool ORDER BY ts, height, event_index), 0) AS delta_native
     FROM commits
     WHERE raised_after IS NOT NULL
+    UNION ALL
+    SELECT txhash, event_index, CAST(threshold_portion_bluechip AS REAL) AS delta_native
+    FROM commits
+    WHERE raised_after IS NULL AND threshold_portion_bluechip IS NOT NULL
 )`;
+
+// Micro-OSMO the commit fees were charged on. Rows indexed before the
+// fee-base column existed fall back to the gross amount (correct for
+// every path except a crossing-with-excess on the current contracts).
+const FEE_BASE_EXPR = `COALESCE(c.fee_base_bluechip, c.amount_bluechip)`;
 
 // Per-row threshold contribution as a micro-OSMO TEXT value (NULL for
 // post-threshold "active" commits, which no longer count toward it).
@@ -368,7 +420,9 @@ export function listCommits(db: Db, opts: {
         WITH ${DERIVED_NATIVE_CTE}
         SELECT c.txhash, c.height, c.ts, c.committer, c.phase, c.amount_bluechip,
                c.raised_after, c.bluechip_raised_after, c.tokens_received,
-               ${COMMIT_NATIVE_EXPR} AS commit_native
+               ${COMMIT_NATIVE_EXPR} AS commit_native,
+               ${FEE_BASE_EXPR} AS fee_base_bluechip,
+               c.excess_refunded_bluechip, c.excess_retained_bluechip
         FROM commits c
         LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.pool = @pool
@@ -379,21 +433,23 @@ export function listCommits(db: Db, opts: {
 }
 
 // Per-transaction creator income statement: the creator's commit-fee
-// share of every commit (estimated at fee_bps, default 5%) plus claim
-// events, in chronological order.
+// share of every commit (estimated at fee_bps, default 5%, on the
+// commit's fee base) plus claim events, in chronological order.
 export function creatorStatement(db: Db, opts: {
     pool: string; from: number; to: number; feeBps: number;
 }) {
     const commits = db.prepare(`
         WITH ${DERIVED_NATIVE_CTE}
         SELECT c.txhash, c.ts, c.committer, c.phase, c.amount_bluechip,
-               ${COMMIT_NATIVE_EXPR} AS commit_native
+               ${COMMIT_NATIVE_EXPR} AS commit_native,
+               ${FEE_BASE_EXPR} AS fee_base_bluechip
         FROM commits c
         LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.pool = @pool AND c.ts >= @from AND c.ts < @to
         ORDER BY c.ts ASC, c.height ASC, c.event_index ASC`).all(opts) as {
         txhash: string; ts: number; committer: string; phase: string;
         commit_native: string | null; amount_bluechip: string | null;
+        fee_base_bluechip: string | null;
     }[];
     const claims = db.prepare(`
         SELECT txhash, ts, action, creator, amount_0, amount_1
@@ -411,14 +467,18 @@ export function creatorStatement(db: Db, opts: {
             txhash: c.txhash,
             counterparty: c.committer,
             phase: c.phase,
-            // The creator's fee is taken on the gross OSMO attached to
-            // every commit (pre- and post-threshold alike), so the fee
-            // share keys off amount_bluechip; commit_native (the part
-            // that counted toward the threshold) is exposed alongside.
+            // Gross OSMO attached to the commit (pre- and post-threshold
+            // alike); commit_native (the part that counted toward the
+            // threshold) is exposed alongside.
             gross_native: c.amount_bluechip,
-            // String math on micro-units: amount * feeBps / 10000.
-            fee_share_native: c.amount_bluechip !== null
-                ? ((BigInt(c.amount_bluechip) * BigInt(opts.feeBps)) / 10_000n).toString()
+            // The creator's fee is taken on the commit's fee base: the
+            // gross amount, except on a threshold crossing with excess
+            // where the current contracts charge it on the threshold
+            // portion only and refund the excess fee-free.
+            fee_base_native: c.fee_base_bluechip,
+            // String math on micro-units: fee_base * feeBps / 10000.
+            fee_share_native: c.fee_base_bluechip !== null
+                ? ((BigInt(c.fee_base_bluechip) * BigInt(opts.feeBps)) / 10_000n).toString()
                 : null,
             commit_native: c.commit_native,
             gross_bluechip: c.amount_bluechip,
@@ -432,6 +492,7 @@ export function creatorStatement(db: Db, opts: {
             counterparty: c.creator,
             phase: null as string | null,
             gross_native: null as string | null,
+            fee_base_native: null as string | null,
             fee_share_native: null as string | null,
             commit_native: null as string | null,
             gross_bluechip: null as string | null,
@@ -477,7 +538,9 @@ export function listCommitsByWallet(db: Db, opts: {
     return db.prepare(`
         WITH ${DERIVED_NATIVE_CTE}
         SELECT c.txhash, c.height, c.ts, c.pool, c.phase, c.amount_bluechip,
-               c.tokens_received, ${COMMIT_NATIVE_EXPR} AS commit_native
+               c.tokens_received, ${COMMIT_NATIVE_EXPR} AS commit_native,
+               ${FEE_BASE_EXPR} AS fee_base_bluechip,
+               c.excess_refunded_bluechip, c.excess_retained_bluechip
         FROM commits c
         LEFT JOIN derived_native d ON d.txhash = c.txhash AND d.event_index = c.event_index
         WHERE c.committer = @wallet

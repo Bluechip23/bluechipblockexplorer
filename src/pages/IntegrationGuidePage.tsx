@@ -1002,6 +1002,11 @@ const privEventWatchCode = `// =================================================
 //    total_raised_after / total_bluechip_raised_after:
 //               pool OSMO totals after a funding-phase commit
 //               (gross and net-of-fee, micro-OSMO)
+//    threshold_crossing only: total_amount_bluechip (gross attached),
+//               threshold_amount_bluechip (the part that filled the gap —
+//               the only part that counts and that fees are charged on),
+//               bluechip_excess_refunded (sent back in the same tx),
+//               bluechip_excess_retained_for_creation_fee (usually 0)
 //  NOTE: total_raised_after is the gross OSMO committed (what counts
 //  toward the threshold). For a single wallet's cumulative record, query
 //  committing_info (total_paid_native / last_payment_native, micro-OSMO).
@@ -1436,6 +1441,9 @@ const IntegrationGuidePage: React.FC = () => {
                             </Typography>
                             <Alert severity="info" sx={{ mb: 2 }}>
                                 A 6% fee is deducted: 1% goes to the BlueChip protocol, 5% goes to you the creator.
+                                On the commit that carries the pool over its threshold with room to spare, the fee
+                                is charged only on the portion that fills the remaining gap — the excess is refunded
+                                fee-free in the same transaction, so overshooting costs nothing extra.
                                 Minimum commit: 115 OSMO before the threshold, 25 OSMO after it (per-pool defaults).
                             </Alert>
                             <Alert severity="warning" sx={{ mb: 2 }}>
@@ -1739,7 +1747,7 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['Router swap reverts with a minimum_receive error', 'Price moved past your tolerance between simulation and execution. Re-quote and retry, or widen slippage slightly'],
                                             ['"Commit too small"', 'Each pool enforces a minimum commit in OSMO: 115 OSMO pre-threshold, 25 OSMO post-threshold by default (the error prints the amounts in micro-OSMO base units). Increase the amount'],
                                             ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses its OSMO commit threshold. Use Subscribe instead'],
-                                            ['Swap refunded, pool paused (circuit breaker)', "The pool's liquidity breaker latched (a reserve fell below 25% of its seed). Your offer was refunded in the same tx; trading resumes when the admin unpauses"],
+                                            ['"Native pool liquidity below the circuit-breaker floor"', "A reserve of the native GAMM pool is below 25% of what was seeded at crossing, so this swap/commit reverted (funds returned by tx failure). Nothing is paused: retry once the pool's liquidity recovers, or trade directly on the native pool"],
                                             ['Calls to deposit_liquidity / collect_fees / position fail', 'Those entry points no longer exist — liquidity lives in the native Osmosis pool. LP directly on app.osmosis.zone (Section 8)'],
                                             ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on an Osmosis explorer (e.g. Mintscan)'],
                                             ['Keplr not detecting on mobile', 'Use the Keplr mobile app\'s built-in browser to visit your site'],

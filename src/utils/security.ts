@@ -382,6 +382,14 @@ export function humanizeContractError(err: unknown): string {
         return `Commit too small: ${got} OSMO attached, but this pool requires at least ${min} OSMO${phase ? ` ${phase}` : ''}. Increase the amount.`;
     }
 
+    // Per-transaction liquidity circuit breaker: a reserve of the native
+    // GAMM pool is below 25% of what was seeded at crossing, so the swap
+    // (or post-threshold commit) reverted. Nothing is paused or latched —
+    // the next transaction re-evaluates the live pool on its own.
+    if (/Native pool liquidity below the circuit-breaker floor/i.test(raw)) {
+        return "The native Osmosis pool's liquidity is below the circuit-breaker floor (under 25% of what was seeded at threshold crossing), so this transaction reverted and your funds were not moved. Nothing is paused — retry once the pool's liquidity recovers, or trade directly on the Osmosis pool.";
+    }
+
     // The only price read left in the protocol: the fee-swap TWAP that
     // budgets the GAMM pool-creation fee at threshold crossing. It fails
     // closed, so the commit reverts and funds never move.

@@ -5,6 +5,7 @@ import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
 import { useWallet } from '../../context/WalletContext';
 import { TradeModal, CommitModal } from './PoolActionModals';
+import ProvideLiquidityDialog from '../creator-links/ProvideLiquidityDialog';
 import { sanitizeOnChainString } from '../../utils/security';
 
 interface PoolActionMenuProps {
@@ -21,13 +22,14 @@ interface PoolActionMenuProps {
     compact?: boolean;
 }
 
-type ActionKind = 'trade' | 'commit' | null;
+type ActionKind = 'trade' | 'liquidity' | 'commit' | null;
 
 // Post-threshold pools get a consolidated Trade modal (Buy / Sell /
-// Commit tabs) plus a link out to Osmosis for liquidity — LP flows live
-// on the native GAMM pool now, not in this app. Pools still in their
-// funding phase keep the standalone Commit button — trading doesn't
-// exist for them yet.
+// Commit tabs) plus an LP hand-off dialog that resolves the pool's native
+// GAMM pool id and deep-links to it on app.osmosis.zone — LP flows live
+// on the native pool now, not in this app. Pools still in their funding
+// phase keep the standalone Commit button — trading doesn't exist for
+// them yet.
 const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     poolAddress,
     tokenSymbol,
@@ -43,7 +45,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
     const symbol = sanitizeOnChainString(tokenSymbol, 16) || 'Token';
 
     const buttons: {
-        key: Exclude<ActionKind, null> | 'osmosis-lp';
+        key: Exclude<ActionKind, null>;
         label: string;
         icon: React.ReactElement;
         color: 'primary' | 'error' | 'success' | 'warning' | 'info';
@@ -57,7 +59,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
             show: thresholdReached,
         },
         {
-            key: 'osmosis-lp',
+            key: 'liquidity',
             label: 'LP on Osmosis',
             icon: <WaterDropIcon fontSize="small" />,
             color: 'primary',
@@ -74,16 +76,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
 
     const visible = buttons.filter((b) => b.show);
 
-    const onButtonClick = (key: (typeof buttons)[number]['key']) => {
-        if (key === 'osmosis-lp') {
-            // Liquidity lives in the native Osmosis pool — send the user to
-            // the Osmosis app rather than a contract flow that no longer
-            // exists.
-            window.open('https://app.osmosis.zone/pools', '_blank', 'noopener');
-            return;
-        }
-        setOpenModal(key);
-    };
+    const onButtonClick = (key: (typeof buttons)[number]['key']) => setOpenModal(key);
 
     return (
         <>
@@ -128,6 +121,13 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
                 poolAddress={poolAddress}
                 tokenSymbol={tokenSymbol}
                 creatorTokenDenom={creatorTokenAddress || undefined}
+            />
+            <ProvideLiquidityDialog
+                open={openModal === 'liquidity'}
+                onClose={() => setOpenModal(null)}
+                poolAddress={poolAddress}
+                tokenSymbol={tokenSymbol}
+                creatorTokenAddress={creatorTokenAddress || undefined}
             />
             <CommitModal
                 open={openModal === 'commit'}

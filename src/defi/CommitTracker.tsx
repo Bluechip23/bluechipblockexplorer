@@ -64,11 +64,13 @@ const CommitTracker: React.FC<CommitTrackerProps> = ({ client, contractAddress }
         const rows = await fetchRecentCommits(contractAddress, 1000);
         if (!rows || rows.length === 0) return false;
 
-        // Only funding-phase commits belong on the curve: they report the
-        // pool's running gross-OSMO total (raised_after), from which the
-        // indexer derives each commit's contribution (commit_native).
-        // Post-threshold "active" commits are AMM buys that no longer
-        // count toward the threshold and are excluded.
+        // Only commits that counted toward the threshold belong on the
+        // curve: funding-phase commits report the pool's running gross-OSMO
+        // total (raised_after), from which the indexer derives each
+        // commit's contribution (commit_native), and the commit that
+        // crossed with excess reports its threshold portion directly (no
+        // running total, commit_native set). Post-threshold "active"
+        // commits are AMM buys that no longer count and are excluded.
         const funded = rows.filter((c) => c.commit_native !== null || c.raised_after !== null);
         if (funded.length === 0) return false;
 

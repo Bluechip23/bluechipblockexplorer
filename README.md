@@ -21,9 +21,10 @@ nothing here depends on a bespoke chain anymore.
   price/volume history, buy-sell pressure, the trade feed, per-transaction
   commit history, and creator income statements. The frontend works without
   it (those panels explain how to enable it); see
-  [`indexer/README.md`](indexer/README.md). ⚠️ Still pointed at the legacy
-  chain's event schema — retargeting it to the Osmosis deployment is a
-  follow-up.
+  [`indexer/README.md`](indexer/README.md). Parses the Osmosis-native
+  contracts' events (commit phases including the threshold-crossing split,
+  async swap fills, creator claims, factory pool creation); point it at any
+  Osmosis RPC and the factory address.
 - **`widget/`** — the embeddable subscribe (commit) button + subscription
   gate for creator websites. A single self-contained `<script>` tag; the
   only thing a creator edits is their pool address. See
