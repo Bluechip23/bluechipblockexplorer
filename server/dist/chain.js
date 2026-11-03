@@ -9,6 +9,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_SUBSCRIPTION_DAYS = void 0;
 exports.queryCommittingInfo = queryCommittingInfo;
+exports.queryPoolCreator = queryPoolCreator;
 exports.lastCommittedMs = lastCommittedMs;
 exports.subscriptionExpiresAtMs = subscriptionExpiresAtMs;
 exports.isSubscriptionActive = isSubscriptionActive;
@@ -35,6 +36,17 @@ async function queryCommittingInfo(rpcUrl, poolAddress, wallet) {
         committing_info: { wallet },
     });
     return (info ?? null);
+}
+/**
+ * The pool's creator wallet (from the `fee_info {}` smart query), or null
+ * when the response names none. Throws when the RPC / contract query itself
+ * fails so callers can answer "could not check" (502) rather than "not the
+ * owner".
+ */
+async function queryPoolCreator(rpcUrl, poolAddress) {
+    const client = await getClient(rpcUrl);
+    const res = await client.queryContractSmart(poolAddress, { fee_info: {} });
+    return res?.fee_info?.creator_wallet_address ?? null;
 }
 /** Default access window one commit buys, in days. */
 exports.DEFAULT_SUBSCRIPTION_DAYS = 30;

@@ -10,6 +10,7 @@ import { CosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 
 export interface CommittingInfo {
     total_paid_native: string;  // gross micro-OSMO committed (string)
+    last_payment_native: string; // gross micro-OSMO of the most recent commit
     last_committed: string;     // nanosecond timestamp string
     [key: string]: unknown;
 }
@@ -42,6 +43,19 @@ export async function queryCommittingInfo(
         committing_info: { wallet },
     });
     return (info ?? null) as CommittingInfo | null;
+}
+
+/**
+ * The pool's creator wallet (from the `fee_info {}` smart query), or null
+ * when the response names none. Throws when the RPC / contract query itself
+ * fails so callers can answer "could not check" (502) rather than "not the
+ * owner".
+ */
+export async function queryPoolCreator(rpcUrl: string, poolAddress: string): Promise<string | null> {
+    const client = await getClient(rpcUrl);
+    const res = await client.queryContractSmart(poolAddress, { fee_info: {} }) as
+        { fee_info?: { creator_wallet_address?: string } } | null;
+    return res?.fee_info?.creator_wallet_address ?? null;
 }
 
 /** Default access window one commit buys, in days. */

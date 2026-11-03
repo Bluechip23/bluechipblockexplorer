@@ -13,8 +13,9 @@ nothing here depends on a bespoke chain anymore.
 
 - **`/` (root)** — the explorer frontend (Create React App). `npm install && npm start`.
 - **`server/`** — the creator-profiles service backing the link-in-bio pages:
-  creator names, links, the subscribers-only link gate (verified
-  server-side against the pool's on-chain commit ledger), and the
+  creator names, links, OSMO-priced subscription tiers and the
+  subscribers-only link gate (verified server-side against the pool's
+  on-chain commit ledger), and the
   subscriber feed (`/feed`: the newest links from every creator a wallet is
   committed to, in one place). See [`server/README.md`](server/README.md).
 - **`indexer/`** — the event indexer that powers time-series features:

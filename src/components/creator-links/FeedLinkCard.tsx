@@ -37,6 +37,8 @@ export interface FeedLinkCardProps {
     isNew: boolean;
     /** Invoked when a still-locked gated link is clicked. */
     onLockedClick?: () => void;
+    /** What unlocks this gated link (see describeGate). */
+    gateLabel?: string;
 }
 
 /**
@@ -44,7 +46,7 @@ export interface FeedLinkCardProps {
  * when. Opens in a new tab; gated links stay locked until the viewer's
  * subscriptions have been verified.
  */
-const FeedLinkCard: React.FC<FeedLinkCardProps> = ({ link, unlockedUrl, isNew, onLockedClick }) => {
+const FeedLinkCard: React.FC<FeedLinkCardProps> = ({ link, unlockedUrl, isNew, onLockedClick, gateLabel }) => {
     const title = sanitizeOnChainString(link.title, 80);
     const creatorName = sanitizeOnChainString(link.creator.name, 32);
     const url = link.gated ? unlockedUrl : link.url;
@@ -67,7 +69,7 @@ const FeedLinkCard: React.FC<FeedLinkCardProps> = ({ link, unlockedUrl, isNew, o
             {when && <Typography variant="caption" color="text.secondary">· {when}</Typography>}
             {link.gated && (
                 <Typography variant="caption" color="text.secondary">
-                    · {locked ? 'Subscribers only' : 'Subscriber link'}
+                    · {locked ? sanitizeOnChainString(gateLabel || 'Subscribers only', 120) : 'Subscriber link'}
                 </Typography>
             )}
         </Stack>

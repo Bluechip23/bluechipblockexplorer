@@ -572,12 +572,16 @@ export const SellPanel: React.FC<BasePanelProps & { creatorTokenDenom?: string }
 // contract REQUIRES a belief_price on that path, which we derive from a
 // live simulation quote at signing time. The subscription record updates
 // either way.
-export const CommitPanel: React.FC<BasePanelProps & { thresholdReached?: boolean }> = ({
-    onClose, poolAddress, tokenSymbol, thresholdReached = false,
+export const CommitPanel: React.FC<BasePanelProps & {
+    thresholdReached?: boolean;
+    /** Pre-filled OSMO amount (e.g. a subscription tier's price); still editable. */
+    initialAmount?: string;
+}> = ({
+    onClose, poolAddress, tokenSymbol, thresholdReached = false, initialAmount,
 }) => {
     const { client, address, balance } = useWallet();
     const [stage, setStage] = useState<TxStage>('input');
-    const [amount, setAmount] = useState('');
+    const [amount, setAmount] = useState(initialAmount ?? '');
     const [maxSpread, setMaxSpread] = useState('0.5');
     const [txHash, setTxHash] = useState('');
     const [errorMsg, setErrorMsg] = useState('');

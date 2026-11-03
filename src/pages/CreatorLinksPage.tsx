@@ -29,11 +29,16 @@ import {
 } from '../utils/contractQueries';
 import {
     CreatorLink,
+    describeGate,
+    formatTierPrice,
     getProfile,
     isProfilesDemoMode,
+    LinkUnlockResult,
     pinnedLinks,
     postLinks,
     ProfileWithLinks,
+    Tier,
+    tiersForLink,
     unlockLinks,
 } from '../utils/profilesApi';
 import { SUBSCRIPTION_PERIOD_DAYS } from '../utils/subscriptions';
@@ -81,6 +86,36 @@ const PoolStatsRow: React.FC<{ pool: PoolSummary }> = ({ pool }) => {
 
 const POSTS_PAGE = 20;
 
+// Explains a partial unlock from the caller's standing on the creator's
+// pools: no subscription, expired, or a last commit below some tiers.
+function unlockShortfall(
+    result: LinkUnlockResult,
+    stillLocked: CreatorLink[],
+    tiers: Tier[],
+    profilePool: string | null,
+): string {
+    if (stillLocked.length === 0) return '';
+    const subs = result.subscriptions;
+    const main = subs.find((x) => x.pool_address === profilePool) ?? subs[0];
+    if (!main || main.status === 'none') {
+        return "No subscription found for your wallet — commit to this creator's pool to unlock.";
+    }
+    if (main.status === 'expired') {
+        const when = main.expires_at ? ` on ${new Date(main.expires_at * 1000).toLocaleDateString()}` : '';
+        return `Your subscription expired${when} — a commit unlocks ${SUBSCRIPTION_PERIOD_DAYS} days of access; commit again to renew.`;
+    }
+    // Active, but the last commit is below the tiers of the remaining links.
+    const next = stillLocked
+        .map((l) => tiersForLink(l, tiers)[0])
+        .filter((t): t is Tier => !!t)
+        .sort((a, b) => (BigInt(a.price_native) < BigInt(b.price_native) ? -1 : 1))[0];
+    const paid = main.last_payment_native ? formatTierPrice(main.last_payment_native) : 'your last commit';
+    const count = `${stillLocked.length} link${stillLocked.length === 1 ? ' needs' : 's need'} a higher tier`;
+    return next
+        ? `Your last commit (${paid}) doesn't cover everything — ${count}. Commit at least ${formatTierPrice(next.price_native)} for ${next.name}.`
+        : `Your last commit (${paid}) doesn't cover everything — ${count}.`;
+}
+
 /**
  * Public link-in-bio page for a creator: /creator/:idOrName where the param
  * is a profile name, wallet address, or pool address. Gated links unlock
@@ -102,6 +137,12 @@ const CreatorLinksPage: React.FC = () => {
     const [unlockBusy, setUnlockBusy] = useState(false);
     const [unlockError, setUnlockError] = useState('');
     const [commitOpen, setCommitOpen] = useState(false);
+    // Which pool / tier the subscribe dialog opens on (tiers may sit on any
+    // of the creator's pools, not only the profile pool).
+    const [commitPool, setCommitPool] = useState<string | null>(null);
+    const [commitTierId, setCommitTierId] = useState<number | null>(null);
+    const [tierPoolSummaries, setTierPoolSummaries] = useState<Record<string, PoolSummary>>({});
+    const [unlockChecked, setUnlockChecked] = useState(false);
     const [liquidityOpen, setLiquidityOpen] = useState(false);
     // Posts are revealed a page at a time; a prolific creator can have hundreds.
     const [postsShown, setPostsShown] = useState(POSTS_PAGE);
@@ -119,6 +160,8 @@ const CreatorLinksPage: React.FC = () => {
             setNotFound(false);
             setUnlockedUrls({});
             setUnlockError('');
+            setUnlockChecked(false);
+            setTierPoolSummaries({});
             setPostsShown(POSTS_PAGE);
             try {
                 let pool: string | null = null;
@@ -145,6 +188,16 @@ const CreatorLinksPage: React.FC = () => {
                     const summary = await fetchPoolSummary(pool);
                     if (!cancelled) setPoolSummary(summary);
                 }
+                // Tiers on the creator's other pools need those pools'
+                // symbol and threshold state for the subscribe dialog.
+                const otherPools = [...new Set((prof?.tiers ?? []).map((t) => t.pool_address))]
+                    .filter((p) => p !== pool);
+                const summaries: Record<string, PoolSummary> = {};
+                await Promise.all(otherPools.map(async (p) => {
+                    const sum = await fetchPoolSummary(p).catch(() => null);
+                    if (sum) summaries[p] = sum;
+                }));
+                if (!cancelled) setTierPoolSummaries(summaries);
             } catch (err) {
                 console.error('Error loading creator links page:', err);
                 if (!cancelled) setNotFound(true);
@@ -162,6 +215,22 @@ const CreatorLinksPage: React.FC = () => {
     const posts = postLinks(links);
     const lockedLinks = links.filter((l) => l.gated && !unlockedUrls[l.id]);
     const ownerKey = profileData?.profile.wallet_address ?? idOrName ?? '';
+    const tiers = profileData?.tiers ?? [];
+    const summaryFor = (pool: string): PoolSummary | null =>
+        (pool === poolAddress ? poolSummary : tierPoolSummaries[pool] ?? null);
+    const symbolFor = (pool: string): string =>
+        sanitizeOnChainString(summaryFor(pool)?.tokenSymbol, 16) || abbreviateAddress(pool);
+
+    const openCommit = useCallback((pool: string | null, tierId: number | null = null) => {
+        if (!pool) return;
+        if (!address) {
+            connect();
+            return;
+        }
+        setCommitPool(pool);
+        setCommitTierId(tierId);
+        setCommitOpen(true);
+    }, [address, connect]);
 
     const mergeUnlocked = useCallback((revealed: CreatorLink[]) => {
         setUnlockedUrls((prev) => {
@@ -185,12 +254,31 @@ const CreatorLinksPage: React.FC = () => {
         setUnlockError('');
         try {
             const res = await unlockLinks(address, walletName, ownerKey);
-            if (res.ok) mergeUnlocked(res.value ?? []);
-            else setUnlockError(res.error);
+            if (res.ok && res.value) {
+                mergeUnlocked(res.value.links);
+                const revealed = new Set(res.value.links.map((l) => l.id));
+                const stillLocked = links.filter((l) => l.gated && !revealed.has(l.id) && !unlockedUrls[l.id]);
+                setUnlockError(unlockShortfall(res.value, stillLocked, tiers, poolAddress));
+                setUnlockChecked(true);
+            } else if (!res.ok) {
+                setUnlockError(res.error);
+            }
         } finally {
             setUnlockBusy(false);
         }
-    }, [address, walletName, ownerKey, connect, mergeUnlocked]);
+    }, [address, walletName, ownerKey, connect, mergeUnlocked, links, unlockedUrls, tiers, poolAddress]);
+
+    // A locked link first runs the subscription check; once that has run,
+    // clicking a still-locked link opens the subscribe dialog on the
+    // cheapest tier that would unlock it.
+    const handleLockedClick = useCallback((link: CreatorLink) => {
+        if (!unlockChecked) {
+            handleVerifySubscription();
+            return;
+        }
+        const tier = tiersForLink(link, tiers)[0];
+        openCommit(tier ? tier.pool_address : poolAddress, tier?.id ?? null);
+    }, [unlockChecked, handleVerifySubscription, tiers, openCommit, poolAddress]);
 
     // Demo mode: gated links unlock automatically for a connected (demo)
     // wallet so the whole feature is browsable without a real subscription.
@@ -201,7 +289,7 @@ const CreatorLinksPage: React.FC = () => {
             if (!profileData.links.some((l) => l.gated)) return;
             if (!(await isProfilesDemoMode())) return;
             const res = await unlockLinks(address, walletName, profileData.profile.wallet_address);
-            if (!cancelled && res.ok) mergeUnlocked(res.value ?? []);
+            if (!cancelled && res.ok) mergeUnlocked(res.value?.links ?? []);
         })();
         return () => { cancelled = true; };
     }, [profileData, address, walletName, mergeUnlocked]);
@@ -211,7 +299,7 @@ const CreatorLinksPage: React.FC = () => {
             <Button
                 variant="contained"
                 startIcon={<VolunteerActivismIcon />}
-                onClick={() => (address ? setCommitOpen(true) : connect())}
+                onClick={() => openCommit(poolAddress)}
             >
                 Commit / Subscribe
             </Button>
@@ -225,22 +313,31 @@ const CreatorLinksPage: React.FC = () => {
         </Stack>
     );
 
-    const dialogs = poolAddress && (
+    const commitSummary = commitPool ? summaryFor(commitPool) : null;
+    // Rendered even without a profile pool: tiers can sit on any of the
+    // creator's pools.
+    const dialogs = (
         <>
-            <CommitDialog
-                open={commitOpen}
-                onClose={() => setCommitOpen(false)}
-                poolAddress={poolAddress}
-                tokenSymbol={poolSummary?.tokenSymbol}
-                thresholdReached={poolSummary?.thresholdReached ?? false}
-            />
-            <ProvideLiquidityDialog
-                open={liquidityOpen}
-                onClose={() => setLiquidityOpen(false)}
-                poolAddress={poolAddress}
-                tokenSymbol={poolSummary?.tokenSymbol}
-                creatorTokenAddress={poolSummary?.creatorTokenAddress ?? undefined}
-            />
+            {commitPool && (
+                <CommitDialog
+                    open={commitOpen}
+                    onClose={() => setCommitOpen(false)}
+                    poolAddress={commitPool}
+                    tokenSymbol={commitSummary?.tokenSymbol}
+                    thresholdReached={commitSummary?.thresholdReached ?? false}
+                    tiers={tiers.filter((t) => t.pool_address === commitPool)}
+                    initialTierId={commitTierId}
+                />
+            )}
+            {poolAddress && (
+                <ProvideLiquidityDialog
+                    open={liquidityOpen}
+                    onClose={() => setLiquidityOpen(false)}
+                    poolAddress={poolAddress}
+                    tokenSymbol={poolSummary?.tokenSymbol}
+                    creatorTokenAddress={poolSummary?.creatorTokenAddress ?? undefined}
+                />
+            )}
         </>
     );
 
@@ -301,6 +398,49 @@ const CreatorLinksPage: React.FC = () => {
 
                             {actionsRow}
 
+                            {/* Subscription tiers on offer */}
+                            {tiers.length > 0 && (
+                                <Card>
+                                    <CardContent>
+                                        <Typography variant="subtitle1" fontWeight="bold">
+                                            Subscription tiers
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                            One commit of at least a tier's price unlocks its links for {SUBSCRIPTION_PERIOD_DAYS} days
+                                            and covers every cheaper tier.
+                                        </Typography>
+                                        <Stack spacing={1}>
+                                            {tiers.map((t) => (
+                                                <Stack
+                                                    key={t.id}
+                                                    direction="row"
+                                                    spacing={1}
+                                                    alignItems="center"
+                                                    justifyContent="space-between"
+                                                    flexWrap="wrap"
+                                                    useFlexGap
+                                                >
+                                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                                                        <Typography variant="body2" fontWeight="bold">
+                                                            {sanitizeOnChainString(t.name, 40)}
+                                                        </Typography>
+                                                        <Chip size="small" variant="outlined" label={symbolFor(t.pool_address)} />
+                                                    </Stack>
+                                                    <Stack direction="row" spacing={1} alignItems="center">
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            {formatTierPrice(t.price_native)} / {SUBSCRIPTION_PERIOD_DAYS} days
+                                                        </Typography>
+                                                        <Button size="small" variant="outlined" onClick={() => openCommit(t.pool_address, t.id)}>
+                                                            Subscribe
+                                                        </Button>
+                                                    </Stack>
+                                                </Stack>
+                                            ))}
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             {/* Gated-links hint + verification */}
                             {lockedLinks.length > 0 && (
                                 <Alert
@@ -309,7 +449,7 @@ const CreatorLinksPage: React.FC = () => {
                                     action={
                                         <Stack direction="row" spacing={1}>
                                             {poolAddress && (
-                                                <Button size="small" onClick={() => (address ? setCommitOpen(true) : connect())}>
+                                                <Button size="small" onClick={() => openCommit(poolAddress)}>
                                                     Subscribe
                                                 </Button>
                                             )}
@@ -320,7 +460,8 @@ const CreatorLinksPage: React.FC = () => {
                                     }
                                 >
                                     Subscribe to unlock {lockedLinks.length} link{lockedLinks.length === 1 ? '' : 's'} —
-                                    a commit gives {SUBSCRIPTION_PERIOD_DAYS} days of access.
+                                    a commit gives {SUBSCRIPTION_PERIOD_DAYS} days of access
+                                    {tiers.length > 0 ? ' at the tier its size covers.' : '.'}
                                 </Alert>
                             )}
                             {unlockError && <Alert severity="warning">{unlockError}</Alert>}
@@ -343,7 +484,8 @@ const CreatorLinksPage: React.FC = () => {
                                                     key={link.id}
                                                     link={link}
                                                     unlockedUrl={unlockedUrls[link.id]}
-                                                    onLockedClick={handleVerifySubscription}
+                                                    onLockedClick={() => handleLockedClick(link)}
+                                                    gateLabel={describeGate(link, tiers)}
                                                 />
                                             ))}
                                         </Stack>
@@ -362,7 +504,8 @@ const CreatorLinksPage: React.FC = () => {
                                                     key={link.id}
                                                     link={link}
                                                     unlockedUrl={unlockedUrls[link.id]}
-                                                    onLockedClick={handleVerifySubscription}
+                                                    onLockedClick={() => handleLockedClick(link)}
+                                                    gateLabel={describeGate(link, tiers)}
                                                     postedAt={link.created_at}
                                                 />
                                             ))}

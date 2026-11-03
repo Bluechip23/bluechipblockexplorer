@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Alert,
@@ -6,6 +6,8 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
+    Chip,
     CircularProgress,
     Dialog,
     DialogActions,
@@ -13,6 +15,7 @@ import {
     DialogTitle,
     Divider,
     FormControlLabel,
+    FormGroup,
     Grid,
     IconButton,
     List,
@@ -38,7 +41,7 @@ import PageShell from '../components/universal/PageShell';
 import { useWallet } from '../context/WalletContext';
 import { NotConnectedView } from '../components/universal/PortfolioShared';
 import { factoryAddress } from '../components/universal/IndividualPage.const';
-import { sanitizeOnChainString, validateBech32Address } from '../utils/security';
+import { sanitizeOnChainString, validateTokenAmount } from '../utils/security';
 import {
     abbreviateAddress,
     fetchAllPoolSummaries,
@@ -47,36 +50,118 @@ import {
 } from '../utils/contractQueries';
 import {
     addLink,
+    addTier,
     CreatorLink,
     deleteLink,
+    deleteTier,
+    describeGate,
+    formatTierPrice,
     getProfile,
     isProfilesDemoMode,
+    linksOnlyGatedBy,
     MAX_PINNED_LINKS,
+    MAX_TIERS,
     pinnedLinks,
     postLinks,
     ProfileWithLinks,
     saveProfile,
+    Tier,
     updateLink,
+    updateTier,
 } from '../utils/profilesApi';
+import { SUBSCRIPTION_PERIOD_DAYS } from '../utils/subscriptions';
+import { microToOsmoInput } from '../utils/tierFormat';
 import { isSafeHttpUrl } from '../components/creator-links/LinkCard';
 import EmbedSnippetCard from '../components/creator-links/EmbedSnippetCard';
 
 const NAME_PATTERN = /^[a-zA-Z0-9 _.-]{3,32}$/;
-const CUSTOM_POOL = '__custom__';
+const TIER_NAME_MAX = 40;
 
 // Client-side mirror of the server's field rules so users get instant
 // feedback; the server re-validates everything.
-function checkProfileInput(name: string, bio: string, pool: string | null): string {
+function checkProfileInput(name: string, bio: string): string {
     if (!NAME_PATTERN.test(name.trim())) {
         return 'Display name must be 3-32 characters of letters, digits, spaces, "_", "." or "-".';
     }
     if (bio.trim().length > 280) return 'Bio must be at most 280 characters.';
-    if (pool) {
-        const check = validateBech32Address(pool);
-        if (!check.ok) return `Pool address invalid: ${check.error}`;
-    }
     return '';
 }
+
+// "12.5" OSMO → micro-OSMO via the audited string-math validator (never
+// floats for money).
+function priceToMicro(osmo: string): { micro?: string; error?: string } {
+    const res = validateTokenAmount(osmo.trim(), 6);
+    return res.ok ? { micro: res.micro } : { error: res.error };
+}
+
+function checkTierInput(name: string, price: string): { micro?: string; error?: string } {
+    if (!name.trim() || name.trim().length > TIER_NAME_MAX) {
+        return { error: `Tier name must be 1-${TIER_NAME_MAX} characters.` };
+    }
+    const p = priceToMicro(price);
+    return p.micro ? p : { error: p.error ? `Price: ${p.error}` : 'Enter a valid OSMO price.' };
+}
+
+interface TierPickerProps {
+    tiers: Tier[];
+    /** Without a profile pool, "any subscriber" has no pool to check. */
+    hasProfilePool: boolean;
+    selected: number[];
+    onToggle: (id: number) => void;
+    label: (t: Tier) => string;
+    disabled?: boolean;
+}
+
+// Tier checkboxes shared by the add and edit link forms. No box checked =
+// any active subscriber; checked boxes restrict the link to those tiers.
+const TierPicker: React.FC<TierPickerProps> = ({ tiers, hasProfilePool, selected, onToggle, label, disabled }) => {
+    const ownerOnly = !hasProfilePool && selected.length === 0;
+    const ownerOnlyNote = ownerOnly && (
+        <Alert severity="warning" sx={{ mt: 0.5 }}>
+            With no creator pool set and no tier picked, only you can open this link. Set a creator pool
+            above{tiers.length > 0 ? ' or pick a tier' : ''}.
+        </Alert>
+    );
+    if (tiers.length === 0) {
+        return ownerOnlyNote || (
+            <Typography variant="caption" color="text.secondary">
+                Any active subscriber can open this link. Add subscription tiers above to price it higher.
+            </Typography>
+        );
+    }
+    return (
+        <Box>
+            <Typography variant="caption" color="text.secondary">
+                Who can open it — leave every tier unchecked for any active subscriber:
+            </Typography>
+            <FormGroup>
+                {tiers.map((t) => (
+                    <FormControlLabel
+                        key={t.id}
+                        control={(
+                            <Checkbox
+                                size="small"
+                                checked={selected.includes(t.id)}
+                                onChange={() => onToggle(t.id)}
+                                disabled={disabled}
+                            />
+                        )}
+                        label={<Typography variant="body2">{label(t)}</Typography>}
+                    />
+                ))}
+            </FormGroup>
+            {selected.length > 1 && (
+                <Typography variant="caption" color="text.secondary">
+                    Any checked tier unlocks it, so the cheapest checked tier on each pool sets its price.
+                </Typography>
+            )}
+            {ownerOnlyNote}
+        </Box>
+    );
+};
+
+const toggleId = (list: number[], id: number): number[] =>
+    (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
 function checkLinkInput(title: string, url: string): string {
     if (!title.trim() || title.trim().length > 80) return 'Title must be 1-80 characters.';
@@ -86,6 +171,8 @@ function checkLinkInput(title: string, url: string): string {
 
 interface LinkRowProps {
     link: CreatorLink;
+    /** describeGate() for gated links. */
+    gateLabel: string;
     divider: boolean;
     busy: boolean;
     /** Pin slots are full, so an unpinned row can't be pinned. */
@@ -101,7 +188,7 @@ interface LinkRowProps {
 // One row of the link manager. Pinned rows get up/down ordering; posts are
 // chronological so they only get pin / gate / edit / delete.
 const LinkRow: React.FC<LinkRowProps> = ({
-    link, divider, busy, pinDisabled = false,
+    link, gateLabel, divider, busy, pinDisabled = false,
     onToggleGated, onTogglePinned, onMoveUp, onMoveDown, onEdit, onDelete,
 }) => (
     <ListItem
@@ -140,9 +227,12 @@ const LinkRow: React.FC<LinkRowProps> = ({
         <ListItemText
             sx={{ pr: 26 }}
             primary={
-                <Stack direction="row" spacing={0.5} alignItems="center">
+                <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
                     {link.gated && <LockIcon sx={{ fontSize: 14 }} color="disabled" />}
                     <span>{sanitizeOnChainString(link.title, 80)}</span>
+                    {link.gated && (
+                        <Chip size="small" variant="outlined" label={sanitizeOnChainString(gateLabel, 120)} sx={{ height: 20 }} />
+                    )}
                 </Stack>
             }
             secondary={link.url
@@ -171,7 +261,6 @@ const ManageLinksPage: React.FC = () => {
     const [name, setName] = useState('');
     const [bio, setBio] = useState('');
     const [poolChoice, setPoolChoice] = useState('');
-    const [customPool, setCustomPool] = useState('');
     const [savingProfile, setSavingProfile] = useState(false);
     const [profileError, setProfileError] = useState('');
     const [profileSaved, setProfileSaved] = useState(false);
@@ -181,6 +270,19 @@ const ManageLinksPage: React.FC = () => {
     const [newUrl, setNewUrl] = useState('');
     const [newGated, setNewGated] = useState(false);
     const [newPinned, setNewPinned] = useState(false);
+    const [newTierIds, setNewTierIds] = useState<number[]>([]);
+    const [editTierIds, setEditTierIds] = useState<number[]>([]);
+
+    // Tier manager
+    const [tierPool, setTierPool] = useState('');
+    const [tierName, setTierName] = useState('');
+    const [tierPrice, setTierPrice] = useState('');
+    const [tierBusy, setTierBusy] = useState(false);
+    const [tierError, setTierError] = useState('');
+    const [editingTier, setEditingTier] = useState<Tier | null>(null);
+    const [editTierName, setEditTierName] = useState('');
+    const [editTierPrice, setEditTierPrice] = useState('');
+    const [deletingTier, setDeletingTier] = useState<Tier | null>(null);
     const [linkBusy, setLinkBusy] = useState(false);
     const [linkError, setLinkError] = useState('');
     const [editing, setEditing] = useState<CreatorLink | null>(null);
@@ -207,13 +309,16 @@ const ManageLinksPage: React.FC = () => {
                     setName(prof.profile.name);
                     setBio(prof.profile.bio ?? '');
                     setPoolChoice(prof.profile.pool_address ?? '');
-                    setCustomPool('');
                 }
                 if (factoryAddress) {
                     const pools = await fetchAllPoolSummaries(factoryAddress);
                     if (cancelled) return;
                     const mine = await findPoolsByCreator(pools, address);
-                    if (!cancelled) setMyPools(mine);
+                    if (!cancelled) {
+                        setMyPools(mine);
+                        // Default new tiers to the profile pool, else the first owned pool.
+                        setTierPool((cur) => cur || prof?.profile.pool_address || mine[0]?.poolAddress || '');
+                    }
                 }
             } catch (err) {
                 console.error('Error loading manage links page:', err);
@@ -233,9 +338,18 @@ const ManageLinksPage: React.FC = () => {
     const posts = profileData ? postLinks(profileData.links) : [];
     const linkCount = profileData?.links.length ?? 0;
     const pinSlotsFull = pinned.length >= MAX_PINNED_LINKS;
-    const selectedPool = poolChoice === CUSTOM_POOL ? customPool.trim() : poolChoice;
-    // The saved pool may not be one of the wallet's factory pools (free-text
-    // entry) — keep it selectable rather than silently dropping it.
+    const selectedPool = poolChoice;
+    const tiers = useMemo(() => profileData?.tiers ?? [], [profileData]);
+    const tierPools = useMemo(() => [...new Set(tiers.map((t) => t.pool_address))], [tiers]);
+    const symbolForPool = (pool: string): string => {
+        const match = myPools.find((p) => p.poolAddress === pool);
+        return match ? sanitizeOnChainString(match.tokenSymbol, 16) : abbreviateAddress(pool);
+    };
+    const tierLabel = (t: Tier): string =>
+        `${sanitizeOnChainString(t.name, 40)} · ${symbolForPool(t.pool_address)} · ${formatTierPrice(t.price_native)}`;
+    // The saved pool may predate the on-chain ownership check (or the pool
+    // list failed to load) — keep it selectable rather than silently
+    // dropping it. New pools can only be chosen from the wallet's own.
     const knownPoolAddresses = myPools.map((p) => p.poolAddress);
     const savedUnknownPool = profileData?.profile.pool_address
         && !knownPoolAddresses.includes(profileData.profile.pool_address)
@@ -246,7 +360,7 @@ const ManageLinksPage: React.FC = () => {
         if (!address) return;
         setProfileError('');
         setProfileSaved(false);
-        const validation = checkProfileInput(name, bio, selectedPool || null);
+        const validation = checkProfileInput(name, bio);
         if (validation) {
             setProfileError(validation);
             return;
@@ -283,12 +397,14 @@ const ManageLinksPage: React.FC = () => {
                 title: newTitle.trim(),
                 url: newUrl.trim(),
                 gated: newGated,
+                tier_ids: newGated ? newTierIds : [],
                 pinned: newPinned,
             });
             if (res.ok) {
                 setNewTitle('');
                 setNewUrl('');
                 setNewGated(false);
+                setNewTierIds([]);
                 setNewPinned(false);
                 refetch();
             } else {
@@ -376,6 +492,7 @@ const ManageLinksPage: React.FC = () => {
         setEditTitle(link.title);
         setEditUrl(link.url ?? '');
         setEditGated(link.gated);
+        setEditTierIds(link.tier_ids ?? []);
         setEditPinned(link.pinned);
     };
 
@@ -396,6 +513,7 @@ const ManageLinksPage: React.FC = () => {
                 title: editTitle.trim(),
                 url: urlPatch,
                 gated: editGated,
+                tier_ids: editGated ? editTierIds : [],
                 pinned: editPinned,
             });
             if (res.ok) {
@@ -408,6 +526,93 @@ const ManageLinksPage: React.FC = () => {
             setLinkBusy(false);
         }
     };
+
+    // ---- Tiers ----------------------------------------------------------
+
+    const handleAddTier = async () => {
+        if (!address) return;
+        setTierError('');
+        if (!tierPool) {
+            setTierError('Choose which of your pools this tier is on.');
+            return;
+        }
+        const check = checkTierInput(tierName, tierPrice);
+        if (!check.micro) {
+            setTierError(check.error!);
+            return;
+        }
+        setTierBusy(true);
+        try {
+            const res = await addTier(address, walletName, {
+                pool_address: tierPool,
+                name: tierName.trim(),
+                price_native: check.micro,
+            });
+            if (res.ok) {
+                setTierName('');
+                setTierPrice('');
+                refetch();
+            } else {
+                setTierError(res.error);
+            }
+        } finally {
+            setTierBusy(false);
+        }
+    };
+
+    const openEditTier = (t: Tier) => {
+        setEditingTier(t);
+        setEditTierName(t.name);
+        setEditTierPrice(microToOsmoInput(t.price_native));
+        setTierError('');
+    };
+
+    const handleSaveTier = async () => {
+        if (!address || !editingTier) return;
+        setTierError('');
+        const check = checkTierInput(editTierName, editTierPrice);
+        if (!check.micro) {
+            setTierError(check.error!);
+            return;
+        }
+        setTierBusy(true);
+        try {
+            const res = await updateTier(address, walletName, editingTier.id, {
+                name: editTierName.trim(),
+                price_native: check.micro,
+            });
+            if (res.ok) {
+                setEditingTier(null);
+                refetch();
+            } else {
+                setTierError(res.error);
+            }
+        } finally {
+            setTierBusy(false);
+        }
+    };
+
+    const handleDeleteTier = async (t: Tier) => {
+        if (!address) return;
+        setTierError('');
+        setTierBusy(true);
+        try {
+            const res = await deleteTier(address, walletName, t.id);
+            if (res.ok) {
+                setDeletingTier(null);
+                refetch();
+            } else {
+                setTierError(res.error);
+            }
+        } finally {
+            setTierBusy(false);
+        }
+    };
+
+    const deletingOrphans = deletingTier && profileData
+        ? linksOnlyGatedBy(profileData.links, deletingTier.id)
+        : [];
+    const linksUsingTier = (id: number) => profileData?.links.filter((l) => l.tier_ids?.includes(id)).length ?? 0;
 
     const publicPageKey = profileData?.profile.name || address;
 
@@ -474,7 +679,7 @@ const ManageLinksPage: React.FC = () => {
                                         value={poolChoice}
                                         onChange={(e) => setPoolChoice(e.target.value)}
                                         fullWidth
-                                        helperText="Subscribers to this pool can unlock your gated links"
+                                        helperText="Its subscribers see your posts in their feed and can open your subscriber-only links. Only pools your wallet created."
                                     >
                                         <MenuItem value="">None</MenuItem>
                                         {myPools.map((p) => (
@@ -487,17 +692,7 @@ const ManageLinksPage: React.FC = () => {
                                                 {abbreviateAddress(savedUnknownPool)} (saved)
                                             </MenuItem>
                                         )}
-                                        <MenuItem value={CUSTOM_POOL}>Custom pool address…</MenuItem>
                                     </TextField>
-                                    {poolChoice === CUSTOM_POOL && (
-                                        <TextField
-                                            label="Pool contract address"
-                                            value={customPool}
-                                            onChange={(e) => setCustomPool(e.target.value)}
-                                            fullWidth
-                                            placeholder="osmo1..."
-                                        />
-                                    )}
                                     {profileError && <Alert severity="error">{profileError}</Alert>}
                                     {profileSaved && !profileError && (
                                         <Alert severity="success" onClose={() => setProfileSaved(false)}>
@@ -515,6 +710,125 @@ const ManageLinksPage: React.FC = () => {
                                 </Stack>
                             </CardContent>
                         </Card>
+
+                        {/* Subscription tiers */}
+                        {profileData && (
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight="bold" sx={{ mb: 0.5 }}>
+                                        Subscription tiers ({tiers.length}/{MAX_TIERS})
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                        Named OSMO prices on pools you created. A subscriber whose latest commit paid at
+                                        least a tier's price can open the links you put in that tier for
+                                        {' '}{SUBSCRIPTION_PERIOD_DAYS} days. A bigger commit covers every cheaper tier.
+                                    </Typography>
+                                    {tierError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setTierError('')}>{tierError}</Alert>}
+
+                                    {tiers.length === 0 ? (
+                                        <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                                            No tiers yet. Without tiers, any active subscriber can open your subscriber-only links.
+                                        </Typography>
+                                    ) : (
+                                        <Stack spacing={1.5} sx={{ mb: 1 }}>
+                                            {tierPools.map((pool) => (
+                                                <Box key={pool}>
+                                                    <Chip size="small" label={symbolForPool(pool)} sx={{ mb: 0.5 }} />
+                                                    <List dense disablePadding>
+                                                        {tiers.filter((t) => t.pool_address === pool).map((t) => {
+                                                            const used = linksUsingTier(t.id);
+                                                            return (
+                                                                <ListItem
+                                                                    key={t.id}
+                                                                    disableGutters
+                                                                    secondaryAction={(
+                                                                        <Stack direction="row" spacing={0.5}>
+                                                                            <IconButton size="small" onClick={() => openEditTier(t)} disabled={tierBusy}>
+                                                                                <EditIcon fontSize="small" />
+                                                                            </IconButton>
+                                                                            <IconButton size="small" onClick={() => setDeletingTier(t)} disabled={tierBusy}>
+                                                                                <DeleteIcon fontSize="small" />
+                                                                            </IconButton>
+                                                                        </Stack>
+                                                                    )}
+                                                                >
+                                                                    <ListItemText
+                                                                        sx={{ pr: 10 }}
+                                                                        primary={sanitizeOnChainString(t.name, 40)}
+                                                                        secondary={`${formatTierPrice(t.price_native)} per ${SUBSCRIPTION_PERIOD_DAYS} days · ${used} link${used === 1 ? '' : 's'}`}
+                                                                    />
+                                                                </ListItem>
+                                                            );
+                                                        })}
+                                                    </List>
+                                                </Box>
+                                            ))}
+                                        </Stack>
+                                    )}
+
+                                    <Divider sx={{ my: 1.5 }} />
+                                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Add a tier</Typography>
+                                    {tiers.length >= MAX_TIERS ? (
+                                        <Alert severity="info">
+                                            You've reached the maximum of {MAX_TIERS} tiers. Delete one to add another.
+                                        </Alert>
+                                    ) : myPools.length === 0 ? (
+                                        <Alert severity="info">
+                                            Tiers live on a pool your wallet created. Create a creator pool first.
+                                        </Alert>
+                                    ) : (
+                                        <Stack spacing={1.5}>
+                                            {myPools.length > 1 && (
+                                                <TextField
+                                                    select
+                                                    label="Pool"
+                                                    size="small"
+                                                    value={tierPool}
+                                                    onChange={(e) => setTierPool(e.target.value)}
+                                                    fullWidth
+                                                >
+                                                    {myPools.map((p) => (
+                                                        <MenuItem key={p.poolAddress} value={p.poolAddress}>
+                                                            {sanitizeOnChainString(p.tokenSymbol, 16)} — {abbreviateAddress(p.poolAddress)}
+                                                        </MenuItem>
+                                                    ))}
+                                                </TextField>
+                                            )}
+                                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                                                <TextField
+                                                    label="Tier name"
+                                                    size="small"
+                                                    value={tierName}
+                                                    onChange={(e) => setTierName(e.target.value)}
+                                                    fullWidth
+                                                    placeholder="e.g. Gold"
+                                                />
+                                                <TextField
+                                                    label="Price per commit"
+                                                    size="small"
+                                                    value={tierPrice}
+                                                    onChange={(e) => setTierPrice(e.target.value)}
+                                                    fullWidth
+                                                    placeholder="25"
+                                                    inputProps={{ inputMode: 'decimal' }}
+                                                    InputProps={{ endAdornment: <Typography variant="body2" color="text.secondary">OSMO</Typography> }}
+                                                />
+                                            </Stack>
+                                            <Box>
+                                                <Button
+                                                    variant="contained"
+                                                    startIcon={<AddCircleIcon />}
+                                                    onClick={handleAddTier}
+                                                    disabled={tierBusy || !tierName.trim() || !tierPrice.trim() || !tierPool}
+                                                >
+                                                    {tierBusy ? 'Saving...' : 'Add Tier'}
+                                                </Button>
+                                            </Box>
+                                        </Stack>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Link manager */}
                         {profileData ? (
@@ -548,6 +862,7 @@ const ManageLinksPage: React.FC = () => {
                                                         <LinkRow
                                                             key={link.id}
                                                             link={link}
+                                                            gateLabel={describeGate(link, tiers)}
                                                             divider={i < pinned.length - 1}
                                                             busy={linkBusy}
                                                             onToggleGated={() => handleToggleGated(link)}
@@ -573,6 +888,7 @@ const ManageLinksPage: React.FC = () => {
                                                         <LinkRow
                                                             key={link.id}
                                                             link={link}
+                                                            gateLabel={describeGate(link, tiers)}
                                                             divider={i < posts.length - 1}
                                                             busy={linkBusy}
                                                             pinDisabled={pinSlotsFull}
@@ -631,6 +947,16 @@ const ManageLinksPage: React.FC = () => {
                                                 {newPinned && !pinSlotsFull ? 'Add Pinned Link' : 'Post Link'}
                                             </Button>
                                         </Stack>
+                                        {newGated && (
+                                            <TierPicker
+                                                tiers={tiers}
+                                                hasProfilePool={!!profileData.profile.pool_address}
+                                                selected={newTierIds}
+                                                onToggle={(id) => setNewTierIds((ids) => toggleId(ids, id))}
+                                                label={tierLabel}
+                                                disabled={linkBusy}
+                                            />
+                                        )}
                                     </Stack>
                                 </CardContent>
                             </Card>
@@ -672,6 +998,16 @@ const ManageLinksPage: React.FC = () => {
                                 control={<Switch checked={editGated} onChange={(e) => setEditGated(e.target.checked)} />}
                                 label="Subscribers only"
                             />
+                            {editGated && (
+                                <TierPicker
+                                    tiers={tiers}
+                                    hasProfilePool={!!profileData?.profile.pool_address}
+                                    selected={editTierIds}
+                                    onToggle={(id) => setEditTierIds((ids) => toggleId(ids, id))}
+                                    label={tierLabel}
+                                    disabled={linkBusy}
+                                />
+                            )}
                             <FormControlLabel
                                 control={(
                                     <Switch
@@ -688,6 +1024,60 @@ const ManageLinksPage: React.FC = () => {
                         <Button onClick={() => setEditing(null)} disabled={linkBusy}>Cancel</Button>
                         <Button variant="contained" onClick={handleSaveEdit} disabled={linkBusy}>
                             {linkBusy ? 'Saving...' : 'Save'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Edit tier dialog */}
+                <Dialog open={!!editingTier} onClose={() => setEditingTier(null)} maxWidth="xs" fullWidth>
+                    <DialogTitle>Edit tier</DialogTitle>
+                    <DialogContent>
+                        <Stack spacing={2} sx={{ mt: 1 }}>
+                            {tierError && <Alert severity="error">{tierError}</Alert>}
+                            <TextField
+                                label="Tier name"
+                                value={editTierName}
+                                onChange={(e) => setEditTierName(e.target.value)}
+                                fullWidth
+                            />
+                            <TextField
+                                label="Price per commit"
+                                value={editTierPrice}
+                                onChange={(e) => setEditTierPrice(e.target.value)}
+                                fullWidth
+                                inputProps={{ inputMode: 'decimal' }}
+                                InputProps={{ endAdornment: <Typography variant="body2" color="text.secondary">OSMO</Typography> }}
+                                helperText="A new price applies right away, including to current subscribers."
+                            />
+                        </Stack>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setEditingTier(null)} disabled={tierBusy}>Cancel</Button>
+                        <Button variant="contained" onClick={handleSaveTier} disabled={tierBusy}>
+                            {tierBusy ? 'Saving...' : 'Save'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Delete tier confirmation */}
+                <Dialog open={!!deletingTier} onClose={() => setDeletingTier(null)} maxWidth="xs" fullWidth>
+                    <DialogTitle>Delete tier?</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body2">
+                            "{sanitizeOnChainString(deletingTier?.name, 40)}" is removed from every link it gates.
+                        </Typography>
+                        {deletingOrphans.length > 0 && (
+                            <Alert severity="warning" sx={{ mt: 1.5 }}>
+                                {deletingOrphans.length} link{deletingOrphans.length === 1 ? ' is' : 's are'} gated only by this
+                                tier and will open to any active subscriber. Edit {deletingOrphans.length === 1 ? 'it' : 'them'} first
+                                to keep a higher price.
+                            </Alert>
+                        )}
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDeletingTier(null)} disabled={tierBusy}>Cancel</Button>
+                        <Button color="error" variant="contained" onClick={() => deletingTier && handleDeleteTier(deletingTier)} disabled={tierBusy}>
+                            {tierBusy ? 'Deleting...' : 'Delete'}
                         </Button>
                     </DialogActions>
                 </Dialog>

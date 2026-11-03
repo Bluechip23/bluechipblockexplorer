@@ -21,6 +21,16 @@ exports.insertLink = insertLink;
 exports.maxPosition = maxPosition;
 exports.updateLink = updateLink;
 exports.deleteLink = deleteLink;
+exports.listTiers = listTiers;
+exports.listTiersForWallets = listTiersForWallets;
+exports.countTiers = countTiers;
+exports.getTier = getTier;
+exports.insertTier = insertTier;
+exports.updateTier = updateTier;
+exports.deleteTier = deleteTier;
+exports.setLinkTiers = setLinkTiers;
+exports.getTierIdsForLinks = getTierIdsForLinks;
+exports.getLinkTierIds = getLinkTierIds;
 exports.putNonce = putNonce;
 exports.getNonce = getNonce;
 exports.consumeNonce = consumeNonce;
@@ -62,6 +72,32 @@ CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT NOT NULL,
     issued_at INTEGER NOT NULL
 );
+
+-- Priced subscription tiers. A creator defines up to MAX_TIERS named tiers
+-- in total, each on one pool their wallet created (ownership verified
+-- on-chain before insert). price_native is a micro-OSMO integer string:
+-- the minimum gross commit (committing_info.last_payment_native) that
+-- covers the tier for one access window.
+CREATE TABLE IF NOT EXISTS tiers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_address TEXT NOT NULL REFERENCES profiles(wallet_address) ON DELETE CASCADE,
+    pool_address TEXT NOT NULL,
+    name TEXT NOT NULL,
+    price_native TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tiers_wallet ON tiers(wallet_address);
+
+-- Which tiers gate a link (many-to-many). Only gated links have rows; a
+-- gated link with no rows is open to any active subscriber of the
+-- creator's profile pool.
+CREATE TABLE IF NOT EXISTS link_tiers (
+    link_id INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    tier_id INTEGER NOT NULL REFERENCES tiers(id) ON DELETE CASCADE,
+    PRIMARY KEY (link_id, tier_id)
+);
+CREATE INDEX IF NOT EXISTS idx_link_tiers_tier ON link_tiers(tier_id);
 `);
     // Additive column migrations for databases created before the column
     // existed. SQLite has no ADD COLUMN IF NOT EXISTS.
@@ -180,6 +216,90 @@ function updateLink(db, id, patch) {
 }
 function deleteLink(db, id) {
     db.prepare('DELETE FROM links WHERE id = ?').run(id);
+}
+// ---------------------------------------------------------------------------
+// Subscription tiers + link↔tier gating
+// ---------------------------------------------------------------------------
+// Display order: grouped by pool, cheapest first. Prices are stored as
+// integer strings without leading zeros, so ordering by length and then
+// text orders them numerically.
+const TIER_ORDER = 'pool_address ASC, LENGTH(price_native) ASC, price_native ASC, id ASC';
+function listTiers(db, wallet) {
+    return db.prepare(`SELECT * FROM tiers WHERE wallet_address = ? ORDER BY ${TIER_ORDER}`).all(wallet);
+}
+// Tiers of several creators at once (the subscriber feed), chunked like the
+// other multi-wallet reads.
+function listTiersForWallets(db, wallets) {
+    const out = [];
+    for (let i = 0; i < wallets.length; i += 200) {
+        const chunk = wallets.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(`SELECT * FROM tiers WHERE wallet_address IN (${placeholders}) ORDER BY ${TIER_ORDER}`).all(...chunk));
+    }
+    return out;
+}
+function countTiers(db, wallet) {
+    const row = db.prepare('SELECT COUNT(*) AS n FROM tiers WHERE wallet_address = ?').get(wallet);
+    return row.n;
+}
+function getTier(db, id) {
+    return db.prepare('SELECT * FROM tiers WHERE id = ?').get(id);
+}
+function insertTier(db, t) {
+    const now = Math.floor(Date.now() / 1000);
+    const info = db.prepare(`INSERT INTO tiers (wallet_address, pool_address, name, price_native, created_at, updated_at)
+        VALUES (@wallet_address, @pool_address, @name, @price_native, @now, @now)`).run({ ...t, now });
+    return getTier(db, Number(info.lastInsertRowid));
+}
+function updateTier(db, id, patch) {
+    const existing = getTier(db, id);
+    if (!existing)
+        return undefined;
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(`UPDATE tiers SET name = @name, price_native = @price_native, updated_at = @now
+        WHERE id = @id`).run({
+        id,
+        name: patch.name ?? existing.name,
+        price_native: patch.price_native ?? existing.price_native,
+        now,
+    });
+    return getTier(db, id);
+}
+function deleteTier(db, id) {
+    db.prepare('DELETE FROM tiers WHERE id = ?').run(id);
+}
+/** Replace the whole set of tiers gating a link. */
+function setLinkTiers(db, linkId, tierIds) {
+    const tx = db.transaction((ids) => {
+        db.prepare('DELETE FROM link_tiers WHERE link_id = ?').run(linkId);
+        const ins = db.prepare('INSERT OR IGNORE INTO link_tiers (link_id, tier_id) VALUES (?, ?)');
+        for (const tid of ids)
+            ins.run(linkId, tid);
+    });
+    tx(tierIds);
+}
+/**
+ * link id → the ids of the tiers gating it, for many links in one pass.
+ * Links with no tiers are absent from the map.
+ */
+function getTierIdsForLinks(db, linkIds) {
+    const out = new Map();
+    for (let i = 0; i < linkIds.length; i += 500) {
+        const chunk = linkIds.slice(i, i + 500);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = db.prepare(`SELECT link_id, tier_id FROM link_tiers WHERE link_id IN (${placeholders}) ORDER BY tier_id ASC`).all(...chunk);
+        for (const r of rows) {
+            const arr = out.get(r.link_id);
+            if (arr)
+                arr.push(r.tier_id);
+            else
+                out.set(r.link_id, [r.tier_id]);
+        }
+    }
+    return out;
+}
+function getLinkTierIds(db, linkId) {
+    return getTierIdsForLinks(db, [linkId]).get(linkId) ?? [];
 }
 // ---------------------------------------------------------------------------
 // Nonces (single active nonce per wallet, 5-minute TTL, consumed on use)

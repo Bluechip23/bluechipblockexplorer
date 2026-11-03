@@ -8,6 +8,7 @@
 import { profilesApiUrl } from '../components/universal/IndividualPage.const';
 import { CHAIN_CONFIG } from '../defi/types';
 import { getDataSource } from './contractQueries';
+import { compareMicroStrings } from './tierFormat';
 
 const BASE_URL = (profilesApiUrl || '').replace(/\/+$/, '');
 const DEMO_STORAGE_KEY = 'bluechip.profiles.demo';
@@ -33,10 +34,35 @@ export interface CreatorLink {
     /** Pinned links are the creator's bio set (top of the page, position order); the rest are posts, newest first. */
     pinned: boolean;
     position: number;
+    /**
+     * Tiers that unlock this gated link (any one of them). Empty on a gated
+     * link means any active subscriber unlocks it. Optional so responses
+     * from an older service still type-check.
+     */
+    tier_ids?: number[];
     /** Unix seconds. Present on every service response; optional for older demo entries. */
     created_at?: number;
     updated_at?: number;
 }
+
+/**
+ * A named subscription tier priced in OSMO on one of the creator's pools.
+ * An active subscription (last commit within the access window) whose last
+ * commit paid at least `price_native` covers the tier; a bigger commit
+ * covers every cheaper tier too.
+ */
+export interface Tier {
+    id: number;
+    /** The creator who owns the tier (present on service responses). */
+    wallet_address?: string;
+    pool_address: string;
+    name: string;
+    /** Gross micro-OSMO integer string. */
+    price_native: string;
+}
+
+/** Most tiers a creator may define (mirrors the service). */
+export const MAX_TIERS = 5;
 
 /** A link in the subscriber feed, with its creator inline. */
 export interface FeedLink extends CreatorLink {
@@ -48,6 +74,8 @@ export interface SubscriberFeed {
     creators: ProfileSearchResult[];
     /** Newest first. Gated links come without url until unlockFeed(). */
     links: FeedLink[];
+    /** Every tier of the listed creators (match on wallet_address). */
+    tiers: Tier[];
 }
 
 export interface FeedUnlockResult {
@@ -58,6 +86,23 @@ export interface FeedUnlockResult {
     expired_pools: string[];
     /** Pools whose on-chain check errored (retry; not "unsubscribed"). */
     failed_pools: string[];
+    /** Gated links of verified creators that need a bigger commit (higher tier). */
+    tier_locked: number;
+}
+
+/** The caller's subscription on one pool, as the unlock check read it. */
+export interface PoolSubscription {
+    pool_address: string;
+    status: 'active' | 'expired' | 'none' | 'failed';
+    /** Gross micro-OSMO of the last commit, when there is a record. */
+    last_payment_native: string | null;
+    /** Unix seconds the access window ends, when there is a record. */
+    expires_at: number | null;
+}
+
+export interface LinkUnlockResult {
+    links: CreatorLink[];
+    subscriptions: PoolSubscription[];
 }
 
 /** Most pinned links a creator may have (mirrors the service). */
@@ -66,6 +111,7 @@ export const MAX_PINNED_LINKS = 10;
 export interface ProfileWithLinks {
     profile: CreatorProfile;
     links: CreatorLink[];
+    tiers: Tier[];
 }
 
 export interface ProfileSearchResult {
@@ -201,8 +247,9 @@ async function buildSignedBody(
 // hiding gated urls on public reads — so page code is mode-agnostic.
 // ---------------------------------------------------------------------------
 
-type DemoLink = Required<Omit<CreatorLink, 'created_at' | 'updated_at' | 'pinned'>> & {
+type DemoLink = Required<Omit<CreatorLink, 'created_at' | 'updated_at' | 'pinned' | 'tier_ids'>> & {
     pinned?: boolean;
+    tier_ids?: number[];
     created_at?: number;
     updated_at?: number;
 };
@@ -211,6 +258,18 @@ interface DemoEntry {
     profile: CreatorProfile;
     links: DemoLink[];
     nextId: number;
+    tiers?: Tier[];
+    nextTierId?: number;
+}
+
+// Cheapest first within each pool, like the service.
+function sortTiers(tiers: Tier[]): Tier[] {
+    return [...tiers].sort((a, b) => a.pool_address.localeCompare(b.pool_address)
+        || compareMicroStrings(a.price_native, b.price_native) || a.id - b.id);
+}
+
+function demoTiers(entry: DemoEntry): Tier[] {
+    return sortTiers((entry.tiers ?? []).map((t) => ({ ...t, wallet_address: entry.profile.wallet_address })));
 }
 
 function nowSeconds(): number {
@@ -256,7 +315,7 @@ function demoFindEntry(store: DemoStore, idOrName: string): DemoEntry | null {
 function demoLinkBase(l: DemoLink): CreatorLink {
     return {
         id: l.id, title: l.title, gated: l.gated, pinned: !!l.pinned, position: l.position,
-        created_at: l.created_at, updated_at: l.updated_at,
+        tier_ids: l.tier_ids ?? [], created_at: l.created_at, updated_at: l.updated_at,
     };
 }
 
@@ -286,9 +345,10 @@ export async function getProfile(idOrName: string): Promise<ProfileWithLinks | n
     if (!idOrName) return null;
     if ((await getMode()) === 'demo') {
         const entry = demoFindEntry(loadDemoStore(), idOrName);
-        return entry ? { profile: entry.profile, links: demoPublicLinks(entry) } : null;
+        return entry ? { profile: entry.profile, links: demoPublicLinks(entry), tiers: demoTiers(entry) } : null;
     }
-    return fetchJson<ProfileWithLinks>(`/profiles/${encodeURIComponent(idOrName)}`);
+    const res = await fetchJson<ProfileWithLinks>(`/profiles/${encodeURIComponent(idOrName)}`);
+    return res ? { ...res, tiers: res.tiers ?? [] } : null;
 }
 
 export async function searchProfiles(q: string): Promise<ProfileSearchResult[]> {
@@ -338,6 +398,8 @@ export async function saveProfile(
             profile: { wallet_address: address, name, pool_address: input.pool_address, bio: input.bio },
             links: existing?.links ?? [],
             nextId: existing?.nextId ?? 1,
+            tiers: existing?.tiers ?? [],
+            nextTierId: existing?.nextTierId ?? 1,
         };
         saveDemoStore(store);
         return { ok: true };
@@ -359,9 +421,18 @@ export async function saveProfile(
 export interface LinkInput {
     title: string;
     url: string;
+    /** With no tier_ids, a gated link is open to any active subscriber. */
     gated: boolean;
+    /** Tiers that unlock the link; a non-empty list makes it gated. */
+    tier_ids?: number[];
     pinned?: boolean;
     position?: number;
+}
+
+// Demo-store mirror of the service's rule: tiers imply gated, and an
+// un-gated link carries no tiers.
+function demoGate(gated: boolean, tierIds: number[]): { gated: boolean; tier_ids: number[] } {
+    return tierIds.length > 0 ? { gated: true, tier_ids: tierIds } : { gated, tier_ids: [] };
 }
 
 export async function addLink(
@@ -381,7 +452,7 @@ export async function addLink(
             id: entry.nextId,
             title: input.title,
             url: input.url,
-            gated: input.gated,
+            ...demoGate(input.gated, input.tier_ids ?? []),
             pinned: !!input.pinned,
             position,
             created_at: nowSeconds(),
@@ -397,6 +468,7 @@ export async function addLink(
             title: input.title,
             url: input.url,
             gated: input.gated,
+            tier_ids: input.tier_ids,
             pinned: input.pinned,
             position: input.position,
         });
@@ -411,6 +483,8 @@ export interface LinkPatch {
     title?: string;
     url?: string;
     gated?: boolean;
+    /** Replaces the link's tiers; a non-empty list makes it gated. */
+    tier_ids?: number[];
     pinned?: boolean;
     position?: number;
 }
@@ -431,7 +505,11 @@ export async function updateLink(
         }
         if (patch.title !== undefined) link.title = patch.title;
         if (patch.url !== undefined) link.url = patch.url;
-        if (patch.gated !== undefined) link.gated = patch.gated;
+        if (patch.gated !== undefined || patch.tier_ids !== undefined) {
+            const next = demoGate(patch.gated ?? link.gated, patch.tier_ids ?? link.tier_ids ?? []);
+            link.gated = next.gated;
+            link.tier_ids = next.tier_ids;
+        }
         if (patch.pinned !== undefined) link.pinned = patch.pinned;
         if (patch.position !== undefined) link.position = patch.position;
         link.updated_at = nowSeconds();
@@ -445,6 +523,7 @@ export async function updateLink(
             title: patch.title,
             url: patch.url,
             gated: patch.gated,
+            tier_ids: patch.tier_ids,
             pinned: patch.pinned,
             position: patch.position,
         });
@@ -477,30 +556,141 @@ export async function deleteLink(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Subscription tiers (signed writes; localStorage in demo mode). Prices are
+// micro-OSMO integer strings end to end.
+// ---------------------------------------------------------------------------
+
+export interface TierInput {
+    pool_address: string;
+    name: string;
+    /** Gross micro-OSMO integer string. */
+    price_native: string;
+}
+
+export async function addTier(
+    address: string,
+    walletName: string | null,
+    input: TierInput,
+): Promise<WriteResult> {
+    if ((await getMode()) === 'demo') {
+        const store = loadDemoStore();
+        const entry = store.profiles[address];
+        if (!entry) return { ok: false, error: 'create a profile first' };
+        const tiers = entry.tiers ?? [];
+        if (tiers.length >= MAX_TIERS) return { ok: false, error: `at most ${MAX_TIERS} subscription tiers per creator` };
+        const id = entry.nextTierId ?? 1;
+        entry.tiers = [...tiers, { id, pool_address: input.pool_address, name: input.name, price_native: input.price_native }];
+        entry.nextTierId = id + 1;
+        saveDemoStore(store);
+        return { ok: true };
+    }
+    try {
+        const body = await buildSignedBody(address, walletName, {
+            intent: 'add_tier',
+            pool_address: input.pool_address,
+            name: input.name,
+            price_native: input.price_native,
+        });
+        const res = await fetchWrite('/tiers', 'POST', body);
+        return res.error ? { ok: false, error: res.error } : { ok: true };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'tier create failed' };
+    }
+}
+
+export interface TierPatch {
+    name?: string;
+    price_native?: string;
+}
+
+export async function updateTier(
+    address: string,
+    walletName: string | null,
+    id: number,
+    patch: TierPatch,
+): Promise<WriteResult> {
+    if ((await getMode()) === 'demo') {
+        const store = loadDemoStore();
+        const tier = store.profiles[address]?.tiers?.find((t) => t.id === id);
+        if (!tier) return { ok: false, error: 'tier not found' };
+        if (patch.name !== undefined) tier.name = patch.name;
+        if (patch.price_native !== undefined) tier.price_native = patch.price_native;
+        saveDemoStore(store);
+        return { ok: true };
+    }
+    try {
+        const body = await buildSignedBody(address, walletName, {
+            intent: 'update_tier',
+            id,
+            name: patch.name,
+            price_native: patch.price_native,
+        });
+        const res = await fetchWrite(`/tiers/${id}`, 'PUT', body);
+        return res.error ? { ok: false, error: res.error } : { ok: true };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'tier update failed' };
+    }
+}
+
+/**
+ * Deletes a tier. Links it gated lose it; one left with no tiers stays
+ * gated and is then open to any active subscriber (see linksOnlyGatedBy).
+ */
+export async function deleteTier(
+    address: string,
+    walletName: string | null,
+    id: number,
+): Promise<WriteResult> {
+    if ((await getMode()) === 'demo') {
+        const store = loadDemoStore();
+        const entry = store.profiles[address];
+        if (!entry) return { ok: false, error: 'tier not found' };
+        entry.tiers = (entry.tiers ?? []).filter((t) => t.id !== id);
+        for (const l of entry.links) {
+            if (l.tier_ids?.includes(id)) l.tier_ids = l.tier_ids.filter((tid) => tid !== id);
+        }
+        saveDemoStore(store);
+        return { ok: true };
+    }
+    try {
+        const body = await buildSignedBody(address, walletName, { intent: 'delete_tier', id });
+        const res = await fetchWrite(`/tiers/${id}`, 'DELETE', body);
+        return res.error ? { ok: false, error: res.error } : { ok: true };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'tier delete failed' };
+    }
+}
+
 /**
  * Unlocks the gated links of `owner` (wallet, name, or pool address) for the
  * connected wallet. In API mode this round-trips the server, which checks the
- * caller's committing_info record on the owner's pool contract — the real
- * subscription enforcement. In demo mode gated links unlock immediately.
+ * caller's committing_info record on every pool the gated links depend on —
+ * the real subscription enforcement — and returns only the links the
+ * caller's last commit pays for, plus the caller's standing on each pool.
+ * In demo mode gated links unlock immediately.
  */
 export async function unlockLinks(
     address: string,
     walletName: string | null,
     owner: string,
-): Promise<WriteResult<CreatorLink[]>> {
+): Promise<WriteResult<LinkUnlockResult>> {
     if ((await getMode()) === 'demo') {
         const entry = demoFindEntry(loadDemoStore(), owner);
         if (!entry) return { ok: false, error: 'profile not found' };
         return {
             ok: true,
-            value: entry.links.filter((l) => l.gated).map((l) => ({ ...demoLinkBase(l), url: l.url })),
+            value: {
+                links: entry.links.filter((l) => l.gated).map((l) => ({ ...demoLinkBase(l), url: l.url })),
+                subscriptions: [],
+            },
         };
     }
     try {
         const body = await buildSignedBody(address, walletName, { intent: 'unlock_links', owner });
-        const res = await fetchWrite<{ links: CreatorLink[] }>('/links/unlock', 'POST', body);
+        const res = await fetchWrite<LinkUnlockResult>('/links/unlock', 'POST', body);
         if (res.error) return { ok: false, error: res.error };
-        return { ok: true, value: res.data?.links ?? [] };
+        return { ok: true, value: { links: res.data?.links ?? [], subscriptions: res.data?.subscriptions ?? [] } };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'unlock failed' };
     }
@@ -532,7 +722,7 @@ function sortNewest(links: FeedLink[]): FeedLink[] {
  */
 export async function getFeed(pools: string[]): Promise<SubscriberFeed | null> {
     const trimmed = pools.slice(0, FEED_MAX_POOLS);
-    if (trimmed.length === 0) return { creators: [], links: [] };
+    if (trimmed.length === 0) return { creators: [], links: [], tiers: [] };
     if ((await getMode()) === 'demo') {
         const entries = demoFeedEntries(trimmed);
         const links: FeedLink[] = [];
@@ -540,7 +730,7 @@ export async function getFeed(pools: string[]): Promise<SubscriberFeed | null> {
             const creator = demoSearchResult(e);
             for (const l of demoPublicLinks(e)) links.push({ ...l, creator });
         }
-        return { creators: entries.map(demoSearchResult), links: sortNewest(links) };
+        return { creators: entries.map(demoSearchResult), links: sortNewest(links), tiers: entries.flatMap(demoTiers) };
     }
     const res = await fetchJson<SubscriberFeed>('/feed', 15000, {
         method: 'POST',
@@ -548,7 +738,7 @@ export async function getFeed(pools: string[]): Promise<SubscriberFeed | null> {
         body: JSON.stringify({ pools: trimmed }),
     });
     if (!res) return null;
-    return { creators: res.creators ?? [], links: sortNewest(res.links ?? []) };
+    return { creators: res.creators ?? [], links: sortNewest(res.links ?? []), tiers: res.tiers ?? [] };
 }
 
 /**
@@ -578,6 +768,7 @@ export async function unlockFeed(
                 verified_pools: entries.map((e) => e.profile.pool_address!),
                 expired_pools: [],
                 failed_pools: [],
+                tier_locked: 0,
             },
         };
     }
@@ -592,6 +783,7 @@ export async function unlockFeed(
                 verified_pools: res.data?.verified_pools ?? [],
                 expired_pools: res.data?.expired_pools ?? [],
                 failed_pools: res.data?.failed_pools ?? [],
+                tier_locked: res.data?.tier_locked ?? 0,
             },
         };
     } catch (err) {
@@ -613,3 +805,6 @@ export function postLinks<T extends CreatorLink>(links: T[]): T[] {
     return links.filter((l) => !l.pinned)
         .sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0) || b.id - a.id);
 }
+
+// Pure tier helpers live in tierFormat.ts (no chain imports, unit-testable).
+export { describeGate, formatTierPrice, linksOnlyGatedBy, tiersForLink } from './tierFormat';
