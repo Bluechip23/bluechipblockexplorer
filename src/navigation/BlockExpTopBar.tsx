@@ -7,7 +7,8 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import ForumIcon from '@mui/icons-material/Forum';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import VolunteerActivismIcon from '@mui/icons-material/VolunteerActivism';
-import DynamicFeedIcon from '@mui/icons-material/DynamicFeed';
+// MUI names this icon file "EdgesensorHigh" (lowercase s).
+import EdgeSensorHighIcon from '@mui/icons-material/EdgesensorHigh';
 import { useThemeMode } from '../context/ThemeContext';
 import { useWallet } from '../context/WalletContext';
 import { useFeedBadge } from '../context/FeedBadgeContext';
@@ -21,7 +22,7 @@ const DISCORD_URL =
 const GITHUB_URL =
     process.env.REACT_APP_GITHUB_URL || 'https://github.com/bluechip23';
 
-// Shared style so Commit / Discord / GitHub all read as the same kind of
+// Shared style so Commit / Discord / GitHub / Feed all read as the same kind of
 // subtle in-bar link rather than a filled CTA button. Inherits color
 // from the AppBar so the contrast comes from the bar's own palette.
 const topBarLinkSx = {
@@ -80,17 +81,6 @@ const BlockExpTopBar: React.FC = () => {
                     </Box>
                 )}
                 <MuiLink
-                    component={RouterLink}
-                    to="/feed"
-                    sx={topBarLinkSx}
-                    title={newCount > 0 ? `${newCount} new link${newCount === 1 ? '' : 's'} from your creators` : undefined}
-                >
-                    <Badge badgeContent={newCount} color="error" max={99}>
-                        <DynamicFeedIcon fontSize="small" />
-                    </Badge>
-                    Feed
-                </MuiLink>
-                <MuiLink
                     href={DISCORD_URL}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -107,6 +97,17 @@ const BlockExpTopBar: React.FC = () => {
                 >
                     <GitHubIcon fontSize="small" />
                     GitHub
+                </MuiLink>
+                <MuiLink
+                    component={RouterLink}
+                    to="/feed"
+                    sx={topBarLinkSx}
+                    title={newCount > 0 ? `${newCount} new link${newCount === 1 ? '' : 's'} from your creators` : undefined}
+                >
+                    <Badge badgeContent={newCount} color="error" max={99}>
+                        <EdgeSensorHighIcon fontSize="small" />
+                    </Badge>
+                    Feed
                 </MuiLink>
             </Stack>
             <Stack
