@@ -44,6 +44,32 @@ CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT NOT NULL,
     issued_at INTEGER NOT NULL
 );
+
+-- Priced subscription tiers. A creator defines up to MAX_TIERS named tiers
+-- in total, each on one pool their wallet created (ownership verified
+-- on-chain before insert). price_native is a micro-OSMO integer string:
+-- the minimum gross commit (committing_info.last_payment_native) that
+-- covers the tier for one access window.
+CREATE TABLE IF NOT EXISTS tiers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wallet_address TEXT NOT NULL REFERENCES profiles(wallet_address) ON DELETE CASCADE,
+    pool_address TEXT NOT NULL,
+    name TEXT NOT NULL,
+    price_native TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tiers_wallet ON tiers(wallet_address);
+
+-- Which tiers gate a link (many-to-many). Only gated links have rows; a
+-- gated link with no rows is open to any active subscriber of the
+-- creator's profile pool.
+CREATE TABLE IF NOT EXISTS link_tiers (
+    link_id INTEGER NOT NULL REFERENCES links(id) ON DELETE CASCADE,
+    tier_id INTEGER NOT NULL REFERENCES tiers(id) ON DELETE CASCADE,
+    PRIMARY KEY (link_id, tier_id)
+);
+CREATE INDEX IF NOT EXISTS idx_link_tiers_tier ON link_tiers(tier_id);
 `);
     // Additive column migrations for databases created before the column
     // existed. SQLite has no ADD COLUMN IF NOT EXISTS.
@@ -76,6 +102,16 @@ export interface LinkRow {
     // links page in position order. Unpinned links are posts, newest first.
     pinned: number;
     position: number;
+    created_at: number;
+    updated_at: number;
+}
+
+export interface TierRow {
+    id: number;
+    wallet_address: string;
+    pool_address: string;
+    name: string;
+    price_native: string;
     created_at: number;
     updated_at: number;
 }
@@ -226,6 +262,106 @@ export function updateLink(db: Db, id: number, patch: {
 
 export function deleteLink(db: Db, id: number): void {
     db.prepare('DELETE FROM links WHERE id = ?').run(id);
+}
+
+// ---------------------------------------------------------------------------
+// Subscription tiers + link↔tier gating
+// ---------------------------------------------------------------------------
+
+// Display order: grouped by pool, cheapest first. Prices are stored as
+// integer strings without leading zeros, so ordering by length and then
+// text orders them numerically.
+const TIER_ORDER = 'pool_address ASC, LENGTH(price_native) ASC, price_native ASC, id ASC';
+
+export function listTiers(db: Db, wallet: string): TierRow[] {
+    return db.prepare(
+        `SELECT * FROM tiers WHERE wallet_address = ? ORDER BY ${TIER_ORDER}`,
+    ).all(wallet) as TierRow[];
+}
+
+// Tiers of several creators at once (the subscriber feed), chunked like the
+// other multi-wallet reads.
+export function listTiersForWallets(db: Db, wallets: string[]): TierRow[] {
+    const out: TierRow[] = [];
+    for (let i = 0; i < wallets.length; i += 200) {
+        const chunk = wallets.slice(i, i + 200);
+        const placeholders = chunk.map(() => '?').join(',');
+        out.push(...db.prepare(
+            `SELECT * FROM tiers WHERE wallet_address IN (${placeholders}) ORDER BY ${TIER_ORDER}`,
+        ).all(...chunk) as TierRow[]);
+    }
+    return out;
+}
+
+export function countTiers(db: Db, wallet: string): number {
+    const row = db.prepare('SELECT COUNT(*) AS n FROM tiers WHERE wallet_address = ?').get(wallet) as { n: number };
+    return row.n;
+}
+
+export function getTier(db: Db, id: number): TierRow | undefined {
+    return db.prepare('SELECT * FROM tiers WHERE id = ?').get(id) as TierRow | undefined;
+}
+
+export function insertTier(db: Db, t: {
+    wallet_address: string; pool_address: string; name: string; price_native: string;
+}): TierRow {
+    const now = Math.floor(Date.now() / 1000);
+    const info = db.prepare(`INSERT INTO tiers (wallet_address, pool_address, name, price_native, created_at, updated_at)
+        VALUES (@wallet_address, @pool_address, @name, @price_native, @now, @now)`).run({ ...t, now });
+    return getTier(db, Number(info.lastInsertRowid))!;
+}
+
+export function updateTier(db: Db, id: number, patch: { name?: string; price_native?: string }): TierRow | undefined {
+    const existing = getTier(db, id);
+    if (!existing) return undefined;
+    const now = Math.floor(Date.now() / 1000);
+    db.prepare(`UPDATE tiers SET name = @name, price_native = @price_native, updated_at = @now
+        WHERE id = @id`).run({
+        id,
+        name: patch.name ?? existing.name,
+        price_native: patch.price_native ?? existing.price_native,
+        now,
+    });
+    return getTier(db, id);
+}
+
+export function deleteTier(db: Db, id: number): void {
+    db.prepare('DELETE FROM tiers WHERE id = ?').run(id);
+}
+
+/** Replace the whole set of tiers gating a link. */
+export function setLinkTiers(db: Db, linkId: number, tierIds: number[]): void {
+    const tx = db.transaction((ids: number[]) => {
+        db.prepare('DELETE FROM link_tiers WHERE link_id = ?').run(linkId);
+        const ins = db.prepare('INSERT OR IGNORE INTO link_tiers (link_id, tier_id) VALUES (?, ?)');
+        for (const tid of ids) ins.run(linkId, tid);
+    });
+    tx(tierIds);
+}
+
+/**
+ * link id → the ids of the tiers gating it, for many links in one pass.
+ * Links with no tiers are absent from the map.
+ */
+export function getTierIdsForLinks(db: Db, linkIds: number[]): Map<number, number[]> {
+    const out = new Map<number, number[]>();
+    for (let i = 0; i < linkIds.length; i += 500) {
+        const chunk = linkIds.slice(i, i + 500);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = db.prepare(
+            `SELECT link_id, tier_id FROM link_tiers WHERE link_id IN (${placeholders}) ORDER BY tier_id ASC`,
+        ).all(...chunk) as { link_id: number; tier_id: number }[];
+        for (const r of rows) {
+            const arr = out.get(r.link_id);
+            if (arr) arr.push(r.tier_id);
+            else out.set(r.link_id, [r.tier_id]);
+        }
+    }
+    return out;
+}
+
+export function getLinkTierIds(db: Db, linkId: number): number[] {
+    return getTierIdsForLinks(db, [linkId]).get(linkId) ?? [];
 }
 
 // ---------------------------------------------------------------------------

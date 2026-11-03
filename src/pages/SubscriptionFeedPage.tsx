@@ -37,6 +37,7 @@ import {
 } from '../utils/subscriptions';
 import { sanitizeOnChainString } from '../utils/security';
 import {
+    describeGate,
     FeedLink,
     getFeed,
     isProfilesDemoMode,
@@ -142,11 +143,12 @@ const SubscriptionFeedPage: React.FC = () => {
                 if (cancelled) return;
                 if (!result) {
                     setServiceDown(true);
-                    setFeed({ creators: [], links: [] });
+                    setFeed({ creators: [], links: [], tiers: [] });
                 } else {
                     setFeed({
                         creators: result.creators,
                         links: result.links.filter((l) => l.creator.pool_address && activePools.has(l.creator.pool_address)),
+                        tiers: result.tiers,
                     });
                 }
                 // Everything created after the previous visit is "new"; this
@@ -206,7 +208,11 @@ const SubscriptionFeedPage: React.FC = () => {
             mergeUnlocked(res.value?.links ?? []);
             const failed = res.value?.failed_pools.length ?? 0;
             const expiredNow = res.value?.expired_pools.length ?? 0;
+            const tierLocked = res.value?.tier_locked ?? 0;
             const notes: string[] = [];
+            if (tierLocked > 0) {
+                notes.push(`${tierLocked} link${tierLocked === 1 ? ' needs' : 's need'} a higher tier than your last commit covers — open the creator to upgrade.`);
+            }
             if (expiredNow > 0) {
                 notes.push(`${expiredNow} subscription${expiredNow === 1 ? ' has' : 's have'} expired since this page loaded — commit again to renew.`);
             }
@@ -443,6 +449,10 @@ const SubscriptionFeedPage: React.FC = () => {
                                                 unlockedUrl={unlockedUrls[linkKey(link)]}
                                                 isNew={isNew(link)}
                                                 onLockedClick={handleUnlock}
+                                                gateLabel={describeGate(
+                                                    link,
+                                                    (feed?.tiers ?? []).filter((t) => t.wallet_address === link.creator.wallet_address),
+                                                )}
                                             />
                                         ))}
                                     </Stack>

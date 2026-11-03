@@ -3,7 +3,7 @@
 // the database has passed through here, so the read endpoints can serve
 // rows without re-checking.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MAX_PINNED = exports.URL_MAX = exports.TITLE_MAX = exports.BIO_MAX = exports.NAME_MAX = exports.NAME_MIN = void 0;
+exports.PRICE_NATIVE_MAX = exports.TIER_NAME_MAX = exports.MAX_TIERS = exports.MAX_PINNED = exports.URL_MAX = exports.TITLE_MAX = exports.BIO_MAX = exports.NAME_MAX = exports.NAME_MIN = void 0;
 exports.isOsmoAddress = isOsmoAddress;
 exports.validateName = validateName;
 exports.validateBio = validateBio;
@@ -13,6 +13,9 @@ exports.validateUrl = validateUrl;
 exports.validateGated = validateGated;
 exports.validatePinned = validatePinned;
 exports.validatePosition = validatePosition;
+exports.validateTierName = validateTierName;
+exports.validatePriceNative = validatePriceNative;
+exports.validateTierIds = validateTierIds;
 const encoding_1 = require("@cosmjs/encoding");
 exports.NAME_MIN = 3;
 exports.NAME_MAX = 32;
@@ -22,6 +25,11 @@ exports.URL_MAX = 2048;
 // No cap on links per creator — the feed turns links into a publishing
 // channel. Only the pinned (bio) set is bounded.
 exports.MAX_PINNED = 10;
+// Subscription tiers a creator may define, across all of their pools.
+exports.MAX_TIERS = 5;
+exports.TIER_NAME_MAX = 40;
+// Sane upper bound on a tier price: 1e15 micro-OSMO = 1,000,000,000 OSMO.
+exports.PRICE_NATIVE_MAX = 1000000000000000n;
 const NAME_PATTERN = /^[a-zA-Z0-9 _.-]+$/;
 function isOsmoAddress(value) {
     if (typeof value !== 'string')
@@ -116,5 +124,57 @@ function validatePosition(raw) {
         return { ok: false, error: 'position must be a non-negative integer' };
     }
     return { ok: true, value: raw };
+}
+// ---------------------------------------------------------------------------
+// Subscription tiers
+// ---------------------------------------------------------------------------
+// Control, zero-width and bidirectional-override characters must never
+// appear in a tier name: they can hide or spoof text in tier labels.
+// eslint-disable-next-line no-control-regex
+const UNSAFE_TEXT = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/;
+function validateTierName(raw) {
+    if (typeof raw !== 'string')
+        return { ok: false, error: 'tier name is required' };
+    const name = raw.trim();
+    if (name.length < 1 || name.length > exports.TIER_NAME_MAX) {
+        return { ok: false, error: `tier name must be 1-${exports.TIER_NAME_MAX} characters` };
+    }
+    if (UNSAFE_TEXT.test(name))
+        return { ok: false, error: 'tier name contains disallowed characters' };
+    return { ok: true, value: name };
+}
+// Tier prices are micro-OSMO (6 decimals), compared against the gross
+// committing_info.last_payment_native. Only a positive integer string is
+// accepted (never a float or scientific notation) so the amount survives
+// end to end without drift.
+function validatePriceNative(raw) {
+    const s = typeof raw === 'string' ? raw.trim() : null;
+    if (s === null || !/^\d+$/.test(s)) {
+        return { ok: false, error: 'price_native must be an integer micro-OSMO string' };
+    }
+    const normalized = s.replace(/^0+(?=\d)/, '');
+    const n = BigInt(normalized);
+    if (n <= 0n)
+        return { ok: false, error: 'price_native must be greater than zero' };
+    if (n > exports.PRICE_NATIVE_MAX)
+        return { ok: false, error: 'price_native is too large' };
+    return { ok: true, value: normalized };
+}
+// Tier ids gating a link: positive integers, de-duplicated, capped.
+function validateTierIds(raw) {
+    if (raw === undefined || raw === null)
+        return { ok: true, value: [] };
+    if (!Array.isArray(raw))
+        return { ok: false, error: 'tier_ids must be an array of tier ids' };
+    if (raw.length > exports.MAX_TIERS)
+        return { ok: false, error: `at most ${exports.MAX_TIERS} tiers per link` };
+    const out = new Set();
+    for (const v of raw) {
+        if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
+            return { ok: false, error: 'tier_ids must be positive integers' };
+        }
+        out.add(v);
+    }
+    return { ok: true, value: [...out] };
 }
 //# sourceMappingURL=validate.js.map

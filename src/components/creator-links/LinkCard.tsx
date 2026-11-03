@@ -35,6 +35,8 @@ export interface LinkCardProps {
     onLockedClick?: () => void;
     /** Unix seconds; when set, a "posted …" line is shown under the title. */
     postedAt?: number;
+    /** What unlocks this gated link (see describeGate); defaults to "Subscribers only". */
+    gateLabel?: string;
 }
 
 /**
@@ -42,7 +44,7 @@ export interface LinkCardProps {
  * a new tab. Gated links render in a locked style until the viewer's
  * subscription check has revealed the real URL.
  */
-const LinkCard: React.FC<LinkCardProps> = ({ link, unlockedUrl, onLockedClick, postedAt }) => {
+const LinkCard: React.FC<LinkCardProps> = ({ link, unlockedUrl, onLockedClick, postedAt, gateLabel }) => {
     const title = sanitizeOnChainString(link.title, 80);
     const url = link.gated ? unlockedUrl : link.url;
     const locked = link.gated && !isSafeHttpUrl(url);
@@ -59,7 +61,7 @@ const LinkCard: React.FC<LinkCardProps> = ({ link, unlockedUrl, onLockedClick, p
                         </Typography>
                     </Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
-                        Subscribers only{posted ? ` · ${posted}` : ''}
+                        {sanitizeOnChainString(gateLabel || 'Subscribers only', 120)}{posted ? ` · ${posted}` : ''}
                     </Typography>
                 </CardActionArea>
             </Card>
