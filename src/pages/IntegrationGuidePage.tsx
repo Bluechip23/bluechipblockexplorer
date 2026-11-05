@@ -1207,9 +1207,10 @@ const IntegrationGuidePage: React.FC = () => {
                                     <strong>OSMO</strong> (<code>uosmo</code>), addresses look like{' '}
                                     <code>osmo1...</code>, and creator tokens are native Osmosis{' '}
                                     <strong>TokenFactory</strong> denoms (<code>factory/osmo1pool.../utoken</code>) —
-                                    ordinary bank coins, not token contracts. Once a pool crosses its funding
-                                    threshold, its liquidity lives in a native Osmosis pool, so creator tokens
-                                    can also be traded directly on app.osmosis.zone.
+                                    ordinary bank coins, not token contracts. Commits and subscriptions always go
+                                    through the BlueChip pool contract. Once a pool crosses its funding threshold,
+                                    the contract opens an Osmosis trading pool for the token, which also makes it
+                                    tradeable anywhere on Osmosis, including app.osmosis.zone.
                                 </Alert>
                             </CardContent>
                         </Card>
@@ -1511,12 +1512,15 @@ const IntegrationGuidePage: React.FC = () => {
                         </SectionCard>
 
                         {/* Section 8: Liquidity */}
-                        <SectionCard id="liquidity" number="8" title="Liquidity — It's a Native Osmosis Pool">
+                        <SectionCard id="liquidity" number="8" title="Liquidity">
                             <Typography paragraph>
-                                Earlier versions of the protocol had their own liquidity-position system
-                                (deposit, withdraw, position NFTs, fee collection). <strong>That system is
-                                gone.</strong> When a creator pool crosses its threshold, the contract creates
-                                and seeds a <strong>native Osmosis GAMM pool</strong>, and:
+                                Each creator pool is a BlueChip contract: it runs the commit ledger, the
+                                funding threshold, commit fees and subscription records. When the threshold is
+                                crossed, the contract creates and seeds an <strong>Osmosis GAMM pool</strong>{' '}
+                                for the token, and from then on trades (including post-threshold commits) are
+                                priced and settled in that pool. Earlier versions had a liquidity-position
+                                system inside the contract (deposit, withdraw, position NFTs, fee collection).
+                                That has been replaced by the GAMM pool:
                             </Typography>
                             <Box component="ul" sx={{ mb: 2 }}>
                                 <li>
@@ -1530,10 +1534,13 @@ const IntegrationGuidePage: React.FC = () => {
                                 </li>
                                 <li>
                                     <Typography>
-                                        <strong>Anyone can LP the normal Osmosis way.</strong> Visit
-                                        app.osmosis.zone, find the pool (OSMO / your creator token), and add or
-                                        remove liquidity there like any other Osmosis pool. Positions and LP
-                                        rewards are managed entirely by Osmosis.
+                                        <strong>Anyone can add liquidity next to the seed.</strong> Use the{' '}
+                                        <strong>Provide Liquidity</strong> button on this explorer, or sign
+                                        Osmosis&apos; <code>MsgJoinPool</code> / <code>MsgExitPool</code> from
+                                        your own site. The contract&apos;s <code>native_pool_id</code> query
+                                        gives the pool id and the <code>gamm/pool/{'{id}'}</code> LP share denom.
+                                        Because it is a standard Osmosis pool, the position also shows up on
+                                        app.osmosis.zone.
                                     </Typography>
                                 </li>
                                 <li>
@@ -1547,8 +1554,8 @@ const IntegrationGuidePage: React.FC = () => {
                                 If your old integration called <code>deposit_liquidity</code>,{' '}
                                 <code>add_to_position</code>, <code>remove_all_liquidity</code>,{' '}
                                 <code>remove_partial_liquidity</code>, <code>collect_fees</code>, or the{' '}
-                                <code>position</code> / <code>positions_by_owner</code> queries — delete that
-                                code and point your users at Osmosis instead.
+                                <code>position</code> / <code>positions_by_owner</code> queries, replace that
+                                code with GAMM join/exit against the pool from <code>native_pool_id</code>.
                             </Alert>
                         </SectionCard>
 
@@ -1748,7 +1755,7 @@ const IntegrationGuidePage: React.FC = () => {
                                             ['"Commit too small"', 'Each pool enforces a minimum commit in OSMO: 115 OSMO pre-threshold, 25 OSMO post-threshold by default (the error prints the amounts in micro-OSMO base units). Increase the amount'],
                                             ['"Pool is not fully committed"', 'Buy/Sell only work after the pool crosses its OSMO commit threshold. Use Subscribe instead'],
                                             ['"Native pool liquidity below the circuit-breaker floor"', "A reserve of the native GAMM pool is below 25% of what was seeded at crossing, so this swap/commit reverted (funds returned by tx failure). Nothing is paused: retry once the pool's liquidity recovers, or trade directly on the native pool"],
-                                            ['Calls to deposit_liquidity / collect_fees / position fail', 'Those entry points no longer exist — liquidity lives in the native Osmosis pool. LP directly on app.osmosis.zone (Section 8)'],
+                                            ['Calls to deposit_liquidity / collect_fees / position fail', 'Those entry points no longer exist. Liquidity is added to the Osmosis pool the contract opened at threshold crossing, with MsgJoinPool / MsgExitPool (Section 8)'],
                                             ['Transaction stuck / pending', 'The transaction may still be processing. Check the tx hash on an Osmosis explorer (e.g. Mintscan)'],
                                             ['Keplr not detecting on mobile', 'Use the Keplr mobile app\'s built-in browser to visit your site'],
                                         ].map(([problem, solution], idx) => (

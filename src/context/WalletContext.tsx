@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { Coin } from '@cosmjs/stargate';
+import { SigningCosmWasmClient, wasmTypes, createWasmAminoConverters } from '@cosmjs/cosmwasm-stargate';
+import { Registry } from '@cosmjs/proto-signing';
+import { AminoTypes, Coin, createDefaultAminoConverters, defaultRegistryTypes } from '@cosmjs/stargate';
+import { gammAminoConverters, gammRegistryTypes } from '../utils/osmosisGamm';
 import {
     EXPECTED_CHAIN_ID,
     IDLE_TIMEOUT_MS,
@@ -20,6 +22,20 @@ import { getDataSource } from '../utils/contractQueries';
 
 const MOCK_ADDRESS = 'osmo1q2w3e4r5t6y7u8i9o0pzxcvbnmasdfghjkl42';
 const MOCK_BALANCE: Coin = { denom: NATIVE_DENOM, amount: '84720000000' }; // 84,720 OSMO
+
+// The CosmJS defaults (bank/staking/etc. + wasm) plus Osmosis GAMM
+// join/exit, so the same client signs contract calls AND native
+// add/remove-liquidity messages.
+function buildSigningOptions() {
+    return {
+        registry: new Registry([...defaultRegistryTypes, ...wasmTypes, ...gammRegistryTypes]),
+        aminoTypes: new AminoTypes({
+            ...createDefaultAminoConverters(),
+            ...createWasmAminoConverters(),
+            ...gammAminoConverters,
+        }),
+    };
+}
 
 interface WalletContextType {
     client: SigningCosmWasmClient | null;
@@ -140,7 +156,11 @@ export const WalletContextProvider: React.FC<React.PropsWithChildren> = ({ child
                 return;
             }
 
-            const signingClient = await SigningCosmWasmClient.connectWithSigner(rpcEndpoint, signer);
+            const signingClient = await SigningCosmWasmClient.connectWithSigner(
+                rpcEndpoint,
+                signer,
+                buildSigningOptions(),
+            );
 
             // SECURITY: verify the signer really is on the expected chain
             // before exposing the client to any transaction flow.

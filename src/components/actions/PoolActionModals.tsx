@@ -823,9 +823,9 @@ export const CommitPanel: React.FC<BasePanelProps & {
 // isn't lost if the user peeks at another tab; closing the dialog
 // unmounts everything, resetting all panel state.
 //
-// There is no LiquidityModal anymore: liquidity lives in the native
-// Osmosis GAMM pool (seeded at threshold crossing and locked in the pool
-// contract), so LP flows happen on app.osmosis.zone, not here.
+// Liquidity is not a contract action: it is added to the Osmosis GAMM
+// pool the contract opens at threshold crossing. See
+// components/liquidity/LiquidityPanel (via ProvideLiquidityDialog).
 // ---------------------------------------------------------------------------
 
 export const CommitModal: React.FC<BaseModalProps> = ({ open, onClose, poolAddress, tokenSymbol }) => (

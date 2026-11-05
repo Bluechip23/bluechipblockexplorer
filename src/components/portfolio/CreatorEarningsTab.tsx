@@ -353,10 +353,10 @@ const CreatorEarningsTab: React.FC<CreatorEarningsTabProps> = ({ pools, pool }) 
                     <Card variant="outlined" sx={{ height: '100%' }}>
                         <CardContent>
                             <Typography variant="caption" color="text.secondary">Trading Fees</Typography>
-                            <Typography variant="h6" fontWeight="bold">On Osmosis</Typography>
+                            <Typography variant="h6" fontWeight="bold">To LPs</Typography>
                             <Typography variant="caption" color="text.secondary">
-                                LP fees for {symbol} accrue on the native Osmosis pool — collect them at
-                                app.osmosis.zone
+                                Swap fees on {symbol} go to liquidity providers in its trading pool. Add
+                                liquidity to earn a share
                             </Typography>
                         </CardContent>
                     </Card>

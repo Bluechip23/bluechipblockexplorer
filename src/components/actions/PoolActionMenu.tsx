@@ -25,9 +25,8 @@ interface PoolActionMenuProps {
 type ActionKind = 'trade' | 'liquidity' | 'commit' | null;
 
 // Post-threshold pools get a consolidated Trade modal (Buy / Sell /
-// Commit tabs) plus an LP hand-off dialog that resolves the pool's native
-// GAMM pool id and deep-links to it on app.osmosis.zone — LP flows live
-// on the native pool now, not in this app. Pools still in their funding
+// Commit tabs) plus an in-site add/remove liquidity dialog for the
+// pool's Osmosis trading pool. Pools still in their funding
 // phase keep the standalone Commit button — trading doesn't exist for
 // them yet.
 const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
@@ -60,7 +59,7 @@ const PoolActionMenu: React.FC<PoolActionMenuProps> = ({
         },
         {
             key: 'liquidity',
-            label: 'LP on Osmosis',
+            label: 'Add Liquidity',
             icon: <WaterDropIcon fontSize="small" />,
             color: 'primary',
             show: thresholdReached,
