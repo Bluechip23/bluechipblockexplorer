@@ -23,7 +23,7 @@ import { isFullyCommitted } from '../utils/contractQueries';
 import { deadlineNs } from '../utils/datetime';
 import { stdFee } from '../utils/fees';
 import { deriveBeliefPrice, resolvePoolAssets } from '../utils/poolActions';
-import { chainQueryNativePoolId, NativePoolIdResponse } from '../utils/chainQueries';
+import LiquidityPanel from '../components/liquidity/LiquidityPanel';
 
 // Sentinel the factory's commit-pool create handler requires in the
 // CreatorToken slot of pool_token_info. The pool mints its own native
@@ -387,75 +387,29 @@ const SwapTab: React.FC<{ client: SigningCosmWasmClient | null; address: string 
 };
 
 // =========================================================================
-// LIQUIDITY TAB — informational + native-pool lookup.
-//
-// The creator pool has no deposit/remove-liquidity or collect-fees entry
-// points anymore: at threshold crossing it creates and seeds a NATIVE
-// Osmosis GAMM pool and holds the LP shares itself. Anyone who wants to
-// LP does it directly on Osmosis, and LP fees accrue per GAMM rules.
-// The `native_pool_id` query resolves which GAMM pool that is, so we can
-// deep-link straight to it instead of sending users to search the pool
-// list by hand.
+// LIQUIDITY TAB — add / remove liquidity on a creator pool's Osmosis
+// trading pool (opened by the contract at threshold crossing).
 // =========================================================================
-const LiquidityInfoTab: React.FC = () => {
+const LiquidityTab: React.FC = () => {
     const [poolAddress, setPoolAddress] = useState('');
-    const [lookupStatus, setLookupStatus] = useState('');
-    const [nativePool, setNativePool] = useState<NativePoolIdResponse | null>(null);
-
-    const handleLookup = async () => {
-        setNativePool(null);
-        const addrCheck = validateBech32Address(poolAddress);
-        if (!addrCheck.ok) { setLookupStatus(`Error: ${addrCheck.error}`); return; }
-        try {
-            setLookupStatus('Looking up the native pool...');
-            const res = await chainQueryNativePoolId(poolAddress);
-            setNativePool(res);
-            setLookupStatus(res.pool_id === null
-                ? 'This pool has not crossed its threshold yet — no native Osmosis pool exists for it.'
-                : '');
-        } catch (err) {
-            setLookupStatus('Error: ' + humanizeContractError(err));
-        }
-    };
+    const addrCheck = poolAddress ? validateBech32Address(poolAddress) : null;
 
     return (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Alert severity="info">
-                Liquidity lives on Osmosis now. When a creator pool crosses its funding threshold,
-                the contract creates and seeds a native Osmosis GAMM pool (the seed is locked in the
-                pool contract and belongs to no one). There are no liquidity or fee-collection
-                actions on the BlueChip contracts.
-            </Alert>
-            <Typography variant="body2">
-                To provide or remove liquidity for a creator token — or to collect your LP
-                rewards — use the Osmosis app directly:{' '}
-                <Link href="https://app.osmosis.zone/pools" target="_blank" rel="noopener">
-                    app.osmosis.zone/pools
-                </Link>
-                . Pick a creator pool below to jump straight to its Osmosis pool.
+            <Typography variant="body2" color="text.secondary">
+                Add OSMO and a creator token to a pool&apos;s trading liquidity and earn a share of
+                every swap fee. Trading opens when a pool reaches its funding threshold: BlueChip
+                opens the pool&apos;s trading pool on Osmosis and locks the seed liquidity
+                permanently. Your liquidity sits next to it, and you can remove it at any time.
             </Typography>
-            <PoolPickerField value={poolAddress} onChange={setPoolAddress} label="Creator Pool" />
-            <Button variant="contained" onClick={handleLookup} disabled={!poolAddress}>
-                Find Native Osmosis Pool
-            </Button>
-            {nativePool?.pool_id !== null && nativePool?.pool_id !== undefined && (
-                <Alert severity="success">
-                    Native GAMM pool #{nativePool.pool_id} —{' '}
-                    <Link
-                        href={`https://app.osmosis.zone/pool/${nativePool.pool_id}`}
-                        target="_blank"
-                        rel="noopener"
-                    >
-                        open it on Osmosis
-                    </Link>
-                    {nativePool.lp_share_denom && (
-                        <> · LP share denom: <code>{nativePool.lp_share_denom}</code></>
-                    )}
-                </Alert>
-            )}
-            {lookupStatus && (
-                <Alert severity={lookupStatus.startsWith('Error') ? 'error' : 'info'}>{lookupStatus}</Alert>
-            )}
+            <PoolPickerField
+                value={poolAddress}
+                onChange={setPoolAddress}
+                label="Creator Pool"
+                filterPools={(p) => p.thresholdReached}
+            />
+            {addrCheck && !addrCheck.ok && <Alert severity="error">{addrCheck.error}</Alert>}
+            {addrCheck?.ok && <LiquidityPanel key={poolAddress} poolAddress={poolAddress} />}
         </Box>
     );
 };
@@ -471,7 +425,7 @@ const DefiPage: React.FC = () => {
     // Allow deep-linking to a specific tab via ?tab=<name>. The "Commit"
     // shortcut in the top bar relies on this to drop the user straight on
     // the commit form when they land on /defi. Legacy 'liquidity' / 'fees'
-    // links land on the informational Liquidity tab.
+    // links land on the Liquidity tab.
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
@@ -520,7 +474,7 @@ const DefiPage: React.FC = () => {
                                 <CrossTokenSwapTab client={client} address={address} />
                             </TabPanel>
                             <TabPanel value={mainTab} index={4}>
-                                <LiquidityInfoTab />
+                                <LiquidityTab />
                             </TabPanel>
                         </CardContent>
                     </Card>
